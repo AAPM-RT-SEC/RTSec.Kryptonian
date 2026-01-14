@@ -368,4 +368,4 @@ Built with Clean Architecture principles:
 
 ## License
 
-Proprietary - All rights reserved.
+See LICENSE file
