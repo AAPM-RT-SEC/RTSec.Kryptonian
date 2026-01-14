@@ -1,0 +1,103 @@
+using RTSec.Kryptonian.Domain.Entities;
+
+namespace RTSec.Kryptonian.Domain.Interfaces;
+
+/// <summary>
+/// Unit of Work interface for coordinating changes across multiple repositories.
+/// Allows atomic multi-entity operations and explicit transaction control.
+/// </summary>
+public interface IUnitOfWork : IDisposable
+{
+    ICaBackendRepository CaBackends { get; }
+    IEstProfileRepository EstProfiles { get; }
+    ICertificateRepository Certificates { get; }
+    IEnrollmentEventRepository EnrollmentEvents { get; }
+    IAcmeAccountRepository AcmeAccounts { get; }
+
+    /// <summary>
+    /// Saves all pending changes to the database.
+    /// </summary>
+    Task<int> SaveChangesAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Begins a database transaction for explicit transaction control.
+    /// </summary>
+    Task BeginTransactionAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Commits the current transaction.
+    /// </summary>
+    Task CommitTransactionAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Rolls back the current transaction.
+    /// </summary>
+    Task RollbackTransactionAsync(CancellationToken ct = default);
+}
+
+/// <summary>
+/// Generic repository interface.
+/// Repositories no longer auto-save; use IUnitOfWork.SaveChangesAsync() to persist changes.
+/// </summary>
+public interface IRepository<T> where T : BaseEntity
+{
+    Task<T?> GetByIdAsync(Guid id, CancellationToken ct = default);
+    Task<IEnumerable<T>> GetAllAsync(CancellationToken ct = default);
+    void Add(T entity);
+    void Update(T entity);
+    void Delete(T entity);
+}
+
+/// <summary>
+/// Repository for CA backends.
+/// </summary>
+public interface ICaBackendRepository : IRepository<CaBackend>
+{
+    Task<IEnumerable<CaBackend>> GetEnabledAsync(CancellationToken ct = default);
+}
+
+/// <summary>
+/// Repository for EST profiles.
+/// </summary>
+public interface IEstProfileRepository : IRepository<EstProfile>
+{
+    Task<EstProfile?> GetByPathAndHostnameAsync(string pathPrefix, string hostname, CancellationToken ct = default);
+    Task<IEnumerable<EstProfile>> GetEnabledAsync(CancellationToken ct = default);
+    Task<IEnumerable<EstProfile>> GetByCaBackendIdAsync(Guid caBackendId, CancellationToken ct = default);
+}
+
+/// <summary>
+/// Repository for certificates.
+/// </summary>
+public interface ICertificateRepository : IRepository<Certificate>
+{
+    Task<Certificate?> GetBySerialNumberAsync(string serialNumber, CancellationToken ct = default);
+    Task<Certificate?> GetByThumbprintAsync(string thumbprint, CancellationToken ct = default);
+    Task<IEnumerable<Certificate>> GetByEstProfileIdAsync(Guid estProfileId, CancellationToken ct = default);
+    Task<IEnumerable<Certificate>> GetExpiringAsync(DateTime before, CancellationToken ct = default);
+}
+
+/// <summary>
+/// Repository for enrollment events.
+/// </summary>
+public interface IEnrollmentEventRepository : IRepository<EnrollmentEvent>
+{
+    Task<IEnumerable<EnrollmentEvent>> GetByProfileIdAsync(Guid profileId, int limit = 50, CancellationToken ct = default);
+    Task<IEnumerable<EnrollmentEvent>> GetRecentAsync(int limit = 50, CancellationToken ct = default);
+}
+
+/// <summary>
+/// Repository for ACME accounts.
+/// </summary>
+public interface IAcmeAccountRepository : IRepository<AcmeAccount>
+{
+    /// <summary>
+    /// Gets an active ACME account for the specified directory URL.
+    /// </summary>
+    Task<AcmeAccount?> GetByDirectoryUrlAsync(string directoryUrl, CancellationToken ct = default);
+
+    /// <summary>
+    /// Gets an active ACME account for the specified directory URL and email.
+    /// </summary>
+    Task<AcmeAccount?> GetByDirectoryAndEmailAsync(string directoryUrl, string email, CancellationToken ct = default);
+}

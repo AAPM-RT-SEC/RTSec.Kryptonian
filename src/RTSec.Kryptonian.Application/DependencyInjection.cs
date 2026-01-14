@@ -1,0 +1,29 @@
+using Microsoft.Extensions.DependencyInjection;
+using RTSec.Kryptonian.Application.Mapping;
+using RTSec.Kryptonian.Application.Services;
+using RTSec.Kryptonian.Domain.Interfaces;
+
+namespace RTSec.Kryptonian.Application;
+
+/// <summary>
+/// Extension methods for configuring application services.
+/// </summary>
+public static class DependencyInjection
+{
+    /// <summary>
+    /// Adds application layer services to the service collection.
+    /// </summary>
+    public static IServiceCollection AddApplicationServices(this IServiceCollection services)
+    {
+        // Add AutoMapper with the mapping profile
+        services.AddAutoMapper(typeof(MappingProfile));
+
+        // Register application services
+        services.AddScoped<ICaBackendService, CaBackendService>();
+        services.AddScoped<IEstProfileService, EstProfileService>();
+        services.AddScoped<IEnrollmentEventService, EnrollmentEventService>();
+        services.AddScoped<IEnrollmentOrchestrator, EnrollmentOrchestrator>();
+
+        return services;
+    }
+}

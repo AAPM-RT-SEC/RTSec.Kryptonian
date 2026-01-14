@@ -1,0 +1,180 @@
+@page "/ca-backends"
+@inject IKryptonianApiClient ApiClient
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@implements IDisposable
+@rendermode InteractiveServer
+
+<PageTitle>CA Backends - Kryptonian Admin</PageTitle>
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-4">
+    <MudText Typo="Typo.h4">CA Backends</MudText>
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="@OpenCreateDialog">
+        Add CA Backend
+    </MudButton>
+</MudStack>
+
+@if (_loading)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+}
+else if (!_backends.Any())
+{
+    <MudAlert Severity="Severity.Info">
+        No CA backends configured yet. Click "Add CA Backend" to create one.
+    </MudAlert>
+}
+else
+{
+    <MudTable Items="@_backends" Hover="true" Elevation="2">
+        <HeaderContent>
+            <MudTh>Name</MudTh>
+            <MudTh>Type</MudTh>
+            <MudTh>URL</MudTh>
+            <MudTh>Status</MudTh>
+            <MudTh>Created</MudTh>
+            <MudTh Style="width: 120px">Actions</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="Name">@context.Name</MudTd>
+            <MudTd DataLabel="Type">
+                <MudChip T="string" Size="Size.Small" Color="@GetTypeColor(context.Type)">@context.Type</MudChip>
+            </MudTd>
+            <MudTd DataLabel="URL">@(context.Url ?? "-")</MudTd>
+            <MudTd DataLabel="Status">
+                @if (context.IsEnabled)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Success">Enabled</MudChip>
+                }
+                else
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Default">Disabled</MudChip>
+                }
+            </MudTd>
+            <MudTd DataLabel="Created">@context.CreatedAt.ToString("d")</MudTd>
+            <MudTd DataLabel="Actions">
+                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" OnClick="@(() => OpenEditDialog(context))" />
+                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="@(() => ConfirmDelete(context))" />
+            </MudTd>
+        </RowTemplate>
+    </MudTable>
+}
+
+@code {
+    private bool _loading = true;
+    private List<CaBackendDto> _backends = new();
+
+    protected override void OnInitialized()
+    {
+        ApiClient.OnApiError += HandleApiError;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadBackendsAsync();
+    }
+
+    private void HandleApiError(object? sender, ApiErrorEventArgs e)
+    {
+        InvokeAsync(() =>
+        {
+            var severity = e.ErrorType switch
+            {
+                ApiErrorType.Unauthorized => Severity.Warning,
+                ApiErrorType.Forbidden => Severity.Warning,
+                ApiErrorType.ServerError => Severity.Error,
+                _ => Severity.Error
+            };
+            Snackbar.Add(e.Message, severity);
+            StateHasChanged();
+        });
+    }
+
+    private async Task LoadBackendsAsync()
+    {
+        _loading = true;
+        try
+        {
+            var result = await ApiClient.GetCaBackendsAsync();
+            if (result.Success && result.Data != null)
+            {
+                _backends = result.Data.ToList();
+            }
+            else
+            {
+                _backends = new List<CaBackendDto>();
+            }
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task OpenCreateDialog()
+    {
+        var parameters = new DialogParameters<CaBackendDialog>();
+        var options = new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true };
+
+        var dialog = await DialogService.ShowAsync<CaBackendDialog>("Create CA Backend", parameters, options);
+        var result = await dialog.Result;
+
+        if (result is { Canceled: false })
+        {
+            await LoadBackendsAsync();
+            Snackbar.Add("CA backend created successfully", Severity.Success);
+        }
+    }
+
+    private async Task OpenEditDialog(CaBackendDto backend)
+    {
+        var parameters = new DialogParameters<CaBackendDialog>
+        {
+            { x => x.ExistingBackend, backend }
+        };
+        var options = new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true };
+
+        var dialog = await DialogService.ShowAsync<CaBackendDialog>("Edit CA Backend", parameters, options);
+        var result = await dialog.Result;
+
+        if (result is { Canceled: false })
+        {
+            await LoadBackendsAsync();
+            Snackbar.Add("CA backend updated successfully", Severity.Success);
+        }
+    }
+
+    private async Task ConfirmDelete(CaBackendDto backend)
+    {
+        var confirm = await DialogService.ShowMessageBox(
+            "Delete CA Backend",
+            $"Are you sure you want to delete '{backend.Name}'? This action cannot be undone.",
+            yesText: "Delete",
+            cancelText: "Cancel");
+
+        if (confirm == true)
+        {
+            var result = await ApiClient.DeleteCaBackendAsync(backend.Id);
+            if (result.Success)
+            {
+                await LoadBackendsAsync();
+                Snackbar.Add("CA backend deleted successfully", Severity.Success);
+            }
+            // Error is already shown via OnApiError handler
+        }
+    }
+
+    private static Color GetTypeColor(string type) => type.ToLowerInvariant() switch
+    {
+        "selfsigned" => Color.Primary,
+        "acme" => Color.Secondary,
+        "adcs" => Color.Tertiary,
+        "ejbca" => Color.Info,
+        _ => Color.Default
+    };
+
+    public void Dispose()
+    {
+        ApiClient.OnApiError -= HandleApiError;
+    }
+}

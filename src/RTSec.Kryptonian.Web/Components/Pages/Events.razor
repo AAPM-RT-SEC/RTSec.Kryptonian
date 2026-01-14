@@ -1,0 +1,238 @@
+@page "/events"
+@inject IKryptonianApiClient ApiClient
+@inject ISnackbar Snackbar
+@implements IDisposable
+@rendermode InteractiveServer
+
+<PageTitle>Enrollment Events - Kryptonian Admin</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Enrollment Events</MudText>
+
+<MudPaper Class="pa-4 mb-4" Elevation="2">
+    <MudStack Row="true" AlignItems="AlignItems.End" Spacing="4">
+        <MudSelect @bind-Value="_selectedProfileId"
+                   Label="Filter by Profile"
+                   Clearable="true"
+                   Style="min-width: 250px;">
+            @foreach (var profile in _profiles)
+            {
+                <MudSelectItem Value="@profile.Id">@profile.Name</MudSelectItem>
+            }
+        </MudSelect>
+
+        <MudSelect @bind-Value="_selectedStatus"
+                   Label="Filter by Status"
+                   Clearable="true"
+                   Style="min-width: 150px;">
+            <MudSelectItem Value="@("issued")">Issued</MudSelectItem>
+            <MudSelectItem Value="@("pending")">Pending</MudSelectItem>
+            <MudSelectItem Value="@("rejected")">Rejected</MudSelectItem>
+            <MudSelectItem Value="@("error")">Error</MudSelectItem>
+        </MudSelect>
+
+        <MudNumericField @bind-Value="_limit"
+                         Label="Limit"
+                         Min="10"
+                         Max="500"
+                         Style="max-width: 100px;" />
+
+        <MudButton Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   StartIcon="@Icons.Material.Filled.Search"
+                   OnClick="@LoadEventsAsync">
+            Search
+        </MudButton>
+
+        <MudButton Variant="Variant.Outlined"
+                   StartIcon="@Icons.Material.Filled.Refresh"
+                   OnClick="@ResetFilters">
+            Reset
+        </MudButton>
+    </MudStack>
+</MudPaper>
+
+@if (_loading)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+}
+else if (!_events.Any())
+{
+    <MudAlert Severity="Severity.Info">
+        No enrollment events found matching the selected filters.
+    </MudAlert>
+}
+else
+{
+    <MudPaper Elevation="2">
+        <MudTable Items="@FilteredEvents" Hover="true" Dense="true">
+            <HeaderContent>
+                <MudTh>
+                    <MudTableSortLabel SortBy="new Func<EnrollmentEventDto, object>(x => x.Timestamp)">Time</MudTableSortLabel>
+                </MudTh>
+                <MudTh>Status</MudTh>
+                <MudTh>Profile</MudTh>
+                <MudTh>Subject DN</MudTh>
+                <MudTh>Device ID</MudTh>
+                <MudTh>IP Address</MudTh>
+                <MudTh>Details</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Time">
+                    <MudTooltip Text="@context.Timestamp.ToString("O")">
+                        @context.Timestamp.ToString("g")
+                    </MudTooltip>
+                </MudTd>
+                <MudTd DataLabel="Status">
+                    <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Status)">@context.Status</MudChip>
+                </MudTd>
+                <MudTd DataLabel="Profile">
+                    @{
+                        var profile = _profiles.FirstOrDefault(p => p.Id == context.ProfileId);
+                    }
+                    @(profile?.Name ?? context.ProfileId)
+                </MudTd>
+                <MudTd DataLabel="Subject DN">
+                    @if (!string.IsNullOrEmpty(context.SubjectDn))
+                    {
+                        <MudTooltip Text="@context.SubjectDn">
+                            <span class="d-inline-block text-truncate" style="max-width: 200px;">@context.SubjectDn</span>
+                        </MudTooltip>
+                    }
+                    else
+                    {
+                        <span>-</span>
+                    }
+                </MudTd>
+                <MudTd DataLabel="Device ID">@(context.DeviceId ?? "-")</MudTd>
+                <MudTd DataLabel="IP Address">@(context.RequestorIpAddress ?? "-")</MudTd>
+                <MudTd DataLabel="Details">
+                    @if (!string.IsNullOrEmpty(context.ErrorMessage))
+                    {
+                        <MudTooltip Text="@context.ErrorMessage">
+                            <MudIconButton Icon="@Icons.Material.Filled.Error" Color="Color.Error" Size="Size.Small" />
+                        </MudTooltip>
+                    }
+                    else if (!string.IsNullOrEmpty(context.IssuedCertificateId))
+                    {
+                        <MudTooltip Text="Certificate issued">
+                            <MudIconButton Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" Size="Size.Small" />
+                        </MudTooltip>
+                    }
+                </MudTd>
+            </RowTemplate>
+            <PagerContent>
+                <MudTablePager PageSizeOptions="new int[] { 25, 50, 100 }" />
+            </PagerContent>
+        </MudTable>
+    </MudPaper>
+
+    <MudText Typo="Typo.caption" Class="mt-2" Color="Color.Secondary">
+        Showing @FilteredEvents.Count() of @_events.Count events
+    </MudText>
+}
+
+@code {
+    private bool _loading = true;
+    private List<EnrollmentEventDto> _events = new();
+    private List<EstProfileDto> _profiles = new();
+
+    private string? _selectedProfileId;
+    private string? _selectedStatus;
+    private int _limit = 100;
+
+    private IEnumerable<EnrollmentEventDto> FilteredEvents =>
+        _events.Where(e =>
+            (string.IsNullOrEmpty(_selectedStatus) || e.Status == _selectedStatus));
+
+    protected override void OnInitialized()
+    {
+        ApiClient.OnApiError += HandleApiError;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadInitialDataAsync();
+    }
+
+    private void HandleApiError(object? sender, ApiErrorEventArgs e)
+    {
+        InvokeAsync(() =>
+        {
+            var severity = e.ErrorType switch
+            {
+                ApiErrorType.Unauthorized => Severity.Warning,
+                ApiErrorType.Forbidden => Severity.Warning,
+                ApiErrorType.ServerError => Severity.Error,
+                _ => Severity.Error
+            };
+            Snackbar.Add(e.Message, severity);
+            StateHasChanged();
+        });
+    }
+
+    private async Task LoadInitialDataAsync()
+    {
+        _loading = true;
+        try
+        {
+            var profilesTask = ApiClient.GetEstProfilesAsync();
+            var eventsTask = ApiClient.GetEnrollmentEventsAsync(limit: _limit);
+            await Task.WhenAll(profilesTask, eventsTask);
+
+            var profilesResult = await profilesTask;
+            var eventsResult = await eventsTask;
+
+            _profiles = profilesResult.Success && profilesResult.Data != null
+                ? profilesResult.Data.ToList()
+                : new List<EstProfileDto>();
+            _events = eventsResult.Success && eventsResult.Data != null
+                ? eventsResult.Data.ToList()
+                : new List<EnrollmentEventDto>();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task LoadEventsAsync()
+    {
+        _loading = true;
+        try
+        {
+            var result = await ApiClient.GetEnrollmentEventsAsync(
+                profileId: _selectedProfileId,
+                limit: _limit);
+
+            _events = result.Success && result.Data != null
+                ? result.Data.ToList()
+                : new List<EnrollmentEventDto>();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task ResetFilters()
+    {
+        _selectedProfileId = null;
+        _selectedStatus = null;
+        _limit = 100;
+        await LoadEventsAsync();
+    }
+
+    private static Color GetStatusColor(string status) => status.ToLowerInvariant() switch
+    {
+        "issued" => Color.Success,
+        "pending" => Color.Warning,
+        "rejected" => Color.Error,
+        "error" => Color.Error,
+        _ => Color.Default
+    };
+
+    public void Dispose()
+    {
+        ApiClient.OnApiError -= HandleApiError;
+    }
+}

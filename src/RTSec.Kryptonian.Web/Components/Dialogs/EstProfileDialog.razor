@@ -1,0 +1,184 @@
+@inject IKryptonianApiClient ApiClient
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <DialogContent>
+        <MudForm @ref="_form" @bind-IsValid="_isValid">
+            <MudTextField @bind-Value="_model.Name"
+                          Label="Name"
+                          Required="true"
+                          RequiredError="Name is required"
+                          Class="mb-4" />
+
+            <MudSelect @bind-Value="_model.CaBackendId"
+                       Label="CA Backend"
+                       Required="true"
+                       RequiredError="CA Backend is required"
+                       Class="mb-4">
+                @foreach (var backend in AvailableBackends)
+                {
+                    <MudSelectItem Value="@backend.Id">@backend.Name (@backend.Type)</MudSelectItem>
+                }
+            </MudSelect>
+
+            <MudTextField @bind-Value="_hostnamesText"
+                          Label="Hostnames"
+                          HelperText="Comma-separated list of hostnames"
+                          Placeholder="example.com, api.example.com"
+                          Class="mb-4" />
+
+            <MudSelect @bind-Value="_model.HostnameMatchType"
+                       Label="Hostname Match Type"
+                       HelperText="How hostnames should be matched"
+                       Class="mb-4">
+                <MudSelectItem Value="@("exact")">Exact Match</MudSelectItem>
+                <MudSelectItem Value="@("suffix")">Suffix Match</MudSelectItem>
+                <MudSelectItem Value="@("wildcard")">Wildcard</MudSelectItem>
+            </MudSelect>
+
+            <MudTextField @bind-Value="_model.PathPrefix"
+                          Label="Path Prefix"
+                          HelperText="EST endpoint path prefix"
+                          Class="mb-4" />
+
+            <MudNumericField @bind-Value="_model.ValidityDays"
+                             Label="Certificate Validity (Days)"
+                             Min="1"
+                             Max="3650"
+                             Class="mb-4" />
+
+            <MudTextField @bind-Value="_model.CertificateTemplate"
+                          Label="Certificate Template"
+                          HelperText="Optional: CA-specific template name"
+                          Class="mb-4" />
+
+            <MudDivider Class="my-4" />
+            <MudText Typo="Typo.subtitle2" Class="mb-2">Client Certificate Options</MudText>
+
+            <MudSwitch @bind-Value="_model.RequireClientCertificate"
+                       Label="Require Client Certificate"
+                       Color="Color.Primary"
+                       Class="mb-4" />
+
+            <MudSwitch @bind-Value="_model.ValidateClientCertificateChain"
+                       Label="Validate Client Certificate Chain"
+                       Color="Color.Primary"
+                       Disabled="@(!_model.RequireClientCertificate)"
+                       Class="mb-4" />
+
+            <MudDivider Class="my-4" />
+
+            <MudSwitch @bind-Value="_model.IsEnabled" Label="Enabled" Color="Color.Primary" Class="mb-4" />
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary"
+                   Variant="Variant.Filled"
+                   OnClick="Submit"
+                   Disabled="@(!_isValid || _saving)">
+            @if (_saving)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+            }
+            @(_isEdit ? "Update" : "Create")
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = default!;
+    [Parameter] public EstProfileDto? ExistingProfile { get; set; }
+    [Parameter] public IEnumerable<CaBackendDto> AvailableBackends { get; set; } = [];
+
+    private MudForm _form = default!;
+    private bool _isValid;
+    private bool _saving;
+    private bool _isEdit => ExistingProfile != null;
+    private string _hostnamesText = string.Empty;
+
+    private EstProfileCreateDto _model = new()
+    {
+        Name = string.Empty,
+        PathPrefix = "/.well-known/est",
+        HostnameMatchType = "exact",
+        ValidityDays = 365,
+        RequireClientCertificate = true,
+        ValidateClientCertificateChain = false,
+        IsEnabled = true
+    };
+
+    protected override void OnInitialized()
+    {
+        if (ExistingProfile != null)
+        {
+            _model = new EstProfileCreateDto
+            {
+                Name = ExistingProfile.Name,
+                CaBackendId = ExistingProfile.CaBackendId,
+                Hostnames = ExistingProfile.Hostnames,
+                HostnameMatchType = ExistingProfile.HostnameMatchType,
+                PathPrefix = ExistingProfile.PathPrefix,
+                CertificateTemplate = ExistingProfile.CertificateTemplate,
+                ValidityDays = ExistingProfile.ValidityDays,
+                RequireClientCertificate = ExistingProfile.RequireClientCertificate,
+                ValidateClientCertificateChain = ExistingProfile.ValidateClientCertificateChain,
+                IsEnabled = ExistingProfile.IsEnabled
+            };
+            _hostnamesText = string.Join(", ", ExistingProfile.Hostnames);
+        }
+    }
+
+    private async Task Submit()
+    {
+        await _form.Validate();
+        if (!_isValid) return;
+
+        _saving = true;
+        try
+        {
+            // Parse hostnames
+            _model.Hostnames = _hostnamesText
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .ToList();
+
+            if (_isEdit)
+            {
+                var updateDto = new EstProfileUpdateDto
+                {
+                    Name = _model.Name,
+                    CaBackendId = _model.CaBackendId,
+                    Hostnames = _model.Hostnames,
+                    HostnameMatchType = _model.HostnameMatchType,
+                    PathPrefix = _model.PathPrefix,
+                    CertificateTemplate = _model.CertificateTemplate,
+                    ValidityDays = _model.ValidityDays,
+                    RequireClientCertificate = _model.RequireClientCertificate,
+                    ValidateClientCertificateChain = _model.ValidateClientCertificateChain,
+                    IsEnabled = _model.IsEnabled
+                };
+                var result = await ApiClient.UpdateEstProfileAsync(ExistingProfile!.Id, updateDto);
+                if (result.Success && result.Data != null)
+                {
+                    MudDialog.Close(DialogResult.Ok(result.Data));
+                }
+                // Error is shown via OnApiError event
+            }
+            else
+            {
+                var result = await ApiClient.CreateEstProfileAsync(_model);
+                if (result.Success && result.Data != null)
+                {
+                    MudDialog.Close(DialogResult.Ok(result.Data));
+                }
+                // Error is shown via OnApiError event
+            }
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

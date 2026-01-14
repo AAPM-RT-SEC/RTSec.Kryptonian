@@ -1,0 +1,29 @@
+paths:
+  /api/status/health:
+    get:
+      summary: Liveness / readiness probe
+      responses:
+        '200':
+          description: Healthy
+
+  /api/status/enrollments:
+    get:
+      summary: List recent enrollment events
+      parameters:
+        - in: query
+          name: profileId
+          schema: { type: string }
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 50
+      responses:
+        '200':
+          description: Recent enrollments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/EnrollmentEvent'

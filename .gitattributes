@@ -1,0 +1,45 @@
+* text=auto
+
+# C# sources
+*.cs text diff=csharp
+*.csproj text eol=crlf
+*.props  text eol=crlf
+*.targets text eol=crlf
+*.sln text eol=crlf
+
+# Razor / Blazor
+*.razor text eol=crlf
+*.cshtml text eol=crlf
+*.scss text eol=lf
+*.css text eol=lf
+*.js text eol=lf
+
+# Configuration
+*.json text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf
+*.xml  text eol=crlf
+*.config text eol=crlf
+
+# Scripts
+*.sh text eol=lf
+*.ps1 text eol=crlf
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+# Documentation
+*.md text eol=lf
+*.txt text eol=lf
+
+# Binary assets
+*.dll binary
+*.exe binary
+*.pdb binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.zip binary
+*.tgz binary

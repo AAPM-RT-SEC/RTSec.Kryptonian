@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(tree:*)",
+      "Bash(cat:*)",
+      "WebSearch",
+      "WebFetch(domain:www.nuget.org)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

@@ -1,0 +1,62 @@
+# OS-generated files
+.DS_Store
+Thumbs.db
+
+# Build output
+[Bb]in/
+[Oo]bj/
+**/[Bb]in/
+**/[Oo]bj/
+artifacts/
+TestResults/
+*.appxupload
+*.appxsym
+
+# Package outputs
+*.nupkg
+*.snupkg
+nuget.exe
+.nuget/
+
+# Tooling metadata
+.vs/
+.vscode/
+.idea/
+*.iml
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+/.ionide/
+/.benchmarkdotnet/
+
+# Logs and diagnostics
+*.log
+*.tlog
+*.svclog
+*.etl
+*.pdb
+coverage/
+coverlet/**/*.json
+
+# Secrets and environment overrides
+appsettings.*.local.json
+appsettings.*.development.json
+appsettings.*.secrets.json
+.env
+.env.*
+secrets.json
+
+# Blazor / web assets
+wwwroot/dist/
+wwwroot/lib/
+wwwroot/css/site.min.css.map
+node_modules/
+
+# Misc
+launchSettings.json
+*.db
+*.db-journal
+*.swp
+*.orig
+*.tmp

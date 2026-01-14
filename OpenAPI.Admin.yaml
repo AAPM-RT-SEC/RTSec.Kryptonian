@@ -1,0 +1,66 @@
+paths:
+  /api/cas:
+    get:
+      summary: List configured CA backends
+      responses:
+        '200':
+          description: List of CA backends
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CaBackend'
+    post:
+      summary: Create a new CA backend configuration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CaBackendCreate'
+      responses:
+        '201':
+          description: Created
+
+  /api/cas/{id}:
+    get:
+      summary: Get CA backend config
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: CA backend
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CaBackend'
+    put:
+      summary: Update CA backend config
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CaBackendUpdate'
+      responses:
+        '200':
+          description: Updated
+    delete:
+      summary: Delete CA backend
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '204':
+          description: Deleted

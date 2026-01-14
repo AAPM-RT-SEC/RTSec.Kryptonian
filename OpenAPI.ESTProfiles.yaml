@@ -1,0 +1,66 @@
+paths:
+  /api/est-profiles:
+    get:
+      summary: List EST profiles
+      responses:
+        '200':
+          description: Profiles
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/EstProfile'
+    post:
+      summary: Create a new EST profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EstProfileCreate'
+      responses:
+        '201':
+          description: Created
+
+  /api/est-profiles/{id}:
+    get:
+      summary: Get EST profile
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EstProfile'
+    put:
+      summary: Update EST profile
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EstProfileUpdate'
+      responses:
+        '200':
+          description: Updated
+    delete:
+      summary: Delete EST profile
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '204':
+          description: Deleted

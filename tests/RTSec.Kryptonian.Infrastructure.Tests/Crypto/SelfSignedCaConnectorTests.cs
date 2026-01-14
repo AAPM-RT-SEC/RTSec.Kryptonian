@@ -1,0 +1,429 @@
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
+using FluentAssertions;
+using Microsoft.Extensions.Logging;
+using Moq;
+using RTSec.Kryptonian.Domain.Entities;
+using RTSec.Kryptonian.Domain.Enums;
+using RTSec.Kryptonian.Domain.ValueObjects;
+using RTSec.Kryptonian.Infrastructure.Crypto;
+using Xunit;
+
+namespace RTSec.Kryptonian.Infrastructure.Tests.Crypto;
+
+public class SelfSignedCaConnectorTests : IDisposable
+{
+    private readonly Mock<ILogger<SelfSignedCaConnector>> _loggerMock;
+    private readonly X509Certificate2 _caCertificate;
+    private readonly SelfSignedCaConnector _sut;
+
+    public SelfSignedCaConnectorTests()
+    {
+        _loggerMock = new Mock<ILogger<SelfSignedCaConnector>>();
+        _caCertificate = CreateCaCertificate();
+        _sut = new SelfSignedCaConnector(_loggerMock.Object, _caCertificate);
+    }
+
+    public void Dispose()
+    {
+        _caCertificate?.Dispose();
+    }
+
+    #region Constructor Tests
+
+    [Fact]
+    public void Constructor_WithValidCaCert_SetsTypeToSelfSigned()
+    {
+        // Assert
+        _sut.Type.Should().Be(CaBackendType.SelfSigned);
+    }
+
+    [Fact]
+    public void Constructor_WithNullCaCert_ThrowsArgumentNullException()
+    {
+        // Act
+        var act = () => new SelfSignedCaConnector(_loggerMock.Object, null!);
+
+        // Assert
+        act.Should().Throw<ArgumentNullException>();
+    }
+
+    [Fact]
+    public void Constructor_WithCertWithoutPrivateKey_ThrowsArgumentException()
+    {
+        // Arrange
+        using var rsa = RSA.Create(2048);
+        var certWithoutKey = CreateCertWithoutPrivateKey(rsa);
+
+        // Act
+        var act = () => new SelfSignedCaConnector(_loggerMock.Object, certWithoutKey);
+
+        // Assert
+        act.Should().Throw<ArgumentException>()
+            .WithMessage("*private key*");
+    }
+
+    #endregion
+
+    #region GetCaCertificatesAsync Tests
+
+    [Fact]
+    public async Task GetCaCertificatesAsync_ReturnsCaCertificate()
+    {
+        // Act
+        var result = await _sut.GetCaCertificatesAsync();
+
+        // Assert
+        result.Should().HaveCount(1);
+        result[0].Subject.Should().Be(_caCertificate.Subject);
+    }
+
+    #endregion
+
+    #region IssueCertificateAsync Tests
+
+    [Fact]
+    public async Task IssueCertificateAsync_WithValidCsr_ReturnsSuccessfulResult()
+    {
+        // Arrange
+        var parsedCsr = CreateParsedCsr("CN=TestDevice");
+        var profile = CreateEstProfile();
+
+        // Act
+        var result = await _sut.IssueCertificateAsync(parsedCsr, profile);
+
+        // Assert
+        result.Success.Should().BeTrue();
+        result.Certificate.Should().NotBeNull();
+        result.Certificate!.Subject.Should().Contain("CN=TestDevice");
+        result.CertificateChain.Should().HaveCount(2);
+    }
+
+    [Fact]
+    public async Task IssueCertificateAsync_SetsCorrectValidityPeriod()
+    {
+        // Arrange
+        var parsedCsr = CreateParsedCsr("CN=ValidityTest");
+        var profile = CreateEstProfile(validityDays: 30);
+
+        // Act
+        var result = await _sut.IssueCertificateAsync(parsedCsr, profile);
+
+        // Assert
+        result.Success.Should().BeTrue();
+        var expectedNotAfter = DateTime.UtcNow.AddDays(30);
+        // Certificate NotAfter is in local time, convert to UTC for comparison
+        result.Certificate!.NotAfter.ToUniversalTime()
+            .Should().BeCloseTo(expectedNotAfter, TimeSpan.FromMinutes(10));
+    }
+
+    [Fact]
+    public async Task IssueCertificateAsync_SetsBasicConstraintsToNotCa()
+    {
+        // Arrange
+        var parsedCsr = CreateParsedCsr("CN=BasicConstraintsTest");
+        var profile = CreateEstProfile();
+
+        // Act
+        var result = await _sut.IssueCertificateAsync(parsedCsr, profile);
+
+        // Assert
+        result.Success.Should().BeTrue();
+        var basicConstraints = result.Certificate!.Extensions
+            .OfType<X509BasicConstraintsExtension>()
+            .FirstOrDefault();
+        basicConstraints.Should().NotBeNull();
+        basicConstraints!.CertificateAuthority.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task IssueCertificateAsync_SetsKeyUsageFromProfile()
+    {
+        // Arrange
+        var parsedCsr = CreateParsedCsr("CN=KeyUsageTest");
+        var profile = CreateEstProfile(allowedKeyUsages: new List<string> { "DigitalSignature", "KeyEncipherment" });
+
+        // Act
+        var result = await _sut.IssueCertificateAsync(parsedCsr, profile);
+
+        // Assert
+        result.Success.Should().BeTrue();
+        var keyUsage = result.Certificate!.Extensions
+            .OfType<X509KeyUsageExtension>()
+            .FirstOrDefault();
+        keyUsage.Should().NotBeNull();
+        keyUsage!.KeyUsages.Should().HaveFlag(X509KeyUsageFlags.DigitalSignature);
+        keyUsage.KeyUsages.Should().HaveFlag(X509KeyUsageFlags.KeyEncipherment);
+    }
+
+    [Fact]
+    public async Task IssueCertificateAsync_SetsAuthorityKeyIdentifier()
+    {
+        // Arrange
+        var parsedCsr = CreateParsedCsr("CN=AkiTest");
+        var profile = CreateEstProfile();
+
+        // Act
+        var result = await _sut.IssueCertificateAsync(parsedCsr, profile);
+
+        // Assert
+        result.Success.Should().BeTrue();
+        // AKI OID: 2.5.29.35
+        var aki = result.Certificate!.Extensions
+            .Cast<X509Extension>()
+            .FirstOrDefault(e => e.Oid?.Value == "2.5.29.35");
+        aki.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task IssueCertificateAsync_SetsSubjectKeyIdentifier()
+    {
+        // Arrange
+        var parsedCsr = CreateParsedCsr("CN=SkiTest");
+        var profile = CreateEstProfile();
+
+        // Act
+        var result = await _sut.IssueCertificateAsync(parsedCsr, profile);
+
+        // Assert
+        result.Success.Should().BeTrue();
+        var ski = result.Certificate!.Extensions
+            .OfType<X509SubjectKeyIdentifierExtension>()
+            .FirstOrDefault();
+        ski.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task IssueCertificateAsync_WithNullCsr_ThrowsArgumentNullException()
+    {
+        // Arrange
+        var profile = CreateEstProfile();
+
+        // Act
+        var act = () => _sut.IssueCertificateAsync(null!, profile);
+
+        // Assert
+        await act.Should().ThrowAsync<ArgumentNullException>();
+    }
+
+    [Fact]
+    public async Task IssueCertificateAsync_WithNullProfile_ThrowsArgumentNullException()
+    {
+        // Arrange
+        var parsedCsr = CreateParsedCsr("CN=Test");
+
+        // Act
+        var act = () => _sut.IssueCertificateAsync(parsedCsr, null!);
+
+        // Assert
+        await act.Should().ThrowAsync<ArgumentNullException>();
+    }
+
+    #endregion
+
+    #region TestConnectionAsync Tests
+
+    [Fact]
+    public async Task TestConnectionAsync_WithValidCa_ReturnsTrue()
+    {
+        // Act
+        var result = await _sut.TestConnectionAsync();
+
+        // Assert
+        result.Should().BeTrue();
+    }
+
+    #endregion
+
+    #region RevokeCertificateAsync Tests
+
+    [Fact]
+    public async Task RevokeCertificateAsync_ReturnsFalse()
+    {
+        // Revocation not implemented for self-signed CA
+
+        // Act
+        var result = await _sut.RevokeCertificateAsync("ABC123", RevocationReason.Unspecified);
+
+        // Assert
+        result.Should().BeFalse();
+    }
+
+    #endregion
+
+    #region Certificate Chain Tests
+
+    [Fact]
+    public async Task IssueCertificateAsync_CertificateChainHasCorrectOrder()
+    {
+        // Arrange
+        var parsedCsr = CreateParsedCsr("CN=ChainOrderTest");
+        var profile = CreateEstProfile();
+
+        // Act
+        var result = await _sut.IssueCertificateAsync(parsedCsr, profile);
+
+        // Assert
+        result.Success.Should().BeTrue();
+        result.CertificateChain.Should().HaveCount(2);
+
+        // First cert should be end-entity (subject matches CSR)
+        result.CertificateChain![0].Subject.Should().Contain("CN=ChainOrderTest");
+
+        // Second cert should be CA (issuer of first cert)
+        result.CertificateChain[1].Subject.Should().Be(_caCertificate.Subject);
+    }
+
+    [Fact]
+    public async Task IssueCertificateAsync_EndEntityIssuerMatchesCaSubject()
+    {
+        // Arrange
+        var parsedCsr = CreateParsedCsr("CN=IssuerMatchTest");
+        var profile = CreateEstProfile();
+
+        // Act
+        var result = await _sut.IssueCertificateAsync(parsedCsr, profile);
+
+        // Assert
+        result.Success.Should().BeTrue();
+        result.Certificate!.Issuer.Should().Be(_caCertificate.Subject);
+    }
+
+    #endregion
+
+    #region ECDSA CA Tests
+
+    [Fact]
+    public async Task IssueCertificateAsync_WithEcdsaCa_IssuesValidCertificate()
+    {
+        // Arrange
+        using var ecdsaCa = CreateEcdsaCaCertificate();
+        var ecdsaConnector = new SelfSignedCaConnector(_loggerMock.Object, ecdsaCa);
+        var parsedCsr = CreateParsedCsr("CN=EcdsaTest");
+        var profile = CreateEstProfile();
+
+        // Act
+        var result = await ecdsaConnector.IssueCertificateAsync(parsedCsr, profile);
+
+        // Assert
+        result.Success.Should().BeTrue();
+        result.Certificate.Should().NotBeNull();
+    }
+
+    #endregion
+
+    #region Helper Methods
+
+    private static X509Certificate2 CreateCaCertificate()
+    {
+        using var rsa = RSA.Create(2048);
+        var request = new CertificateRequest(
+            new X500DistinguishedName("CN=Test CA, O=Test Org"),
+            rsa,
+            HashAlgorithmName.SHA256,
+            RSASignaturePadding.Pkcs1);
+
+        request.CertificateExtensions.Add(
+            new X509BasicConstraintsExtension(true, true, 1, true));
+
+        request.CertificateExtensions.Add(
+            new X509KeyUsageExtension(
+                X509KeyUsageFlags.KeyCertSign | X509KeyUsageFlags.CrlSign,
+                true));
+
+        request.CertificateExtensions.Add(
+            new X509SubjectKeyIdentifierExtension(request.PublicKey, false));
+
+        var cert = request.CreateSelfSigned(
+            DateTimeOffset.UtcNow.AddMinutes(-5),
+            DateTimeOffset.UtcNow.AddYears(10));
+
+        // Export and reimport to make key exportable
+        return new X509Certificate2(
+            cert.Export(X509ContentType.Pfx, "test"),
+            "test",
+            X509KeyStorageFlags.Exportable);
+    }
+
+    private static X509Certificate2 CreateEcdsaCaCertificate()
+    {
+        using var ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var request = new CertificateRequest(
+            new X500DistinguishedName("CN=Test ECDSA CA"),
+            ecdsa,
+            HashAlgorithmName.SHA256);
+
+        request.CertificateExtensions.Add(
+            new X509BasicConstraintsExtension(true, true, 1, true));
+
+        request.CertificateExtensions.Add(
+            new X509KeyUsageExtension(
+                X509KeyUsageFlags.KeyCertSign | X509KeyUsageFlags.CrlSign,
+                true));
+
+        var cert = request.CreateSelfSigned(
+            DateTimeOffset.UtcNow.AddMinutes(-5),
+            DateTimeOffset.UtcNow.AddYears(10));
+
+        return new X509Certificate2(
+            cert.Export(X509ContentType.Pfx, "test"),
+            "test",
+            X509KeyStorageFlags.Exportable);
+    }
+
+    private static X509Certificate2 CreateCertWithoutPrivateKey(RSA rsa)
+    {
+        var request = new CertificateRequest(
+            new X500DistinguishedName("CN=NoPK"),
+            rsa,
+            HashAlgorithmName.SHA256,
+            RSASignaturePadding.Pkcs1);
+
+        var cert = request.CreateSelfSigned(
+            DateTimeOffset.UtcNow,
+            DateTimeOffset.UtcNow.AddDays(1));
+
+        // Export only the public portion
+        return new X509Certificate2(cert.RawData);
+    }
+
+    private static ParsedCsr CreateParsedCsr(string subject)
+    {
+        using var rsa = RSA.Create(2048);
+        var request = new CertificateRequest(
+            new X500DistinguishedName(subject),
+            rsa,
+            HashAlgorithmName.SHA256,
+            RSASignaturePadding.Pkcs1);
+
+        var csrDer = request.CreateSigningRequest();
+
+        return new ParsedCsr
+        {
+            RawData = csrDer,
+            SubjectDn = subject,
+            PublicKey = rsa,
+            PublicKeyAlgorithm = "RSA",
+            KeySize = 2048,
+            SignatureAlgorithm = "1.2.840.113549.1.1.11" // SHA256WithRSA
+        };
+    }
+
+    private static EstProfile CreateEstProfile(
+        int validityDays = 365,
+        List<string>? allowedKeyUsages = null)
+    {
+        return new EstProfile
+        {
+            Id = Guid.NewGuid(),
+            Name = "Test Profile",
+            PathPrefix = "/.well-known/est",
+            Hostnames = new List<string> { "test.example.com" },
+            ValidityDays = validityDays,
+            AllowedKeyUsages = allowedKeyUsages ?? new List<string>(),
+            IsEnabled = true
+        };
+    }
+
+    #endregion
+}

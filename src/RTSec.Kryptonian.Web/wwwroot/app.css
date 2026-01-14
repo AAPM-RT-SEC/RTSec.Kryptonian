@@ -1,0 +1,26 @@
+/* Minimal custom styles - MudBlazor handles most styling */
+
+html, body {
+    font-family: 'Roboto', sans-serif;
+    margin: 0;
+    padding: 0;
+}
+
+.text-truncate {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Error boundary styling */
+.blazor-error-boundary {
+    background: #b32121;
+    padding: 1rem;
+    color: white;
+    border-radius: 4px;
+    margin: 1rem 0;
+}
+
+.blazor-error-boundary::after {
+    content: "An error has occurred."
+}

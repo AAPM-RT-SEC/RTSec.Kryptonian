@@ -1,0 +1,203 @@
+@page "/est-profiles"
+@inject IKryptonianApiClient ApiClient
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@implements IDisposable
+@rendermode InteractiveServer
+
+<PageTitle>EST Profiles - Kryptonian Admin</PageTitle>
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-4">
+    <MudText Typo="Typo.h4">EST Profiles</MudText>
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="@OpenCreateDialog">
+        Add EST Profile
+    </MudButton>
+</MudStack>
+
+@if (_loading)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+}
+else if (!_profiles.Any())
+{
+    <MudAlert Severity="Severity.Info">
+        No EST profiles configured yet. Click "Add EST Profile" to create one.
+    </MudAlert>
+}
+else
+{
+    <MudTable Items="@_profiles" Hover="true" Elevation="2">
+        <HeaderContent>
+            <MudTh>Name</MudTh>
+            <MudTh>Hostnames</MudTh>
+            <MudTh>Path Prefix</MudTh>
+            <MudTh>CA Backend</MudTh>
+            <MudTh>Validity (Days)</MudTh>
+            <MudTh>Status</MudTh>
+            <MudTh Style="width: 120px">Actions</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="Name">@context.Name</MudTd>
+            <MudTd DataLabel="Hostnames">
+                @if (context.Hostnames.Any())
+                {
+                    <MudStack Row="true" Spacing="1">
+                        @foreach (var hostname in context.Hostnames.Take(2))
+                        {
+                            <MudChip T="string" Size="Size.Small">@hostname</MudChip>
+                        }
+                        @if (context.Hostnames.Count > 2)
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Color.Info">+@(context.Hostnames.Count - 2) more</MudChip>
+                        }
+                    </MudStack>
+                }
+                else
+                {
+                    <span>-</span>
+                }
+            </MudTd>
+            <MudTd DataLabel="Path Prefix">@context.PathPrefix</MudTd>
+            <MudTd DataLabel="CA Backend">
+                @{
+                    var backend = _backends.FirstOrDefault(b => b.Id == context.CaBackendId);
+                }
+                @(backend?.Name ?? context.CaBackendId)
+            </MudTd>
+            <MudTd DataLabel="Validity">@context.ValidityDays</MudTd>
+            <MudTd DataLabel="Status">
+                @if (context.IsEnabled)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Success">Enabled</MudChip>
+                }
+                else
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Default">Disabled</MudChip>
+                }
+            </MudTd>
+            <MudTd DataLabel="Actions">
+                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" OnClick="@(() => OpenEditDialog(context))" />
+                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="@(() => ConfirmDelete(context))" />
+            </MudTd>
+        </RowTemplate>
+    </MudTable>
+}
+
+@code {
+    private bool _loading = true;
+    private List<EstProfileDto> _profiles = new();
+    private List<CaBackendDto> _backends = new();
+
+    protected override void OnInitialized()
+    {
+        ApiClient.OnApiError += HandleApiError;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDataAsync();
+    }
+
+    private void HandleApiError(object? sender, ApiErrorEventArgs e)
+    {
+        InvokeAsync(() =>
+        {
+            var severity = e.ErrorType switch
+            {
+                ApiErrorType.Unauthorized => Severity.Warning,
+                ApiErrorType.Forbidden => Severity.Warning,
+                ApiErrorType.ServerError => Severity.Error,
+                _ => Severity.Error
+            };
+            Snackbar.Add(e.Message, severity);
+            StateHasChanged();
+        });
+    }
+
+    private async Task LoadDataAsync()
+    {
+        _loading = true;
+        try
+        {
+            var profilesTask = ApiClient.GetEstProfilesAsync();
+            var backendsTask = ApiClient.GetCaBackendsAsync();
+            await Task.WhenAll(profilesTask, backendsTask);
+
+            var profilesResult = await profilesTask;
+            var backendsResult = await backendsTask;
+
+            _profiles = profilesResult.Success && profilesResult.Data != null
+                ? profilesResult.Data.ToList()
+                : new List<EstProfileDto>();
+            _backends = backendsResult.Success && backendsResult.Data != null
+                ? backendsResult.Data.ToList()
+                : new List<CaBackendDto>();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task OpenCreateDialog()
+    {
+        var parameters = new DialogParameters<EstProfileDialog>
+        {
+            { x => x.AvailableBackends, _backends }
+        };
+        var options = new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true };
+
+        var dialog = await DialogService.ShowAsync<EstProfileDialog>("Create EST Profile", parameters, options);
+        var result = await dialog.Result;
+
+        if (result is { Canceled: false })
+        {
+            await LoadDataAsync();
+            Snackbar.Add("EST profile created successfully", Severity.Success);
+        }
+    }
+
+    private async Task OpenEditDialog(EstProfileDto profile)
+    {
+        var parameters = new DialogParameters<EstProfileDialog>
+        {
+            { x => x.ExistingProfile, profile },
+            { x => x.AvailableBackends, _backends }
+        };
+        var options = new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true };
+
+        var dialog = await DialogService.ShowAsync<EstProfileDialog>("Edit EST Profile", parameters, options);
+        var result = await dialog.Result;
+
+        if (result is { Canceled: false })
+        {
+            await LoadDataAsync();
+            Snackbar.Add("EST profile updated successfully", Severity.Success);
+        }
+    }
+
+    private async Task ConfirmDelete(EstProfileDto profile)
+    {
+        var confirm = await DialogService.ShowMessageBox(
+            "Delete EST Profile",
+            $"Are you sure you want to delete '{profile.Name}'? This action cannot be undone.",
+            yesText: "Delete",
+            cancelText: "Cancel");
+
+        if (confirm == true)
+        {
+            var result = await ApiClient.DeleteEstProfileAsync(profile.Id);
+            if (result.Success)
+            {
+                await LoadDataAsync();
+                Snackbar.Add("EST profile deleted successfully", Severity.Success);
+            }
+            // Error is already shown via OnApiError handler
+        }
+    }
+
+    public void Dispose()
+    {
+        ApiClient.OnApiError -= HandleApiError;
+    }
+}

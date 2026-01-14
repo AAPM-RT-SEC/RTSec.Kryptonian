@@ -1,0 +1,316 @@
+@inject IKryptonianApiClient ApiClient
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <DialogContent>
+        <MudForm @ref="_form" @bind-IsValid="_isValid">
+            <MudTextField @bind-Value="_model.Name"
+                          Label="Name"
+                          Required="true"
+                          RequiredError="Name is required"
+                          Class="mb-4" />
+
+            <MudSelect @bind-Value="_model.Type"
+                       Label="Type"
+                       Required="true"
+                       RequiredError="Type is required"
+                       Class="mb-4">
+                <MudSelectItem Value="@("selfsigned")">Self-Signed</MudSelectItem>
+                <MudSelectItem Value="@("acme")">ACME</MudSelectItem>
+                <MudSelectItem Value="@("adcs")">ADCS (Not Implemented)</MudSelectItem>
+                <MudSelectItem Value="@("ejbca")">EJBCA (Not Implemented)</MudSelectItem>
+            </MudSelect>
+
+            @if (_model.Type == "acme")
+            {
+                <MudTextField @bind-Value="_model.Url"
+                              Label="ACME Directory URL"
+                              Placeholder="https://acme-v02.api.letsencrypt.org/directory"
+                              HelperText="ACME directory URL (e.g., Let's Encrypt, ZeroSSL)"
+                              Class="mb-4" />
+
+                <MudTextField @bind-Value="_acmeEmail"
+                              Label="Account Email"
+                              Required="true"
+                              RequiredError="Email is required for ACME"
+                              InputType="InputType.Email"
+                              HelperText="Email for ACME account registration (required)"
+                              Class="mb-4" />
+
+                <MudSelect @bind-Value="_preferredChallenge"
+                           Label="Preferred Challenge Type"
+                           HelperText="Challenge type for domain validation"
+                           Class="mb-4">
+                    <MudSelectItem Value="@("http-01")">HTTP-01 (Web server challenge)</MudSelectItem>
+                    <MudSelectItem Value="@("dns-01")">DNS-01 (Manual DNS TXT record)</MudSelectItem>
+                </MudSelect>
+
+                <MudDivider Class="my-4" />
+                <MudText Typo="Typo.subtitle2" Class="mb-2">External Account Binding (Optional)</MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-2">
+                    Required for some CAs like ZeroSSL. Get these from your CA's dashboard.
+                </MudText>
+
+                <MudTextField @bind-Value="_eabKeyId"
+                              Label="EAB Key ID"
+                              HelperText="External Account Binding Key ID"
+                              Class="mb-4" />
+
+                <MudTextField @bind-Value="_eabHmacKey"
+                              Label="EAB HMAC Key"
+                              HelperText="External Account Binding HMAC Key"
+                              InputType="InputType.Password"
+                              Class="mb-4" />
+            }
+            else if (_model.Type == "selfsigned")
+            {
+                <MudText Typo="Typo.subtitle2" Class="mb-2">Certificate Source</MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-2">
+                    Provide either a PFX file (recommended) or separate PEM certificate and key files.
+                </MudText>
+
+                <MudRadioGroup @bind-Value="_certMode" Class="mb-4">
+                    <MudRadio Value="@("pfx")" Color="Color.Primary">PFX/PKCS#12 File</MudRadio>
+                    <MudRadio Value="@("pem")" Color="Color.Primary">Separate PEM Files</MudRadio>
+                </MudRadioGroup>
+
+                @if (_certMode == "pfx")
+                {
+                    <MudTextField @bind-Value="_pfxPath"
+                                  Label="PFX File Path"
+                                  Required="true"
+                                  RequiredError="PFX path is required"
+                                  HelperText="Full path to the CA certificate PFX file"
+                                  Class="mb-4" />
+
+                    <MudTextField @bind-Value="_pfxPassword"
+                                  Label="PFX Password"
+                                  Required="true"
+                                  RequiredError="PFX password is required"
+                                  InputType="InputType.Password"
+                                  HelperText="Password to decrypt the PFX file (required for security)"
+                                  Class="mb-4" />
+                }
+                else
+                {
+                    <MudTextField @bind-Value="_certPath"
+                                  Label="Certificate Path"
+                                  Required="true"
+                                  RequiredError="Certificate path is required"
+                                  HelperText="Full path to the CA certificate PEM file"
+                                  Class="mb-4" />
+
+                    <MudTextField @bind-Value="_keyPath"
+                                  Label="Private Key Path"
+                                  Required="true"
+                                  RequiredError="Key path is required"
+                                  HelperText="Full path to the CA private key PEM file"
+                                  Class="mb-4" />
+                }
+            }
+
+            <MudDivider Class="my-4" />
+            <MudSwitch @bind-Value="_model.IsEnabled" Label="Enabled" Color="Color.Primary" Class="mb-4" />
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary"
+                   Variant="Variant.Filled"
+                   OnClick="Submit"
+                   Disabled="@(!_isValid || _saving)">
+            @if (_saving)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+            }
+            @(_isEdit ? "Update" : "Create")
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = default!;
+    [Parameter] public CaBackendDto? ExistingBackend { get; set; }
+
+    private MudForm _form = default!;
+    private bool _isValid;
+    private bool _saving;
+    private bool _isEdit => ExistingBackend != null;
+
+    private CaBackendCreateDto _model = new()
+    {
+        Name = string.Empty,
+        Type = "selfsigned",
+        IsEnabled = true
+    };
+
+    // ACME-specific fields (matching backend's AcmeConnectorConfig)
+    private string _acmeEmail = string.Empty;
+    private string _preferredChallenge = "http-01";
+    private string _eabKeyId = string.Empty;
+    private string _eabHmacKey = string.Empty;
+
+    // SelfSigned-specific fields (matching backend's CaConnectorFactory expectations)
+    private string _certMode = "pfx";  // "pfx" or "pem"
+    private string _pfxPath = string.Empty;
+    private string _pfxPassword = string.Empty;
+    private string _certPath = string.Empty;
+    private string _keyPath = string.Empty;
+
+    protected override void OnInitialized()
+    {
+        if (ExistingBackend != null)
+        {
+            _model = new CaBackendCreateDto
+            {
+                Name = ExistingBackend.Name,
+                Type = ExistingBackend.Type,
+                Url = ExistingBackend.Url,
+                IsEnabled = ExistingBackend.IsEnabled
+            };
+
+            // Extract config values using backend's expected keys
+            if (ExistingBackend.Config != null)
+            {
+                // ACME config (keys match AcmeConnectorConfig)
+                if (ExistingBackend.Config.TryGetValue("Email", out var email))
+                    _acmeEmail = email?.ToString() ?? string.Empty;
+                if (ExistingBackend.Config.TryGetValue("PreferredChallengeType", out var challenge))
+                    _preferredChallenge = challenge?.ToString() ?? "http-01";
+                if (ExistingBackend.Config.TryGetValue("EabKeyId", out var eabKey))
+                    _eabKeyId = eabKey?.ToString() ?? string.Empty;
+                if (ExistingBackend.Config.TryGetValue("EabHmacKey", out var eabHmac))
+                    _eabHmacKey = eabHmac?.ToString() ?? string.Empty;
+
+                // SelfSigned config (keys match CaConnectorFactory.GetConfigValue calls)
+                if (ExistingBackend.Config.TryGetValue("PfxPath", out var pfxPath) && !string.IsNullOrEmpty(pfxPath?.ToString()))
+                {
+                    _certMode = "pfx";
+                    _pfxPath = pfxPath.ToString()!;
+                    if (ExistingBackend.Config.TryGetValue("PfxPassword", out var pfxPwd))
+                        _pfxPassword = pfxPwd?.ToString() ?? string.Empty;
+                }
+                else
+                {
+                    _certMode = "pem";
+                    if (ExistingBackend.Config.TryGetValue("CertPath", out var certPath))
+                        _certPath = certPath?.ToString() ?? string.Empty;
+                    if (ExistingBackend.Config.TryGetValue("KeyPath", out var keyPath))
+                        _keyPath = keyPath?.ToString() ?? string.Empty;
+                }
+            }
+        }
+    }
+
+    private void BuildConfig()
+    {
+        _model.Config = new Dictionary<string, object>();
+
+        if (_model.Type == "acme")
+        {
+            // Use exact keys expected by CaConnectorFactory.CreateAcmeConnector
+            if (!string.IsNullOrWhiteSpace(_acmeEmail))
+                _model.Config["Email"] = _acmeEmail;
+            _model.Config["PreferredChallengeType"] = _preferredChallenge;
+            if (!string.IsNullOrWhiteSpace(_eabKeyId))
+                _model.Config["EabKeyId"] = _eabKeyId;
+            if (!string.IsNullOrWhiteSpace(_eabHmacKey))
+                _model.Config["EabHmacKey"] = _eabHmacKey;
+        }
+        else if (_model.Type == "selfsigned")
+        {
+            // Use exact keys expected by CaConnectorFactory.CreateSelfSignedConnector
+            if (_certMode == "pfx")
+            {
+                if (!string.IsNullOrWhiteSpace(_pfxPath))
+                    _model.Config["PfxPath"] = _pfxPath;
+                if (!string.IsNullOrWhiteSpace(_pfxPassword))
+                    _model.Config["PfxPassword"] = _pfxPassword;
+            }
+            else
+            {
+                if (!string.IsNullOrWhiteSpace(_certPath))
+                    _model.Config["CertPath"] = _certPath;
+                if (!string.IsNullOrWhiteSpace(_keyPath))
+                    _model.Config["KeyPath"] = _keyPath;
+            }
+        }
+    }
+
+    private async Task Submit()
+    {
+        await _form.Validate();
+        if (!_isValid) return;
+
+        // Additional validation
+        if (_model.Type == "acme" && string.IsNullOrWhiteSpace(_acmeEmail))
+        {
+            Snackbar.Add("Email is required for ACME backends", Severity.Error);
+            return;
+        }
+
+        if (_model.Type == "selfsigned")
+        {
+            if (_certMode == "pfx")
+            {
+                if (string.IsNullOrWhiteSpace(_pfxPath))
+                {
+                    Snackbar.Add("PFX path is required", Severity.Error);
+                    return;
+                }
+                if (string.IsNullOrWhiteSpace(_pfxPassword))
+                {
+                    Snackbar.Add("PFX password is required for security", Severity.Error);
+                    return;
+                }
+            }
+            else
+            {
+                if (string.IsNullOrWhiteSpace(_certPath) || string.IsNullOrWhiteSpace(_keyPath))
+                {
+                    Snackbar.Add("Both certificate and key paths are required", Severity.Error);
+                    return;
+                }
+            }
+        }
+
+        _saving = true;
+        try
+        {
+            BuildConfig();
+
+            if (_isEdit)
+            {
+                var updateDto = new CaBackendUpdateDto
+                {
+                    Name = _model.Name,
+                    Type = _model.Type,
+                    Url = _model.Url,
+                    Config = _model.Config,
+                    IsEnabled = _model.IsEnabled
+                };
+                var result = await ApiClient.UpdateCaBackendAsync(ExistingBackend!.Id, updateDto);
+                if (result.Success && result.Data != null)
+                {
+                    MudDialog.Close(DialogResult.Ok(result.Data));
+                }
+                // Error is shown via OnApiError event
+            }
+            else
+            {
+                var result = await ApiClient.CreateCaBackendAsync(_model);
+                if (result.Success && result.Data != null)
+                {
+                    MudDialog.Close(DialogResult.Ok(result.Data));
+                }
+                // Error is shown via OnApiError event
+            }
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

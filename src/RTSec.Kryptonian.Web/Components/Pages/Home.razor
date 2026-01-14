@@ -1,0 +1,140 @@
+@page "/"
+@inject IKryptonianApiClient ApiClient
+@rendermode InteractiveServer
+
+<PageTitle>Dashboard - Kryptonian Admin</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Dashboard</MudText>
+
+@if (_loading)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+}
+else
+{
+    <MudGrid>
+        <!-- CA Backends Summary -->
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+                    <MudIcon Icon="@Icons.Material.Filled.Security" Size="Size.Large" Color="Color.Primary" />
+                    <MudStack Spacing="0">
+                        <MudText Typo="Typo.caption">CA Backends</MudText>
+                        <MudText Typo="Typo.h5">@_stats.TotalCaBackends</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Success">@_stats.EnabledCaBackends enabled</MudText>
+                    </MudStack>
+                </MudStack>
+            </MudPaper>
+        </MudItem>
+
+        <!-- EST Profiles Summary -->
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+                    <MudIcon Icon="@Icons.Material.Filled.Settings" Size="Size.Large" Color="Color.Secondary" />
+                    <MudStack Spacing="0">
+                        <MudText Typo="Typo.caption">EST Profiles</MudText>
+                        <MudText Typo="Typo.h5">@_stats.TotalEstProfiles</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Success">@_stats.EnabledEstProfiles enabled</MudText>
+                    </MudStack>
+                </MudStack>
+            </MudPaper>
+        </MudItem>
+
+        <!-- Enrollments Today -->
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+                    <MudIcon Icon="@Icons.Material.Filled.EventNote" Size="Size.Large" Color="Color.Info" />
+                    <MudStack Spacing="0">
+                        <MudText Typo="Typo.caption">Enrollments (24h)</MudText>
+                        <MudText Typo="Typo.h5">@_stats.TotalEnrollments24h</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Success">@_stats.SuccessfulEnrollments24h successful</MudText>
+                    </MudStack>
+                </MudStack>
+            </MudPaper>
+        </MudItem>
+
+        <!-- Failed Enrollments -->
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+                    <MudIcon Icon="@Icons.Material.Filled.Error" Size="Size.Large" Color="@(_stats.FailedEnrollments24h > 0 ? Color.Error : Color.Default)" />
+                    <MudStack Spacing="0">
+                        <MudText Typo="Typo.caption">Failed (24h)</MudText>
+                        <MudText Typo="Typo.h5" Color="@(_stats.FailedEnrollments24h > 0 ? Color.Error : Color.Default)">@_stats.FailedEnrollments24h</MudText>
+                        <MudText Typo="Typo.caption">errors/rejections</MudText>
+                    </MudStack>
+                </MudStack>
+            </MudPaper>
+        </MudItem>
+
+        <!-- Recent Events Table -->
+        <MudItem xs="12">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-4">
+                    <MudText Typo="Typo.h6">Recent Enrollment Events</MudText>
+                    <MudButton Variant="Variant.Text" Color="Color.Primary" Href="/events">View All</MudButton>
+                </MudStack>
+
+                @if (!_stats.RecentEvents.Any())
+                {
+                    <MudAlert Severity="Severity.Info">No enrollment events recorded yet.</MudAlert>
+                }
+                else
+                {
+                    <MudTable Items="@_stats.RecentEvents" Hover="true" Dense="true">
+                        <HeaderContent>
+                            <MudTh>Time</MudTh>
+                            <MudTh>Status</MudTh>
+                            <MudTh>Subject DN</MudTh>
+                            <MudTh>Device ID</MudTh>
+                            <MudTh>IP Address</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd DataLabel="Time">@context.Timestamp.ToString("g")</MudTd>
+                            <MudTd DataLabel="Status">
+                                <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Status)">@context.Status</MudChip>
+                            </MudTd>
+                            <MudTd DataLabel="Subject DN">@(context.SubjectDn ?? "-")</MudTd>
+                            <MudTd DataLabel="Device ID">@(context.DeviceId ?? "-")</MudTd>
+                            <MudTd DataLabel="IP Address">@(context.RequestorIpAddress ?? "-")</MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                }
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+}
+
+@code {
+    private bool _loading = true;
+    private DashboardStats _stats = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDashboardAsync();
+    }
+
+    private async Task LoadDashboardAsync()
+    {
+        _loading = true;
+        try
+        {
+            _stats = await ApiClient.GetDashboardStatsAsync();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private static Color GetStatusColor(string status) => status.ToLowerInvariant() switch
+    {
+        "issued" => Color.Success,
+        "pending" => Color.Warning,
+        "rejected" => Color.Error,
+        "error" => Color.Error,
+        _ => Color.Default
+    };
+}

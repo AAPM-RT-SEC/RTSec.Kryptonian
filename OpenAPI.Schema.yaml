@@ -1,0 +1,55 @@
+components:
+  schemas:
+    CaBackend:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        type: { type: string, description: "e.g. 'adcs', 'ejbca', 'cfssl'" }
+        url:  { type: string }
+        config:
+          type: object
+          additionalProperties: true  # backend-specific
+
+    CaBackendCreate:
+      allOf:
+        - $ref: '#/components/schemas/CaBackend'
+
+    CaBackendUpdate:
+      allOf:
+        - $ref: '#/components/schemas/CaBackend'
+
+    EstProfile:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        hostnames:
+          type: array
+          items: { type: string }
+        pathPrefix:
+          type: string
+          description: "Usually '/.well-known/est'"
+        caBackendId: { type: string }
+        certificateTemplate: { type: string, description: "CA-specific template/profile name" }
+        allowedKeyUsages:
+          type: array
+          items: { type: string }
+
+    EstProfileCreate:
+      allOf:
+        - $ref: '#/components/schemas/EstProfile'
+
+    EstProfileUpdate:
+      allOf:
+        - $ref: '#/components/schemas/EstProfile'
+
+    EnrollmentEvent:
+      type: object
+      properties:
+        id: { type: string }
+        timestamp: { type: string, format: date-time }
+        profileId: { type: string }
+        deviceId: { type: string }
+        status: { type: string, enum: [issued, pending, rejected, error] }
+        subjectDn: { type: string }
