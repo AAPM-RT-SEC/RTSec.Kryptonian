@@ -65,6 +65,60 @@ docker compose up -d
 curl http://localhost:5000/api/status/health
 ```
 
+## Blazor Admin Portal
+
+The project includes a web-based admin interface built with Blazor Server and MudBlazor components. The admin portal is **optional** and runs as a separate Docker profile.
+
+### Starting the Admin Portal
+
+```bash
+# Start all services INCLUDING the admin portal
+docker compose --profile web up -d
+```
+
+### Services Overview
+
+| Service | Container | Port | URL |
+|---------|-----------|------|-----|
+| PostgreSQL | `kryptonian-db` | 5432 | - |
+| API Server | `kryptonian-api` | 5000 | http://localhost:5000 |
+| Admin Portal | `kryptonian-web` | 5001 | http://localhost:5001 |
+
+### Accessing the Admin Portal
+
+Once running, open your browser to: **http://localhost:5001**
+
+The admin portal provides:
+- **CA Backends** - Configure certificate authorities (Self-Signed, ACME, etc.)
+- **EST Profiles** - Manage enrollment profiles for devices
+- **Events** - View enrollment audit logs and history
+- **Dashboard** - System status overview
+
+### Admin Portal Commands
+
+```bash
+# Start with admin portal
+docker compose --profile web up -d
+
+# View logs
+docker compose --profile web logs -f kryptonian-web
+
+# Rebuild after code changes
+docker compose --profile web up -d --build
+
+# Stop all services
+docker compose --profile web down
+```
+
+### Running Without the Admin Portal
+
+If you only need the API (headless mode):
+```bash
+docker compose up -d
+```
+
+This starts only the database and API server, without the web UI.
+
 ## Demo - Device Enrollment
 
 We provide an interactive demo script that walks through the complete enrollment flow. The script pauses at each step so you can explain what's happening.
