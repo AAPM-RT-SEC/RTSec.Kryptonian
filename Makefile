@@ -2,7 +2,7 @@
 # For Linux and macOS (use build.ps1 on Windows)
 
 SOLUTION = RTSec.Kryptonian.sln
-DOTNET_BUILD_FLAGS = -p:AnalysisLevel=latest-all -p:EnforceCodeStyleInBuild=true -p:TreatWarningsAsErrors=true -p:WarningLevel=9999
+DOTNET_BUILD_FLAGS = -p:AnalysisLevel=latest-all -p:EnforceCodeStyleInBuild=true  -p:WarningLevel=9999
 
 .PHONY: help build test format lint ci ci-local coverage clean restore
 

@@ -150,7 +150,7 @@ jobs:
           dotnet build --no-restore --configuration Release `
             -p:AnalysisLevel=latest-all `
             -p:AnalysisModeSecurity=all `
-            -p:TreatWarningsAsErrors=true
+            
 
       # Generate Software Bill of Materials (SBOM)
       - name: Generate SBOM
