@@ -142,8 +142,8 @@ public class SelfSignedCaConnector : ICaConnector
         // For self-signed, we just verify the CA cert is valid and we have the key
         var isValid = _caCertificate != null
             && _caCertificate.HasPrivateKey
-            && _caCertificate.NotAfter > DateTime.UtcNow
-            && _caCertificate.NotBefore < DateTime.UtcNow;
+            && _caCertificate.NotAfter.ToUniversalTime() > DateTime.UtcNow
+            && _caCertificate.NotBefore.ToUniversalTime() < DateTime.UtcNow;
 
         _logger.LogDebug("Self-signed CA connection test: {Result}", isValid ? "OK" : "FAILED");
 
