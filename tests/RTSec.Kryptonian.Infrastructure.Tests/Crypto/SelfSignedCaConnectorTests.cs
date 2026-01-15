@@ -240,11 +240,11 @@ public class SelfSignedCaConnectorTests : IDisposable
         // - X509Certificate2.NotBefore/NotAfter return Local time
         // - Comparison with DateTime.UtcNow was failing
         // - Fix: Use .ToUniversalTime() on certificate properties
-        
+
         // The certificate is created in the constructor with valid times
         // This test ensures the method handles timezone conversion properly
         var result = await _sut.TestConnectionAsync();
-        
+
         // Should pass regardless of local timezone offset
         result.Should().BeTrue();
     }
