@@ -30,6 +30,20 @@ public class AcmeChallengeException : Exception
     /// </summary>
     public string? AcmeErrorType { get; }
 
+    public AcmeChallengeException()
+    {
+    }
+
+    public AcmeChallengeException(string message)
+        : base(message)
+    {
+    }
+
+    public AcmeChallengeException(string message, Exception innerException)
+        : base(message, innerException)
+    {
+    }
+
     public AcmeChallengeException(
         string domain,
         string challengeType,

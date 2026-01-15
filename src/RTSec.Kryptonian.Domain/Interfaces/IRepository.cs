@@ -94,10 +94,10 @@ public interface IAcmeAccountRepository : IRepository<AcmeAccount>
     /// <summary>
     /// Gets an active ACME account for the specified directory URL.
     /// </summary>
-    Task<AcmeAccount?> GetByDirectoryUrlAsync(string directoryUrl, CancellationToken ct = default);
+    Task<AcmeAccount?> GetByDirectoryUrlAsync(Uri directoryUrl, CancellationToken ct = default);
 
     /// <summary>
     /// Gets an active ACME account for the specified directory URL and email.
     /// </summary>
-    Task<AcmeAccount?> GetByDirectoryAndEmailAsync(string directoryUrl, string email, CancellationToken ct = default);
+    Task<AcmeAccount?> GetByDirectoryAndEmailAsync(Uri directoryUrl, string email, CancellationToken ct = default);
 }

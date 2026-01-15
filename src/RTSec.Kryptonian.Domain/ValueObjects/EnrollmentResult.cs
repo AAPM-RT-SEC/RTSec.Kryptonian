@@ -13,7 +13,7 @@ public class EnrollmentResult
     /// <summary>
     /// PKCS#7 encoded certificate chain (base64 for EST response).
     /// </summary>
-    public byte[]? Pkcs7Response { get; init; }
+    public IReadOnlyList<byte>? Pkcs7Response { get; init; }
 
     /// <summary>
     /// Error message (if failed).

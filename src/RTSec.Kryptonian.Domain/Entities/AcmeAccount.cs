@@ -10,7 +10,7 @@ public class AcmeAccount : BaseEntity
     /// The ACME directory URL this account is registered with.
     /// e.g., "https://acme-v02.api.letsencrypt.org/directory"
     /// </summary>
-    public string DirectoryUrl { get; set; } = string.Empty;
+    public Uri DirectoryUrl { get; set; } = new Uri("https://acme-v02.api.letsencrypt.org/directory");
 
     /// <summary>
     /// The email address associated with this account.
@@ -20,7 +20,7 @@ public class AcmeAccount : BaseEntity
     /// <summary>
     /// The ACME account URL returned by the ACME server after registration.
     /// </summary>
-    public string? AccountUrl { get; set; }
+    public Uri? AccountUrl { get; set; }
 
     /// <summary>
     /// The account private key in PEM format, encrypted.

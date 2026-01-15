@@ -21,13 +21,13 @@ public class CaBackend : BaseEntity
     /// <summary>
     /// URL for the CA backend (optional for self-signed).
     /// </summary>
-    public string? Url { get; set; }
+    public Uri? Url { get; set; }
 
     /// <summary>
     /// Backend-specific configuration stored as JSON.
     /// Validated per backend type.
     /// </summary>
-    public Dictionary<string, object>? Config { get; set; }
+    public Dictionary<string, object> Config { get; } = new Dictionary<string, object>();
 
     /// <summary>
     /// Whether this backend is enabled for use.
@@ -35,5 +35,5 @@ public class CaBackend : BaseEntity
     public bool IsEnabled { get; set; } = true;
 
     // Navigation properties
-    public ICollection<EstProfile> EstProfiles { get; set; } = new List<EstProfile>();
+    public ICollection<EstProfile> EstProfiles { get; } = new List<EstProfile>();
 }

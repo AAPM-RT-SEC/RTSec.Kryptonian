@@ -1,5 +1,6 @@
 namespace RTSec.Kryptonian.Domain.Enums;
 
+[Flags]
 public enum RevocationReason
 {
     Unspecified = 0,

@@ -16,8 +16,8 @@ public static class HostnameMatcher
     /// <returns>True if the hostname matches the profile's configuration.</returns>
     public static bool Matches(EstProfile profile, string hostname)
     {
-        if (string.IsNullOrWhiteSpace(hostname))
-            return false;
+        if (profile == null)
+            throw new ArgumentNullException(nameof(profile));
 
         hostname = NormalizeHostname(hostname);
 
@@ -38,7 +38,7 @@ public static class HostnameMatcher
         if (string.IsNullOrWhiteSpace(hostname))
             return string.Empty;
 
-        hostname = hostname.Trim().ToLowerInvariant();
+        hostname = hostname.Trim().ToUpperInvariant();
 
         // Remove port if present
         var colonIndex = hostname.LastIndexOf(':');
@@ -75,17 +75,17 @@ public static class HostnameMatcher
         };
     }
 
-    private static bool MatchExact(List<string> patterns, string hostname)
+    private static bool MatchExact(ICollection<string> patterns, string hostname)
     {
         return patterns.Any(p =>
             string.Equals(NormalizeHostname(p), hostname, StringComparison.OrdinalIgnoreCase));
     }
 
-    private static bool MatchSuffix(List<string> patterns, string hostname)
+    private static bool MatchSuffix(ICollection<string> patterns, string hostname)
     {
         foreach (var pattern in patterns)
         {
-            var normalizedPattern = pattern.Trim().ToLowerInvariant();
+            var normalizedPattern = pattern.Trim().ToUpperInvariant();
 
             // Suffix patterns must start with a dot
             if (!normalizedPattern.StartsWith('.'))
@@ -104,7 +104,7 @@ public static class HostnameMatcher
         return false;
     }
 
-    private static bool MatchWildcard(List<string> patterns, string hostname, string? allowedSuffix)
+    private static bool MatchWildcard(ICollection<string> patterns, string hostname, string? allowedSuffix)
     {
         foreach (var pattern in patterns)
         {
@@ -113,7 +113,7 @@ public static class HostnameMatcher
                 // If there's a suffix restriction, enforce it
                 if (!string.IsNullOrWhiteSpace(allowedSuffix))
                 {
-                    var normalizedSuffix = allowedSuffix.Trim().ToLowerInvariant();
+                    var normalizedSuffix = allowedSuffix.Trim().ToUpperInvariant();
                     if (!normalizedSuffix.StartsWith('.'))
                         normalizedSuffix = "." + normalizedSuffix;
 
@@ -132,7 +132,7 @@ public static class HostnameMatcher
             else
             {
                 // Treat non-* patterns as suffix patterns in wildcard mode
-                var normalizedPattern = pattern.Trim().ToLowerInvariant();
+                var normalizedPattern = pattern.Trim().ToUpperInvariant();
                 if (!normalizedPattern.StartsWith('.'))
                     normalizedPattern = "." + normalizedPattern;
 
@@ -172,7 +172,7 @@ public static class HostnameMatcher
 
         // Must have at least a second-level domain (e.g., ".example.com" not just ".com")
         var withoutLeadingDot = pattern[1..];
-        if (!withoutLeadingDot.Contains('.'))
+        if (!withoutLeadingDot.Contains('.', StringComparison.Ordinal))
             return false;
 
         return IsValidExactHostname(withoutLeadingDot);
