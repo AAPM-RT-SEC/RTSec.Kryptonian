@@ -40,7 +40,7 @@ public class AcmeCaConnectorTests
     #region Constructor and Type Tests
 
     [Fact]
-    public void Constructor_InitializesWithCorrectType()
+    public void ConstructorInitializesWithCorrectType()
     {
         // Arrange
         var config = new AcmeConnectorConfig
@@ -61,7 +61,7 @@ public class AcmeCaConnectorTests
     #region GetCaCertificates Tests
 
     [Fact]
-    public async Task GetCaCertificates_ForLetsEncrypt_ReturnsIsrgRootCertificate()
+    public async Task GetCaCertificatesForLetsEncryptReturnsIsrgRootCertificate()
     {
         // Arrange
         var config = new AcmeConnectorConfig
@@ -80,7 +80,7 @@ public class AcmeCaConnectorTests
     }
 
     [Fact]
-    public async Task GetCaCertificates_ForLetsEncryptStaging_ReturnsIsrgRootCertificate()
+    public async Task GetCaCertificatesForLetsEncryptStagingReturnsIsrgRootCertificate()
     {
         // Arrange
         var config = new AcmeConnectorConfig
@@ -99,7 +99,7 @@ public class AcmeCaConnectorTests
     }
 
     [Fact]
-    public async Task GetCaCertificates_ForUnknownAcmeCa_ReturnsEmptyArray()
+    public async Task GetCaCertificatesForUnknownAcmeCaReturnsEmptyArray()
     {
         // Arrange
         var config = new AcmeConnectorConfig
@@ -122,7 +122,7 @@ public class AcmeCaConnectorTests
 
     [Fact]
     [Trait("Category", "Integration")]
-    public async Task TestConnection_ToLetsEncryptStaging_ReturnsTrue()
+    public async Task TestConnectionToLetsEncryptStagingReturnsTrue()
     {
         // Arrange
         var config = new AcmeConnectorConfig
@@ -140,7 +140,7 @@ public class AcmeCaConnectorTests
     }
 
     [Fact]
-    public async Task TestConnection_ToInvalidUrl_ReturnsFalse()
+    public async Task TestConnectionToInvalidUrlReturnsFalse()
     {
         // Arrange
         var config = new AcmeConnectorConfig
@@ -162,7 +162,7 @@ public class AcmeCaConnectorTests
     #region IssueCertificate Tests (with mocked dependencies)
 
     [Fact]
-    public async Task IssueCertificate_WithNullCsr_ThrowsArgumentNullException()
+    public async Task IssueCertificateWithNullCsrThrowsArgumentNullException()
     {
         // Arrange
         var config = new AcmeConnectorConfig
@@ -179,7 +179,7 @@ public class AcmeCaConnectorTests
     }
 
     [Fact]
-    public async Task IssueCertificate_WithNullProfile_ThrowsArgumentNullException()
+    public async Task IssueCertificateWithNullProfileThrowsArgumentNullException()
     {
         // Arrange
         var config = new AcmeConnectorConfig
@@ -196,7 +196,7 @@ public class AcmeCaConnectorTests
     }
 
     [Fact]
-    public void ExtractDomainsFromCsr_WithInvalidDomain_ReturnsEmpty()
+    public void ExtractDomainsFromCsrWithInvalidDomainReturnsEmpty()
     {
         // This test verifies the domain extraction logic without making real ACME calls.
         // The actual IssueCertificateAsync test would require extensive mocking of Certes.
@@ -223,7 +223,7 @@ public class AcmeCaConnectorTests
     #region RevokeCertificate Tests
 
     [Fact]
-    public async Task RevokeCertificate_ReturnsNotImplemented()
+    public async Task RevokeCertificateReturnsNotImplemented()
     {
         // Arrange
         var config = new AcmeConnectorConfig
@@ -245,7 +245,7 @@ public class AcmeCaConnectorTests
     #region Configuration Tests
 
     [Fact]
-    public void AcmeConnectorConfig_DefaultValues_AreCorrect()
+    public void AcmeConnectorConfigDefaultValuesAreCorrect()
     {
         // Act
         var config = new AcmeConnectorConfig();
@@ -261,7 +261,7 @@ public class AcmeCaConnectorTests
     [Theory]
     [InlineData("http-01")]
     [InlineData("dns-01")]
-    public void AcmeConnectorConfig_AcceptsValidChallengeTypes(string challengeType)
+    public void AcmeConnectorConfigAcceptsValidChallengeTypes(string challengeType)
     {
         // Arrange & Act
         var config = new AcmeConnectorConfig

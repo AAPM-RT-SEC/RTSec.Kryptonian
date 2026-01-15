@@ -61,7 +61,7 @@ public class EstIntegrationTests
     #region Content Type and Response Format Tests
 
     [Fact]
-    public async Task GetCaCerts_WhenSuccessful_ReturnsCorrectContentType()
+    public async Task GetCaCertsWhenSuccessfulReturnsCorrectContentType()
     {
         // Arrange
         var profileId = Guid.NewGuid();
@@ -90,7 +90,7 @@ public class EstIntegrationTests
     }
 
     [Fact]
-    public async Task GetCaCerts_ResponseIsBase64Encoded()
+    public async Task GetCaCertsResponseIsBase64Encoded()
     {
         // Arrange
         var profileId = Guid.NewGuid();
@@ -122,7 +122,7 @@ public class EstIntegrationTests
     }
 
     [Fact]
-    public async Task GetCaCerts_WithNonExistentLabel_Returns404()
+    public async Task GetCaCertsWithNonExistentLabelReturns404()
     {
         // Arrange
         _estProfileRepoMock
@@ -142,7 +142,7 @@ public class EstIntegrationTests
     #region SimpleEnroll Request Handling Tests
 
     [Fact]
-    public async Task SimpleEnroll_WithValidCsr_ReturnsIssuedCertificate()
+    public async Task SimpleEnrollWithValidCsrReturnsIssuedCertificate()
     {
         // Arrange
         var profileId = Guid.NewGuid();
@@ -178,7 +178,7 @@ public class EstIntegrationTests
     }
 
     [Fact]
-    public async Task SimpleEnroll_WithInvalidCsr_Returns400BadRequest()
+    public async Task SimpleEnrollWithInvalidCsrReturns400BadRequest()
     {
         // Arrange
         var profileId = Guid.NewGuid();
@@ -205,7 +205,7 @@ public class EstIntegrationTests
     }
 
     [Fact]
-    public async Task SimpleEnroll_WithOversizedBody_Returns413()
+    public async Task SimpleEnrollWithOversizedBodyReturns413()
     {
         // Arrange
         var profileId = Guid.NewGuid();
@@ -232,7 +232,7 @@ public class EstIntegrationTests
     }
 
     [Fact]
-    public async Task SimpleEnroll_WithNoProfile_Returns404()
+    public async Task SimpleEnrollWithNoProfileReturns404()
     {
         // Arrange
         _estProfileRepoMock
@@ -251,7 +251,7 @@ public class EstIntegrationTests
     #region SimpleReenroll Tests
 
     [Fact]
-    public async Task SimpleReenroll_WithoutClientCert_Returns401()
+    public async Task SimpleReenrollWithoutClientCertReturns401()
     {
         // Arrange
         var profileId = Guid.NewGuid();
@@ -269,7 +269,7 @@ public class EstIntegrationTests
     }
 
     [Fact]
-    public async Task SimpleReenroll_WithNoProfile_Returns404()
+    public async Task SimpleReenrollWithNoProfileReturns404()
     {
         // Arrange
         _estProfileRepoMock
@@ -288,7 +288,7 @@ public class EstIntegrationTests
     #region Error Handling Tests
 
     [Fact]
-    public async Task SimpleEnroll_WhenCaBackendFails_ReturnsServiceUnavailable()
+    public async Task SimpleEnrollWhenCaBackendFailsReturnsServiceUnavailable()
     {
         // Arrange
         var profileId = Guid.NewGuid();
@@ -323,7 +323,7 @@ public class EstIntegrationTests
     }
 
     [Fact]
-    public async Task SimpleEnroll_WhenPending_Returns202WithRetryAfter()
+    public async Task SimpleEnrollWhenPendingReturns202WithRetryAfter()
     {
         // Arrange
         var profileId = Guid.NewGuid();

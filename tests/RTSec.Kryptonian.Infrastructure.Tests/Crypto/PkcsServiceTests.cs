@@ -23,7 +23,7 @@ public class PkcsServiceTests
     #region ParsePkcs10 Tests
 
     [Fact]
-    public void ParsePkcs10_WithValidDerCsr_ReturnsCorrectParsedCsr()
+    public void ParsePkcs10WithValidDerCsrReturnsCorrectParsedCsr()
     {
         // Arrange
         using var rsa = RSA.Create(2048);
@@ -42,7 +42,7 @@ public class PkcsServiceTests
     }
 
     [Fact]
-    public void ParsePkcs10_WithPemFormatCsr_ReturnsCorrectParsedCsr()
+    public void ParsePkcs10WithPemFormatCsrReturnsCorrectParsedCsr()
     {
         // Arrange
         using var rsa = RSA.Create(2048);
@@ -59,7 +59,7 @@ public class PkcsServiceTests
     }
 
     [Fact]
-    public void ParsePkcs10_WithBase64EncodedCsr_ReturnsCorrectParsedCsr()
+    public void ParsePkcs10WithBase64EncodedCsrReturnsCorrectParsedCsr()
     {
         // Arrange
         using var rsa = RSA.Create(2048);
@@ -76,7 +76,7 @@ public class PkcsServiceTests
     }
 
     [Fact]
-    public void ParsePkcs10_WithEcdsaCsr_ReturnsCorrectKeyInfo()
+    public void ParsePkcs10WithEcdsaCsrReturnsCorrectKeyInfo()
     {
         // Arrange
         using var ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
@@ -93,7 +93,7 @@ public class PkcsServiceTests
     }
 
     [Fact]
-    public void ParsePkcs10_WithNullBytes_ThrowsArgumentNullException()
+    public void ParsePkcs10WithNullBytesThrowsArgumentNullException()
     {
         // Act
         var act = () => _sut.ParsePkcs10(null!);
@@ -103,7 +103,7 @@ public class PkcsServiceTests
     }
 
     [Fact]
-    public void ParsePkcs10_WithEmptyBytes_ThrowsArgumentException()
+    public void ParsePkcs10WithEmptyBytesThrowsArgumentException()
     {
         // Act
         var act = () => _sut.ParsePkcs10(Array.Empty<byte>());
@@ -117,7 +117,7 @@ public class PkcsServiceTests
     #region DecodeEstRequestBodyAsync Tests
 
     [Fact]
-    public async Task DecodeEstRequestBodyAsync_WithBase64Encoding_DecodesCorrectly()
+    public async Task DecodeEstRequestBodyAsyncWithBase64EncodingDecodesCorrectly()
     {
         // Arrange
         var originalData = new byte[] { 0x30, 0x82, 0x01, 0x00 };
@@ -132,7 +132,7 @@ public class PkcsServiceTests
     }
 
     [Fact]
-    public async Task DecodeEstRequestBodyAsync_WithNullEncoding_AutoDetectsBase64()
+    public async Task DecodeEstRequestBodyAsyncWithNullEncodingAutoDetectsBase64()
     {
         // Arrange
         var originalData = new byte[] { 0x30, 0x82, 0x01, 0x00 };
@@ -147,7 +147,7 @@ public class PkcsServiceTests
     }
 
     [Fact]
-    public async Task DecodeEstRequestBodyAsync_WithDerData_ReturnsAsIs()
+    public async Task DecodeEstRequestBodyAsyncWithDerDataReturnsAsIs()
     {
         // Arrange
         var derData = new byte[] { 0x30, 0x82, 0x01, 0x00, 0x55 }; // Starts with SEQUENCE tag
@@ -161,7 +161,7 @@ public class PkcsServiceTests
     }
 
     [Fact]
-    public async Task DecodeEstRequestBodyAsync_WithNullStream_ThrowsArgumentNullException()
+    public async Task DecodeEstRequestBodyAsyncWithNullStreamThrowsArgumentNullException()
     {
         // Act
         var act = () => _sut.DecodeEstRequestBodyAsync(null!, "base64");
@@ -171,7 +171,7 @@ public class PkcsServiceTests
     }
 
     [Fact]
-    public async Task DecodeEstRequestBodyAsync_ExceedingMaxSize_ThrowsInvalidOperationException()
+    public async Task DecodeEstRequestBodyAsyncExceedingMaxSizeThrowsInvalidOperationException()
     {
         // Arrange
         var largeData = new byte[1000]; // Create 1KB of data
@@ -187,7 +187,7 @@ public class PkcsServiceTests
     }
 
     [Fact]
-    public async Task DecodeEstRequestBodyAsync_WithCancellationToken_CanBeCancelled()
+    public async Task DecodeEstRequestBodyAsyncWithCancellationTokenCanBeCancelled()
     {
         // Arrange
         using var cts = new CancellationTokenSource();
@@ -206,7 +206,7 @@ public class PkcsServiceTests
     #region EncodeToPkcs7 Tests
 
     [Fact]
-    public void EncodeToPkcs7_WithSingleCertificate_ReturnsValidPkcs7()
+    public void EncodeToPkcs7WithSingleCertificateReturnsValidPkcs7()
     {
         // Arrange
         using var rsa = RSA.Create(2048);
@@ -223,7 +223,7 @@ public class PkcsServiceTests
     }
 
     [Fact]
-    public void EncodeToPkcs7_WithMultipleCertificates_ReturnsValidPkcs7()
+    public void EncodeToPkcs7WithMultipleCertificatesReturnsValidPkcs7()
     {
         // Arrange
         using var rsa1 = RSA.Create(2048);
@@ -240,7 +240,7 @@ public class PkcsServiceTests
     }
 
     [Fact]
-    public void EncodeToPkcs7_WithNullArray_ThrowsArgumentNullException()
+    public void EncodeToPkcs7WithNullArrayThrowsArgumentNullException()
     {
         // Act
         var act = () => _sut.EncodeToPkcs7(null!);
@@ -250,7 +250,7 @@ public class PkcsServiceTests
     }
 
     [Fact]
-    public void EncodeToPkcs7_WithEmptyArray_ThrowsArgumentException()
+    public void EncodeToPkcs7WithEmptyArrayThrowsArgumentException()
     {
         // Act
         var act = () => _sut.EncodeToPkcs7(Array.Empty<X509Certificate2>());
@@ -264,7 +264,7 @@ public class PkcsServiceTests
     #region EncodeEstResponseBody Tests
 
     [Fact]
-    public void EncodeEstResponseBody_EncodesAsBase64()
+    public void EncodeEstResponseBodyEncodesAsBase64()
     {
         // Arrange
         var pkcs7Data = new byte[] { 0x30, 0x82, 0x01, 0x00 };
@@ -279,7 +279,7 @@ public class PkcsServiceTests
     }
 
     [Fact]
-    public void EncodeEstResponseBody_WithNullData_ThrowsArgumentNullException()
+    public void EncodeEstResponseBodyWithNullDataThrowsArgumentNullException()
     {
         // Act
         var act = () => _sut.EncodeEstResponseBody(null!);
@@ -293,7 +293,7 @@ public class PkcsServiceTests
     #region ExportToPem Tests
 
     [Fact]
-    public void ExportToPem_ReturnsValidPemFormat()
+    public void ExportToPemReturnsValidPemFormat()
     {
         // Arrange
         using var rsa = RSA.Create(2048);
@@ -308,7 +308,7 @@ public class PkcsServiceTests
     }
 
     [Fact]
-    public void ExportToPem_WithNullCert_ThrowsArgumentNullException()
+    public void ExportToPemWithNullCertThrowsArgumentNullException()
     {
         // Act
         var act = () => _sut.ExportToPem(null!);
@@ -322,7 +322,7 @@ public class PkcsServiceTests
     #region ValidateCsrSignature Tests
 
     [Fact]
-    public void ValidateCsrSignature_WithValidSignature_ReturnsTrue()
+    public void ValidateCsrSignatureWithValidSignatureReturnsTrue()
     {
         // Arrange
         using var rsa = RSA.Create(2048);
@@ -337,7 +337,7 @@ public class PkcsServiceTests
     }
 
     [Fact]
-    public void ValidateCsrSignature_WithNullCsr_ThrowsArgumentNullException()
+    public void ValidateCsrSignatureWithNullCsrThrowsArgumentNullException()
     {
         // Act
         var act = () => _sut.ValidateCsrSignature(null!);
@@ -351,7 +351,7 @@ public class PkcsServiceTests
     #region Round-trip Tests
 
     [Fact]
-    public void RoundTrip_CsrToPkcs7_PreservesIntegrity()
+    public void RoundTripCsrToPkcs7PreservesIntegrity()
     {
         // Arrange
         using var rsa = RSA.Create(2048);
