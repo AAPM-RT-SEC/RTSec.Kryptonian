@@ -2,41 +2,63 @@
 
 ## Critical Path (Blocks PR #4 Merge)
 
-### ☐ Fix 30 Code Quality Issues
-**Status**: BLOCKED  
+### ☐ Fix Remaining 32 Code Quality Issues
+**Status**: IN PROGRESS (HANDOFF REQUIRED)  
 **Priority**: HIGH  
 **Reference**: HANDOFF.md
 
-**Files to fix**:
+**Progress**:
+- ✅ Domain layer: 30 issues fixed in 10 files (commit 2216052)
+- ⚠️ Application layer: 32 issues remaining in 6 files
+- ⏳ Context: 23% (AWARENESS) - handoff needed
+
+**Completed Domain fixes** (examples from commit 2216052):
+```csharp
+// CA1027: Add [Flags] to enums
+[Flags]
+public enum RevocationReason { ... }
+
+// CA1032: Add exception constructors
+public AcmeChallengeException() { }
+public AcmeChallengeException(string message) : base(message) { }
+public AcmeChallengeException(string message, Exception inner) : base(message, inner) { }
+
+// CA1056: Use Uri instead of string for URLs
+public Uri DirectoryUrl { get; set; }  // was: string
+
+// CA2227: Make collections read-only
+public Collection<string> Hostnames { get; }  // was: { get; set; }
+
+// CA1819: Use IReadOnlyList instead of arrays
+public IReadOnlyList<X509Certificate2>? CertificateChain { get; init; }  // was: X509Certificate2[]
+
+// CA1308: Use ToUpperInvariant
+hostname = hostname.Trim().ToUpperInvariant();  // was: ToLowerInvariant
 ```
-src/RTSec.Kryptonian.Domain/Enums/RevocationReason.cs
-  - CA1027: Add [Flags] attribute
 
-src/RTSec.Kryptonian.Domain/ValueObjects/
-  - CA1819: Change array properties to collections (3 files)
-
-src/RTSec.Kryptonian.Domain/Entities/
-  - CA1056: Change string URLs to Uri (3 files)
-  - CA2227: Make properties read-only (6 files)
-  - CA1002: Change List<T> to Collection<T> (4 files)
-  - CA1032: Add exception constructors (1 file)
-  - CA1805: Remove redundant initialization (1 file)
-
-src/RTSec.Kryptonian.Domain/Interfaces/IRepository.cs
-  - CA1054: Change string directoryUrl to Uri (2 methods)
-
-src/RTSec.Kryptonian.Domain/Services/HostnameMatcher.cs
-  - CA1062: Add null validation (1 method)
-  - CA1307: Add StringComparison parameter (1 method)
-  - CA1308: Change ToLowerInvariant to ToUpperInvariant (5 occurrences)
+**Remaining Application layer issues** (32 errors):
+```
+EstProfileDto.cs:     CA2227 (8), CA1819 (4)  = 12 errors
+CaBackendDto.cs:      CA2227 (3)              = 3 errors
+CaBackendService.cs:  CA1062 (1)              = 1 error
+EnrollmentOrchestrator.cs: CA1062 (1)         = 1 error
+EstProfileService.cs: CA1062 (1)              = 1 error
+DependencyInjection.cs: CA1724 (1)            = 1 error
 ```
 
-**Command to see all issues**:
+**To see all errors**:
 ```bash
 dotnet build --no-restore -p:AnalysisLevel=latest-all
 ```
 
-**Estimated effort**: 2-4 hours
+**To fix remaining issues**:
+1. Follow patterns from Domain layer fixes (commit 2216052)
+2. Use `git add -u` to stage modified files
+3. Commit with message: "fix: Resolve remaining Application layer issues"
+4. Run `./build.sh ci-local` to verify
+
+**Estimated effort**: 1-2 hours  
+**Context**: 23% - handoff to another developer recommended
 
 ---
 

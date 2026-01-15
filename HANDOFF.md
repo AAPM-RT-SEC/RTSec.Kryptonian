@@ -21,20 +21,32 @@
    - `Makefile` (Unix systems)
    - `BUILD.md` (Documentation)
 
-### ⚠️ Blocked: CI Won't Pass Yet
+### ⚠️ Partially Fixed: Domain Layer Complete
 
-**Problem**: 30 code quality issues prevent CI from passing
+**Progress**:
+- ✅ **Domain layer**: 30 issues fixed in 10 files (commit 2216052)
+- ⚠️ **Application layer**: 32 issues remaining in 6 files
 
-**Breakdown**:
-- 24 actual errors (CA1819, CA2227, CA1062, CA1307)
-- 36 warnings that become errors with strict mode
+**Domain fixes follow Microsoft guidelines**:
+- CA1027: Added [Flags] to enums
+- CA1032: Added exception constructors
+- CA1056: Changed string URLs to Uri
+- CA1054: Changed URL parameters to Uri
+- CA1062: Added null validation
+- CA1002: Changed List<T> to Collection<T>
+- CA1819: Changed arrays to IReadOnlyList
+- CA2227: Made properties read-only
+- CA1307: Added StringComparison
+- CA1308: Changed ToLowerInvariant to ToUpperInvariant
+- CA1805: Removed redundant initialization
 
-**Files with issues**:
-- `src/RTSec.Kryptonian.Domain/Enums/RevocationReason.cs`
-- `src/RTSec.Kryptonian.Domain/ValueObjects/*.cs`
-- `src/RTSec.Kryptonian.Domain/Entities/*.cs`
-- `src/RTSec.Kryptonian.Domain/Interfaces/IRepository.cs`
-- `src/RTSec.Kryptonian.Domain/Services/HostnameMatcher.cs`
+**Remaining in Application layer**:
+- `src/RTSec.Kryptonian.Application/DTOs/EstProfileDto.cs` (12 errors)
+- `src/RTSec.Kryptonian.Application/DTOs/CaBackendDto.cs` (3 errors)
+- `src/RTSec.Kryptonian.Application/Services/CaBackendService.cs` (1 error)
+- `src/RTSec.Kryptonian.Application/Services/EnrollmentOrchestrator.cs` (1 error)
+- `src/RTSec.Kryptonian.Application/Services/EstProfileService.cs` (1 error)
+- `src/RTSec.Kryptonian.Application/DependencyInjection.cs` (1 error)
 
 ## What I Did
 
