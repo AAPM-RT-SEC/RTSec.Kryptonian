@@ -1,5 +1,11 @@
 name: RTSec.Kryptonian CI Pipeline
 
+# This workflow enforces quality gates for medical/healthcare standards.
+# For local development, use the build scripts:
+# - Linux/macOS: ./build.sh ci-local or make ci-local
+# - Windows: .\build.ps1 ci-local
+# - Git Bash/WSL: ./build.sh ci-local
+
 on:
   push:
     branches: [ main, develop, 'release/**' ]
@@ -85,24 +91,13 @@ jobs:
 
       # Build with strict analyzers enabled
       - name: Build with Analyzers
-        run: |
-          dotnet build --no-restore --configuration Release `
-            -p:AnalysisLevel=latest-all `
-            -p:EnforceCodeStyleInBuild=true `
-            -p:TreatWarningsAsErrors=true `
-            -p:WarningLevel=9999
+        run: ./build.sh build
+        shell: bash
 
       # Run comprehensive tests with coverage
       - name: Run tests with coverage
-        run: |
-          dotnet test --no-build --configuration Release `
-            --collect:"XPlat Code Coverage" `
-            --results-directory TestResults `
-            --logger trx `
-            --verbosity normal
-          # Coverage data collected but thresholds not enforced
-          # Threshold enforcement commented out - can be enabled later
-          # when coverage targets are established
+        run: ./build.sh test
+        shell: bash
 
       # Generate coverage report using ReportGenerator
       - name: Generate coverage report
