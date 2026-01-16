@@ -8,7 +8,7 @@ namespace RTSec.Kryptonian.Application;
 /// <summary>
 /// Extension methods for configuring application services.
 /// </summary>
-public static class DependencyInjection
+public static class ApplicationServiceExtensions
 {
     /// <summary>
     /// Adds application layer services to the service collection.

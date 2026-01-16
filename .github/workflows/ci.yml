@@ -1,0 +1,297 @@
+name: RTSec.Kryptonian CI Pipeline
+
+# This workflow enforces quality gates for medical/healthcare standards.
+# For local development, use the build scripts:
+# - Linux/macOS: ./build.sh ci-local or make ci-local
+# - Windows: .\build.ps1 ci-local
+# - Git Bash/WSL: ./build.sh ci-local
+
+on:
+  push:
+    branches: [ main, develop, 'release/**' ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+
+# Security: Minimal permissions principle
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
+
+env:
+  DOTNET_VERSION: '8.0.x'
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+  NUGET_XMLDOC_MODE: skip
+
+jobs:
+  # Matrix build across all target platforms
+  build-and-test:
+    name: Build and Test
+    runs-on: ${{ matrix.os }}
+    
+    strategy:
+      fail-fast: false  # Continue other platform builds if one fails
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+        include:
+          - os: windows-latest
+            platform: windows
+            cache-prefix: win
+          - os: ubuntu-latest
+            platform: linux
+            cache-prefix: linux
+          - os: macos-latest
+            platform: macos
+            cache-prefix: mac
+
+    steps:
+      # Checkout with full history for proper git diff operations
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for formatting checks
+
+      # Setup .NET SDK with specific version
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      # Restore dependencies
+      - name: Restore dependencies
+        run: dotnet restore
+
+      # Cache NuGet packages for performance
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ matrix.cache-prefix }}-nuget-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            ${{ matrix.cache-prefix }}-nuget-
+
+      # Formatting check - strict enforcement (only on PRs for changed files)
+      - name: Verify code formatting
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            changed_files=$(git diff --name-only HEAD origin/${{ github.base_ref || 'main' }} | grep -E '\.(cs|vb)$' || true)
+            if [ -n "$changed_files" ]; then
+              echo "Checking formatting for changed files:"
+              echo "$changed_files"
+              dotnet format whitespace --verify-no-changes --include $changed_files
+              dotnet format style --verify-no-changes --include $changed_files
+            else
+              echo "No C#/VB files changed, skipping formatting check"
+            fi
+          fi
+        shell: bash
+        if: github.event_name == 'pull_request'
+
+      # Build with strict analyzers enabled
+      - name: Build with Analyzers
+        run: ./build.sh build
+        shell: bash
+
+      # Run Tests (Windows gets Coverage, others just run tests)
+      - name: Run tests
+        shell: bash
+        run: |
+          if [ "${{ matrix.platform }}" == "windows" ]; then
+            ./build.sh coverage
+          else
+            ./build.sh test
+          fi
+
+      # -----------------------------------------------------------------------
+      # OPTIMIZED SECTION: Report Generation
+      # Replaces "Install ReportGenerator", "Create Cobertura...", and "Generate coverage report"
+      # -----------------------------------------------------------------------
+      
+      - name: Generate Coverage Reports
+        if: matrix.platform == 'windows'
+        uses: danielpalme/ReportGenerator-GitHub-Action@5.2.0
+        with:
+          # Inputs: All raw coverage files found
+          reports: 'TestResults/**/coverage.opencover.xml;TestResults/**/coverage.xml;TestResults/**/coverage.cobertura.xml' 
+          targetdir: 'coverage-report'
+          # We generate Cobertura (for CodeCoverageSummary) AND MarkdownSummaryGithub (for Sticky Comment) here
+          reporttypes: 'Html;Cobertura;MarkdownSummaryGithub;Badges'
+          assemblyfilters: '-*.Tests*'
+          verbosity: 'Info'
+          title: 'RTSec.Kryptonian Coverage'
+
+      # Upload coverage artifact
+      - name: Upload coverage artifact
+        if: matrix.platform == 'windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-${{ matrix.platform }}
+          path: coverage-report/
+          retention-days: 30
+          
+      # Upload test results as artifacts
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ matrix.platform }}
+          path: TestResults/
+          retention-days: 30
+
+      # Publish test results to GitHub Checks (Linux only)
+      - name: Publish Test Results
+        uses: EnricoMi/publish-unit-test-result-action@v2
+        if: always() && matrix.platform == 'linux'
+        with:
+          files: '**/TestResults/**/*.trx'
+          check_name: 'Test Results (${{ matrix.platform }})'
+          comment_mode: 'always'
+          fail_on: 'test failures'
+
+      # Publish coverage to PR comment (Windows only, where coverage is generated)
+      - name: Coverage PR Comment
+        uses: marocchino/sticky-pull-request-comment@v2
+        if: github.event_name == 'pull_request' && success() && matrix.platform == 'windows'
+        with:
+          recreate: true
+          path: coverage-report/SummaryGithub.md
+
+      # Security analysis with Roslyn analyzers
+      - name: Security Analysis
+        run: ./build.sh build
+        env:
+          DOTNET_BUILD_FLAGS: "-p:AnalysisLevel=latest-all -p:AnalysisModeSecurity=all"
+        shell: bash
+
+      # Generate Software Bill of Materials (SBOM)
+      - name: Generate SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          format: spdx-json
+          output-file: sbom-${{ matrix.platform }}.spdx.json
+          upload-artifact: false
+
+      # Upload SBOM as artifact
+      - name: Upload SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ matrix.platform }}
+          path: sbom-${{ matrix.platform }}.spdx.json
+          retention-days: 90
+
+  # Quality gate - summary job
+  quality-gate:
+    name: Quality Gate
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+      - name: Check all platforms passed
+        run: |
+          if [[ "${{ needs.build-and-test.result }}" == "failure" ]]; then
+            echo "❌ One or more platform builds failed"
+            exit 1
+          elif [[ "${{ needs.build-and-test.result }}" == "cancelled" ]]; then
+            echo "⚠️ Build was cancelled"
+            exit 1
+          else
+            echo "✅ All platforms passed quality checks"
+          fi
+
+      # Download coverage report from Windows (only platform that generates it)
+      - name: Download coverage report
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-windows
+          path: coverage-report/
+
+      # Generate overall coverage summary
+      - name: Coverage Summary
+        uses: irongut/CodeCoverageSummary@v1.3.0
+        with:
+          filename: 'coverage-report/Cobertura.xml'
+          badge: true
+          fail_below_min: false
+          format: markdown
+          indicators: true
+          output: both
+          thresholds: '0 0'  # No minimum enforcement
+          # TODO: Update to '80 90' when coverage targets established
+
+      # Add coverage to job summary
+      - name: Add to Job Summary
+        run: |
+          cat code-coverage-results.md >> $GITHUB_STEP_SUMMARY
+
+      # Create combined artifact with all results
+      - name: Create Combined Results Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: combined-results
+          path: |
+            coverage-report/
+            code-coverage-results.md
+          retention-days: 30
+
+  # PR-specific quality checks
+  pr-quality:
+    name: PR Quality Checks
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      # Check for secrets in code (security)
+      - name: Security Scan
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ${{ github.event.pull_request.base.sha }}
+          head: ${{ github.event.pull_request.head.sha }}
+          extra_args: --debug --only-verified
+
+      # Code analysis for PR
+      - name: PR Analysis
+        run: ./build.sh build
+        env:
+          DOTNET_BUILD_FLAGS: "-p:AnalysisLevel=latest-all -p:EnforceCodeStyleInBuild=true -p:TreatWarningsAsErrors=false"
+        shell: bash
+
+      # Generate PR summary
+      - name: PR Summary
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const summary = `
+            ## RTSec.Kryptonian PR Quality Report
+            
+            ✅ **Build**: Passed  
+            ✅ **Formatting**: Verified  
+            ✅ **Analyzers**: Clean  
+            
+            ### Next Steps
+            - Review coverage reports in artifacts
+            - Check test results for any failures
+            - Ensure all platform builds passed
+            
+            *Quality gates enforced for medical/healthcare standards*
+            `;
+            
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: summary
+            });

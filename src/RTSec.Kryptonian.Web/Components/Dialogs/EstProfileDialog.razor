@@ -116,7 +116,7 @@
             {
                 Name = ExistingProfile.Name,
                 CaBackendId = ExistingProfile.CaBackendId,
-                Hostnames = ExistingProfile.Hostnames,
+                Hostnames = ExistingProfile.Hostnames.ToList(),
                 HostnameMatchType = ExistingProfile.HostnameMatchType,
                 PathPrefix = ExistingProfile.PathPrefix,
                 CertificateTemplate = ExistingProfile.CertificateTemplate,
@@ -138,7 +138,7 @@
         try
         {
             // Parse hostnames
-            _model.Hostnames = _hostnamesText
+            var hostnamesList = _hostnamesText
                 .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                 .ToList();
 
@@ -148,7 +148,7 @@
                 {
                     Name = _model.Name,
                     CaBackendId = _model.CaBackendId,
-                    Hostnames = _model.Hostnames,
+                    Hostnames = hostnamesList,
                     HostnameMatchType = _model.HostnameMatchType,
                     PathPrefix = _model.PathPrefix,
                     CertificateTemplate = _model.CertificateTemplate,
@@ -166,12 +166,25 @@
             }
             else
             {
-                var result = await ApiClient.CreateEstProfileAsync(_model);
+                // Create new DTO with parsed hostnames
+                var createDto = new EstProfileCreateDto
+                {
+                    Name = _model.Name,
+                    CaBackendId = _model.CaBackendId,
+                    Hostnames = hostnamesList,
+                    HostnameMatchType = _model.HostnameMatchType,
+                    PathPrefix = _model.PathPrefix,
+                    CertificateTemplate = _model.CertificateTemplate,
+                    ValidityDays = _model.ValidityDays,
+                    RequireClientCertificate = _model.RequireClientCertificate,
+                    ValidateClientCertificateChain = _model.ValidateClientCertificateChain,
+                    IsEnabled = _model.IsEnabled
+                };
+                var result = await ApiClient.CreateEstProfileAsync(createDto);
                 if (result.Success && result.Data != null)
                 {
                     MudDialog.Close(DialogResult.Ok(result.Data));
                 }
-                // Error is shown via OnApiError event
             }
         }
         finally

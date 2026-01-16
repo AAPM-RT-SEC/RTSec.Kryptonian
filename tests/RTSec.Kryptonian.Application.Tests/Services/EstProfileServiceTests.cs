@@ -40,7 +40,7 @@ public class EstProfileServiceTests
     #region GetAllAsync Tests
 
     [Fact]
-    public async Task GetAllAsync_ReturnsAllProfiles()
+    public async Task GetAllAsyncReturnsAllProfiles()
     {
         // Arrange
         var profiles = new List<EstProfile>
@@ -63,7 +63,7 @@ public class EstProfileServiceTests
     #region GetByIdAsync Tests
 
     [Fact]
-    public async Task GetByIdAsync_WithExistingId_ReturnsProfile()
+    public async Task GetByIdAsyncWithExistingIdReturnsProfile()
     {
         // Arrange
         var id = Guid.NewGuid();
@@ -80,7 +80,7 @@ public class EstProfileServiceTests
     }
 
     [Fact]
-    public async Task GetByIdAsync_WithNonExistingId_ReturnsNull()
+    public async Task GetByIdAsyncWithNonExistingIdReturnsNull()
     {
         // Arrange
         var id = Guid.NewGuid();
@@ -99,7 +99,7 @@ public class EstProfileServiceTests
     #region CreateAsync Tests
 
     [Fact]
-    public async Task CreateAsync_WithValidDto_CreatesProfile()
+    public async Task CreateAsyncWithValidDtoCreatesProfile()
     {
         // Arrange
         var caBackendId = Guid.NewGuid();
@@ -128,7 +128,7 @@ public class EstProfileServiceTests
     }
 
     [Fact]
-    public async Task CreateAsync_WithNonExistingCaBackend_ThrowsArgumentException()
+    public async Task CreateAsyncWithNonExistingCaBackendThrowsArgumentException()
     {
         // Arrange
         var caBackendId = Guid.NewGuid();
@@ -151,7 +151,7 @@ public class EstProfileServiceTests
     }
 
     [Fact]
-    public async Task CreateAsync_WithDuplicatePathHostname_ThrowsInvalidOperationException()
+    public async Task CreateAsyncWithDuplicatePathHostnameThrowsInvalidOperationException()
     {
         // Arrange
         var caBackendId = Guid.NewGuid();
@@ -181,7 +181,7 @@ public class EstProfileServiceTests
     #region UpdateAsync Tests
 
     [Fact]
-    public async Task UpdateAsync_WithExistingProfile_UpdatesAndReturns()
+    public async Task UpdateAsyncWithExistingProfileUpdatesAndReturns()
     {
         // Arrange
         var id = Guid.NewGuid();
@@ -191,9 +191,9 @@ public class EstProfileServiceTests
             Id = id,
             Name = "Old Name",
             CaBackendId = caBackendId,
-            Hostnames = new List<string> { "old.example.com" },
             PathPrefix = "/.well-known/est"
         };
+        existing.Hostnames.Add("old.example.com");
         _estProfileRepoMock.Setup(r => r.GetByIdAsync(id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(existing);
         _unitOfWorkMock.Setup(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()))
@@ -211,7 +211,7 @@ public class EstProfileServiceTests
     }
 
     [Fact]
-    public async Task UpdateAsync_WithNonExistingProfile_ReturnsNull()
+    public async Task UpdateAsyncWithNonExistingProfileReturnsNull()
     {
         // Arrange
         var id = Guid.NewGuid();
@@ -226,7 +226,7 @@ public class EstProfileServiceTests
     }
 
     [Fact]
-    public async Task UpdateAsync_WithNewCaBackendId_ValidatesBackendExists()
+    public async Task UpdateAsyncWithNewCaBackendIdValidatesBackendExists()
     {
         // Arrange
         var id = Guid.NewGuid();
@@ -236,9 +236,9 @@ public class EstProfileServiceTests
             Id = id,
             Name = "Test",
             CaBackendId = Guid.NewGuid(),
-            Hostnames = new List<string> { "est.example.com" },
             PathPrefix = "/.well-known/est"
         };
+        existing.Hostnames.Add("est.example.com");
         _estProfileRepoMock.Setup(r => r.GetByIdAsync(id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(existing);
         _caBackendRepoMock.Setup(r => r.GetByIdAsync(newCaBackendId, It.IsAny<CancellationToken>()))
@@ -259,7 +259,7 @@ public class EstProfileServiceTests
     #region DeleteAsync Tests
 
     [Fact]
-    public async Task DeleteAsync_WithExistingProfile_Deletes()
+    public async Task DeleteAsyncWithExistingProfileDeletes()
     {
         // Arrange
         var id = Guid.NewGuid();
@@ -278,7 +278,7 @@ public class EstProfileServiceTests
     }
 
     [Fact]
-    public async Task DeleteAsync_WithNonExistingProfile_ReturnsFalse()
+    public async Task DeleteAsyncWithNonExistingProfileReturnsFalse()
     {
         // Arrange
         var id = Guid.NewGuid();

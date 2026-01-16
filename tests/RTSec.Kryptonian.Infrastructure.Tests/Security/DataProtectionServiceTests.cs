@@ -27,7 +27,7 @@ public class DataProtectionServiceTests
     }
 
     [Fact]
-    public void Protect_ReturnsEncryptedString()
+    public void ProtectReturnsEncryptedString()
     {
         // Arrange
         var plaintext = "This is a secret";
@@ -41,7 +41,7 @@ public class DataProtectionServiceTests
     }
 
     [Fact]
-    public void Unprotect_ReturnsOriginalString()
+    public void UnprotectReturnsOriginalString()
     {
         // Arrange
         var plaintext = "This is a secret";
@@ -55,7 +55,7 @@ public class DataProtectionServiceTests
     }
 
     [Fact]
-    public void Protect_WithEmptyString_ReturnsEmpty()
+    public void ProtectWithEmptyStringReturnsEmpty()
     {
         // Act
         var result = _sut.Protect(string.Empty);
@@ -65,7 +65,7 @@ public class DataProtectionServiceTests
     }
 
     [Fact]
-    public void Unprotect_WithEmptyString_ReturnsEmpty()
+    public void UnprotectWithEmptyStringReturnsEmpty()
     {
         // Act
         var result = _sut.Unprotect(string.Empty);
@@ -75,7 +75,7 @@ public class DataProtectionServiceTests
     }
 
     [Fact]
-    public void Protect_WithLongText_WorksCorrectly()
+    public void ProtectWithLongTextWorksCorrectly()
     {
         // Arrange
         var longText = new string('x', 10000);
@@ -89,7 +89,7 @@ public class DataProtectionServiceTests
     }
 
     [Fact]
-    public void Protect_WithSpecialCharacters_WorksCorrectly()
+    public void ProtectWithSpecialCharactersWorksCorrectly()
     {
         // Arrange
         var specialText = "-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAK...\n-----END RSA PRIVATE KEY-----";
@@ -103,7 +103,7 @@ public class DataProtectionServiceTests
     }
 
     [Fact]
-    public void Unprotect_WithInvalidCiphertext_ThrowsException()
+    public void UnprotectWithInvalidCiphertextThrowsException()
     {
         // Arrange
         var invalidCiphertext = "this-is-not-valid-ciphertext";

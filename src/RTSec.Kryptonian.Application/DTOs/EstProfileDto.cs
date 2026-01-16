@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.Text.Json.Serialization;
 
 namespace RTSec.Kryptonian.Application.DTOs;
@@ -14,7 +15,7 @@ public class EstProfileDto
     public string Name { get; set; } = string.Empty;
 
     [JsonPropertyName("hostnames")]
-    public List<string> Hostnames { get; set; } = new();
+    public Collection<string> Hostnames { get; } = new();
 
     /// <summary>
     /// How hostnames should be matched: "exact", "suffix", or "wildcard".
@@ -38,7 +39,7 @@ public class EstProfileDto
     public string? CertificateTemplate { get; set; }
 
     [JsonPropertyName("allowedKeyUsages")]
-    public List<string> AllowedKeyUsages { get; set; } = new();
+    public Collection<string> AllowedKeyUsages { get; } = new();
 
     [JsonPropertyName("validityDays")]
     public int ValidityDays { get; set; }
@@ -56,7 +57,7 @@ public class EstProfileDto
     /// List of trusted CA certificate thumbprints (SHA-256) for client cert validation.
     /// </summary>
     [JsonPropertyName("trustedClientCaThumbprints")]
-    public List<string> TrustedClientCaThumbprints { get; set; } = new();
+    public Collection<string> TrustedClientCaThumbprints { get; } = new();
 
     [JsonPropertyName("isEnabled")]
     public bool IsEnabled { get; set; }
@@ -77,7 +78,7 @@ public class EstProfileCreateDto
     public string Name { get; set; } = string.Empty;
 
     [JsonPropertyName("hostnames")]
-    public List<string> Hostnames { get; set; } = new();
+    public List<string> Hostnames { get; init; } = new();
 
     /// <summary>
     /// How hostnames should be matched: "exact", "suffix", or "wildcard". Default is "exact".
@@ -101,7 +102,7 @@ public class EstProfileCreateDto
     public string? CertificateTemplate { get; set; }
 
     [JsonPropertyName("allowedKeyUsages")]
-    public List<string>? AllowedKeyUsages { get; set; }
+    public List<string>? AllowedKeyUsages { get; init; } = new();
 
     [JsonPropertyName("validityDays")]
     public int ValidityDays { get; set; } = 365;
@@ -120,7 +121,7 @@ public class EstProfileCreateDto
     /// Required when validateClientCertificateChain is true.
     /// </summary>
     [JsonPropertyName("trustedClientCaThumbprints")]
-    public List<string>? TrustedClientCaThumbprints { get; set; }
+    public List<string>? TrustedClientCaThumbprints { get; init; } = new();
 
     [JsonPropertyName("isEnabled")]
     public bool IsEnabled { get; set; } = true;
@@ -135,7 +136,7 @@ public class EstProfileUpdateDto
     public string? Name { get; set; }
 
     [JsonPropertyName("hostnames")]
-    public List<string>? Hostnames { get; set; }
+    public List<string>? Hostnames { get; init; } = new();
 
     /// <summary>
     /// How hostnames should be matched: "exact", "suffix", or "wildcard".
@@ -159,7 +160,7 @@ public class EstProfileUpdateDto
     public string? CertificateTemplate { get; set; }
 
     [JsonPropertyName("allowedKeyUsages")]
-    public List<string>? AllowedKeyUsages { get; set; }
+    public List<string>? AllowedKeyUsages { get; init; } = new();
 
     [JsonPropertyName("validityDays")]
     public int? ValidityDays { get; set; }
@@ -177,7 +178,7 @@ public class EstProfileUpdateDto
     /// List of trusted CA certificate thumbprints (SHA-256) for client cert validation.
     /// </summary>
     [JsonPropertyName("trustedClientCaThumbprints")]
-    public List<string>? TrustedClientCaThumbprints { get; set; }
+    public List<string>? TrustedClientCaThumbprints { get; init; } = new();
 
     [JsonPropertyName("isEnabled")]
     public bool? IsEnabled { get; set; }

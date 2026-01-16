@@ -55,7 +55,7 @@ public class EstControllerTests
     #region /cacerts Tests
 
     [Fact]
-    public async Task GetCaCerts_WithValidProfile_Returns200WithPkcs7()
+    public async Task GetCaCertsWithValidProfileReturns200WithPkcs7()
     {
         // Arrange
         var profileId = Guid.NewGuid();
@@ -85,7 +85,7 @@ public class EstControllerTests
     }
 
     [Fact]
-    public async Task GetCaCerts_WithLabel_ReturnsCorrectProfile()
+    public async Task GetCaCertsWithLabelReturnsCorrectProfile()
     {
         // Arrange
         var profileId = Guid.NewGuid();
@@ -115,7 +115,7 @@ public class EstControllerTests
     }
 
     [Fact]
-    public async Task GetCaCerts_WithNoProfile_Returns404()
+    public async Task GetCaCertsWithNoProfileReturns404()
     {
         // Arrange
         _estProfileRepoMock
@@ -131,7 +131,7 @@ public class EstControllerTests
     }
 
     [Fact]
-    public async Task GetCaCerts_WhenOrchestratorThrows_Returns404()
+    public async Task GetCaCertsWhenOrchestratorThrowsReturns404()
     {
         // Arrange
         var profileId = Guid.NewGuid();
@@ -158,7 +158,7 @@ public class EstControllerTests
     #region /simpleenroll Tests
 
     [Fact]
-    public async Task SimpleEnroll_WithValidCsr_Returns200WithCertificate()
+    public async Task SimpleEnrollWithValidCsrReturns200WithCertificate()
     {
         // Arrange
         var profileId = Guid.NewGuid();
@@ -196,7 +196,7 @@ public class EstControllerTests
     }
 
     [Fact]
-    public async Task SimpleEnroll_WithInvalidCsr_Returns400()
+    public async Task SimpleEnrollWithInvalidCsrReturns400()
     {
         // Arrange
         var profileId = Guid.NewGuid();
@@ -223,7 +223,7 @@ public class EstControllerTests
     }
 
     [Fact]
-    public async Task SimpleEnroll_WithNoProfile_Returns404()
+    public async Task SimpleEnrollWithNoProfileReturns404()
     {
         // Arrange
         _estProfileRepoMock
@@ -239,7 +239,7 @@ public class EstControllerTests
     }
 
     [Fact]
-    public async Task SimpleEnroll_WhenOrchestratorFails_ReturnsAppropriateStatusCode()
+    public async Task SimpleEnrollWhenOrchestratorFailsReturnsAppropriateStatusCode()
     {
         // Arrange
         var profileId = Guid.NewGuid();
@@ -274,7 +274,7 @@ public class EstControllerTests
     }
 
     [Fact]
-    public async Task SimpleEnroll_WithOversizedBody_Returns413()
+    public async Task SimpleEnrollWithOversizedBodyReturns413()
     {
         // Arrange
         var profileId = Guid.NewGuid();
@@ -301,7 +301,7 @@ public class EstControllerTests
     }
 
     [Fact]
-    public async Task SimpleEnroll_WhenEnrollmentPending_Returns202WithRetryAfter()
+    public async Task SimpleEnrollWhenEnrollmentPendingReturns202WithRetryAfter()
     {
         // Arrange
         var profileId = Guid.NewGuid();
@@ -341,7 +341,7 @@ public class EstControllerTests
     #region /simplereenroll Tests
 
     [Fact]
-    public async Task SimpleReenroll_WithoutClientCert_Returns401()
+    public async Task SimpleReenrollWithoutClientCertReturns401()
     {
         // Arrange
         var profileId = Guid.NewGuid();
@@ -360,7 +360,7 @@ public class EstControllerTests
     }
 
     [Fact]
-    public async Task SimpleReenroll_WithNoProfile_Returns404()
+    public async Task SimpleReenrollWithNoProfileReturns404()
     {
         // Arrange
         _estProfileRepoMock
@@ -386,20 +386,29 @@ public class EstControllerTests
         bool validateClientCertChain = false,
         List<string>? trustedThumbprints = null)
     {
-        return new EstProfile
+        var profile = new EstProfile
         {
             Id = id,
             Name = "Test Profile",
             PathPrefix = "/.well-known/est",
-            Hostnames = new List<string> { "localhost" },
             HostnameMatchType = HostnameMatchType.Exact,
             CaBackendId = Guid.NewGuid(),
             ValidityDays = 365,
             RequireClientCertificate = requireClientCert,
             ValidateClientCertificateChain = validateClientCertChain,
-            TrustedClientCaThumbprints = trustedThumbprints ?? new List<string>(),
             IsEnabled = isEnabled
         };
+        profile.Hostnames.Clear();
+        profile.Hostnames.Add("localhost");
+        profile.TrustedClientCaThumbprints.Clear();
+        if (trustedThumbprints != null)
+        {
+            foreach (var thumbprint in trustedThumbprints)
+            {
+                profile.TrustedClientCaThumbprints.Add(thumbprint);
+            }
+        }
+        return profile;
     }
 
     private static byte[] CreateTestCsrBytes()

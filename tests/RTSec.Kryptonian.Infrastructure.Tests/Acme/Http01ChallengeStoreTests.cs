@@ -18,14 +18,14 @@ public class Http01ChallengeStoreTests
     }
 
     [Fact]
-    public void ChallengeType_ReturnsHttp01()
+    public void ChallengeTypeReturnsHttp01()
     {
         // Act & Assert
         _sut.ChallengeType.Should().Be("http-01");
     }
 
     [Fact]
-    public async Task PrepareAsync_StoresChallenge()
+    public async Task PrepareAsyncStoresChallenge()
     {
         // Arrange
         var domain = "example.com";
@@ -41,7 +41,7 @@ public class Http01ChallengeStoreTests
     }
 
     [Fact]
-    public void GetKeyAuthorization_ReturnsNull_WhenTokenNotFound()
+    public void GetKeyAuthorizationReturnsNullWhenTokenNotFound()
     {
         // Act
         var result = _sut.GetKeyAuthorization("nonexistent-token");
@@ -51,7 +51,7 @@ public class Http01ChallengeStoreTests
     }
 
     [Fact]
-    public async Task CleanupAsync_RemovesChallenge()
+    public async Task CleanupAsyncRemovesChallenge()
     {
         // Arrange
         var domain = "example.com";
@@ -68,7 +68,7 @@ public class Http01ChallengeStoreTests
     }
 
     [Fact]
-    public async Task PrepareAsync_OverwritesExistingChallenge()
+    public async Task PrepareAsyncOverwritesExistingChallenge()
     {
         // Arrange
         var domain = "example.com";
@@ -86,7 +86,7 @@ public class Http01ChallengeStoreTests
     }
 
     [Fact]
-    public async Task MultipleTokens_AreStoredIndependently()
+    public async Task MultipleTokensAreStoredIndependently()
     {
         // Arrange
         var domain = "example.com";
@@ -105,7 +105,7 @@ public class Http01ChallengeStoreTests
     }
 
     [Fact]
-    public async Task CleanupAsync_RemovesOnlySpecificToken()
+    public async Task CleanupAsyncRemovesOnlySpecificToken()
     {
         // Arrange
         var domain = "example.com";
@@ -126,7 +126,7 @@ public class Http01ChallengeStoreTests
     }
 
     [Fact]
-    public async Task CleanupAsync_DoesNotThrow_WhenTokenNotFound()
+    public async Task CleanupAsyncDoesNotThrowWhenTokenNotFound()
     {
         // Act
         var act = () => _sut.CleanupAsync("example.com", "nonexistent-token");

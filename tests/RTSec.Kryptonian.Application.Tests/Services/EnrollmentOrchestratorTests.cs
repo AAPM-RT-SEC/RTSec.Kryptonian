@@ -60,7 +60,7 @@ public class EnrollmentOrchestratorTests : IDisposable
     #region GetCaCertsAsync Tests
 
     [Fact]
-    public async Task GetCaCertsAsync_WithValidProfile_ReturnsPkcs7()
+    public async Task GetCaCertsAsyncWithValidProfileReturnsPkcs7()
     {
         // Arrange
         var profileId = Guid.NewGuid();
@@ -98,7 +98,7 @@ public class EnrollmentOrchestratorTests : IDisposable
     }
 
     [Fact]
-    public async Task GetCaCertsAsync_WithNonExistentProfile_ThrowsInvalidOperationException()
+    public async Task GetCaCertsAsyncWithNonExistentProfileThrowsInvalidOperationException()
     {
         // Arrange
         var profileId = Guid.NewGuid();
@@ -116,7 +116,7 @@ public class EnrollmentOrchestratorTests : IDisposable
     }
 
     [Fact]
-    public async Task GetCaCertsAsync_WithDisabledProfile_ThrowsInvalidOperationException()
+    public async Task GetCaCertsAsyncWithDisabledProfileThrowsInvalidOperationException()
     {
         // Arrange
         var profileId = Guid.NewGuid();
@@ -139,7 +139,7 @@ public class EnrollmentOrchestratorTests : IDisposable
     #region EnrollAsync Tests
 
     [Fact]
-    public async Task EnrollAsync_WithValidCsr_ReturnsSuccessful()
+    public async Task EnrollAsyncWithValidCsrReturnsSuccessful()
     {
         // Arrange
         var profileId = Guid.NewGuid();
@@ -203,7 +203,7 @@ public class EnrollmentOrchestratorTests : IDisposable
     }
 
     [Fact]
-    public async Task EnrollAsync_WithNonExistentProfile_Returns404()
+    public async Task EnrollAsyncWithNonExistentProfileReturns404()
     {
         // Arrange
         var profileId = Guid.NewGuid();
@@ -221,7 +221,7 @@ public class EnrollmentOrchestratorTests : IDisposable
     }
 
     [Fact]
-    public async Task EnrollAsync_WithDisabledProfile_Returns403()
+    public async Task EnrollAsyncWithDisabledProfileReturns403()
     {
         // Arrange
         var profileId = Guid.NewGuid();
@@ -240,7 +240,7 @@ public class EnrollmentOrchestratorTests : IDisposable
     }
 
     [Fact]
-    public async Task EnrollAsync_WithInvalidCsr_Returns400()
+    public async Task EnrollAsyncWithInvalidCsrReturns400()
     {
         // Arrange
         var profileId = Guid.NewGuid();
@@ -270,7 +270,7 @@ public class EnrollmentOrchestratorTests : IDisposable
     }
 
     [Fact]
-    public async Task EnrollAsync_WithInvalidCsrSignature_Returns400()
+    public async Task EnrollAsyncWithInvalidCsrSignatureReturns400()
     {
         // Arrange
         var profileId = Guid.NewGuid();
@@ -306,7 +306,7 @@ public class EnrollmentOrchestratorTests : IDisposable
     }
 
     [Fact]
-    public async Task EnrollAsync_WhenCaIssuanceFails_Returns500()
+    public async Task EnrollAsyncWhenCaIssuanceFailsReturns500()
     {
         // Arrange
         var profileId = Guid.NewGuid();
@@ -357,7 +357,7 @@ public class EnrollmentOrchestratorTests : IDisposable
     #region ReenrollAsync Tests
 
     [Fact]
-    public async Task ReenrollAsync_WithValidCertificate_ReturnsSuccessful()
+    public async Task ReenrollAsyncWithValidCertificateReturnsSuccessful()
     {
         // Arrange
         var profileId = Guid.NewGuid();
@@ -418,7 +418,7 @@ public class EnrollmentOrchestratorTests : IDisposable
     }
 
     [Fact]
-    public async Task ReenrollAsync_WithRevokedCertificate_Returns403()
+    public async Task ReenrollAsyncWithRevokedCertificateReturns403()
     {
         // Arrange
         var profileId = Guid.NewGuid();
@@ -449,7 +449,7 @@ public class EnrollmentOrchestratorTests : IDisposable
     }
 
     [Fact]
-    public async Task ReenrollAsync_WithCertificateFromDifferentProfile_Returns403()
+    public async Task ReenrollAsyncWithCertificateFromDifferentProfileReturns403()
     {
         // Arrange
         var profileId = Guid.NewGuid();
@@ -488,18 +488,19 @@ public class EnrollmentOrchestratorTests : IDisposable
         Guid backendId,
         bool isEnabled = true)
     {
-        return new EstProfile
+        var profile = new EstProfile
         {
             Id = id,
             Name = "Test Profile",
             PathPrefix = "/.well-known/est",
-            Hostnames = new List<string> { "test.example.com" },
             CaBackendId = backendId,
             ValidityDays = 365,
             IsEnabled = isEnabled,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };
+        profile.Hostnames.Add("test.example.com");
+        return profile;
     }
 
     private static CaBackend CreateCaBackend(Guid id, bool isEnabled = true)

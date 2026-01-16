@@ -1,0 +1,8 @@
+#!/bin/sh
+. "$(dirname "$0")/_/husky.sh"
+
+## Husky.NET pre-commit hook
+## Runs dotnet format to ensure code formatting before commit
+
+## Only check for whitespace/formatting issues (not CA warnings)
+dotnet format whitespace --verify-no-changes --include **/*.cs

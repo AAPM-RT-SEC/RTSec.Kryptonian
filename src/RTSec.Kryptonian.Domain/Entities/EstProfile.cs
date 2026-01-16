@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using RTSec.Kryptonian.Domain.Enums;
 
 namespace RTSec.Kryptonian.Domain.Entities;
@@ -24,7 +25,7 @@ public class EstProfile : BaseEntity
     /// For Suffix match: suffix with leading dot (e.g., ".example.com")
     /// For Wildcard: use "*" (restricted by AllowedWildcardSuffix if set)
     /// </summary>
-    public List<string> Hostnames { get; set; } = new();
+    public Collection<string> Hostnames { get; } = new Collection<string>();
 
     /// <summary>
     /// How hostnames should be matched. Default is Exact for security.
@@ -51,7 +52,7 @@ public class EstProfile : BaseEntity
     /// <summary>
     /// Allowed key usages for issued certificates.
     /// </summary>
-    public List<string> AllowedKeyUsages { get; set; } = new();
+    public Collection<string> AllowedKeyUsages { get; } = new Collection<string>();
 
     /// <summary>
     /// Default validity period in days for issued certificates.
@@ -67,13 +68,13 @@ public class EstProfile : BaseEntity
     /// Whether to validate client certificate chain against trusted CAs.
     /// When true, client certs must chain to a trusted issuer configured in TrustedClientCaThumbprints.
     /// </summary>
-    public bool ValidateClientCertificateChain { get; set; } = false;
+    public bool ValidateClientCertificateChain;
 
     /// <summary>
     /// List of trusted CA certificate thumbprints (SHA-256) for client cert validation.
     /// Client certificates must be issued by one of these CAs when ValidateClientCertificateChain is true.
     /// </summary>
-    public List<string> TrustedClientCaThumbprints { get; set; } = new();
+    public Collection<string> TrustedClientCaThumbprints { get; } = new Collection<string>();
 
     /// <summary>
     /// Whether this profile is enabled.
@@ -82,6 +83,6 @@ public class EstProfile : BaseEntity
 
     // Navigation properties
     public CaBackend? CaBackend { get; set; }
-    public ICollection<Certificate> Certificates { get; set; } = new List<Certificate>();
-    public ICollection<EnrollmentEvent> EnrollmentEvents { get; set; } = new List<EnrollmentEvent>();
+    public ICollection<Certificate> Certificates { get; } = new List<Certificate>();
+    public ICollection<EnrollmentEvent> EnrollmentEvents { get; } = new List<EnrollmentEvent>();
 }
