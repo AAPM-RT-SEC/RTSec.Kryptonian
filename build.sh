@@ -79,7 +79,7 @@ cmd_build() {
 
 cmd_test() {
     print_status "Running tests..."
-    dotnet test $SOLUTION --no-build --verbosity normal
+    dotnet test $SOLUTION --no-build --verbosity normal --logger "trx;LogFileName=test_results.trx" --results-directory "TestResults"
 }
 
 cmd_format() {
