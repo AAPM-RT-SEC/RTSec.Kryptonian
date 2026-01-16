@@ -74,7 +74,7 @@ cmd_clean() {
 
 cmd_build() {
     print_status "Building solution..."
-    dotnet build $SOLUTION --no-restore $DOTNET_BUILD_FLAGS
+    dotnet build $SOLUTION $DOTNET_BUILD_FLAGS
 }
 
 cmd_test() {

@@ -146,8 +146,10 @@ jobs:
 
       # Security analysis with Roslyn analyzers
       - name: Security Analysis
-        run: dotnet build --no-restore --configuration Release -p:AnalysisLevel=latest-all -p:AnalysisModeSecurity=all`
-            
+        run: ./build.sh build
+        env:
+          DOTNET_BUILD_FLAGS: "-p:AnalysisLevel=latest-all -p:AnalysisModeSecurity=all"
+        shell: bash
 
       # Generate Software Bill of Materials (SBOM)
       - name: Generate SBOM
@@ -247,7 +249,10 @@ jobs:
 
       # Code analysis for PR
       - name: PR Analysis
-        run: dotnet build --no-restore --configuration Debug -p:AnalysisLevel=latest-all -p:EnforceCodeStyleInBuild=true -p:TreatWarningsAsErrors=false
+        run: ./build.sh build
+        env:
+          DOTNET_BUILD_FLAGS: "-p:AnalysisLevel=latest-all -p:EnforceCodeStyleInBuild=true -p:TreatWarningsAsErrors=false"
+        shell: bash
 
       # Generate PR summary
       - name: PR Summary
