@@ -94,13 +94,21 @@ jobs:
         run: ./build.sh build
         shell: bash
 
-      # Run comprehensive tests with coverage
+      # Run comprehensive tests with coverage (only on Windows for efficiency)
       - name: Run tests with coverage
+        if: matrix.platform == 'windows'
+        run: ./build.sh coverage
+        shell: bash
+
+      # Run tests without coverage (on non-Windows platforms)
+      - name: Run tests
+        if: matrix.platform != 'windows'
         run: ./build.sh test
         shell: bash
 
-      # Generate coverage report using ReportGenerator
+      # Generate coverage report using ReportGenerator (only on Windows)
       - name: Generate coverage report
+        if: matrix.platform == 'windows'
         uses: danielpalme/ReportGenerator-GitHub-Action@5.2.0
         with:
           reports: '**/TestResults/**/coverage.cobertura.xml'
@@ -110,8 +118,9 @@ jobs:
           verbosity: 'Info'
           title: 'RTSec.Kryptonian Coverage'
 
-      # Upload coverage report as artifact
+      # Upload coverage report as artifact (only on Windows)
       - name: Upload coverage artifact
+        if: matrix.platform == 'windows'
         uses: actions/upload-artifact@v4
         with:
           name: coverage-${{ matrix.platform }}
@@ -186,18 +195,18 @@ jobs:
             echo "✅ All platforms passed quality checks"
           fi
 
-      # Download all coverage reports for summary
-      - name: Download coverage reports
+      # Download coverage report from Windows (only platform that generates it)
+      - name: Download coverage report
         uses: actions/download-artifact@v4
         with:
-          pattern: coverage-*
-          merge-multiple: true
+          name: coverage-windows
+          path: coverage-report/
 
       # Generate overall coverage summary
       - name: Coverage Summary
         uses: irongut/CodeCoverageSummary@v1.3.0
         with:
-          filename: '**/coverage.cobertura.xml'
+          filename: 'coverage-report/**/coverage.cobertura.xml'
           badge: true
           fail_below_min: false
           format: markdown
