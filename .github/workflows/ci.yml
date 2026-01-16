@@ -135,10 +135,10 @@ jobs:
           path: TestResults/
           retention-days: 30
 
-      # Publish test results to GitHub Checks
+      # Publish test results to GitHub Checks (Linux only)
       - name: Publish Test Results
         uses: EnricoMi/publish-unit-test-result-action@v2
-        if: always()
+        if: always() && matrix.platform == 'linux'
         with:
           files: '**/TestResults/**/*.trx'
           check_name: 'Test Results (${{ matrix.platform }})'
