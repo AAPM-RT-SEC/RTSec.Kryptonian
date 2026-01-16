@@ -305,6 +305,7 @@ public class PkcsServiceTests
         // Assert
         result.Should().StartWith("-----BEGIN CERTIFICATE-----");
         result.Should().EndWith("-----END CERTIFICATE-----" + Environment.NewLine);
+        cert.Dispose();
     }
 
     [Fact]

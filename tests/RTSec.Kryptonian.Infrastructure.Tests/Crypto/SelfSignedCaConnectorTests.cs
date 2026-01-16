@@ -18,17 +18,12 @@ public class SelfSignedCaConnectorTests : IDisposable
     private readonly X509Certificate2 _caCertificate;
     private readonly SelfSignedCaConnector _sut;
 
+    // Skip tests on Windows due to CNG private key export limitations
     public SelfSignedCaConnectorTests()
     {
         _loggerMock = new Mock<ILogger<SelfSignedCaConnector>>();
 
-        // Skip test setup on Windows due to CNG private key export limitations
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-        {
-            _caCertificate = null!;
-            _sut = null!;
-            return;
-        }
+
 
         _caCertificate = CreateCaCertificate();
         _sut = new SelfSignedCaConnector(_loggerMock.Object, _caCertificate);
@@ -71,16 +66,18 @@ public class SelfSignedCaConnectorTests : IDisposable
         // Assert
         act.Should().Throw<ArgumentException>()
             .WithMessage("*private key*");
+        certWithoutKey.Dispose();
     }
 
     #endregion
 
     #region GetCaCertificatesAsync Tests
 
-    [Fact]
+    [SkippableFact]
     public async Task GetCaCertificatesAsyncReturnsCaCertificate()
     {
-        SkipOnWindows();
+        Skip.If(RuntimeInformation.IsOSPlatform(OSPlatform.Windows), "Extracting Private Keys not allowed on MS Windows");
+
 
         // Act
         var result = await _sut.GetCaCertificatesAsync();
@@ -94,10 +91,11 @@ public class SelfSignedCaConnectorTests : IDisposable
 
     #region IssueCertificateAsync Tests
 
-    [Fact]
+    [SkippableFact]
     public async Task IssueCertificateAsyncWithValidCsrReturnsSuccessfulResult()
     {
-        SkipOnWindows();
+        Skip.If(RuntimeInformation.IsOSPlatform(OSPlatform.Windows), "Extracting Private Keys not allowed on MS Windows");
+
 
         // Arrange
         var parsedCsr = CreateParsedCsr("CN=TestDevice");
@@ -113,10 +111,11 @@ public class SelfSignedCaConnectorTests : IDisposable
         result.CertificateChain.Should().HaveCount(2);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task IssueCertificateAsyncSetsCorrectValidityPeriod()
     {
-        SkipOnWindows();
+        Skip.If(RuntimeInformation.IsOSPlatform(OSPlatform.Windows), "Extracting Private Keys not allowed on MS Windows");
+
 
         // Arrange
         var parsedCsr = CreateParsedCsr("CN=ValidityTest");
@@ -133,10 +132,11 @@ public class SelfSignedCaConnectorTests : IDisposable
             .Should().BeCloseTo(expectedNotAfter, TimeSpan.FromMinutes(10));
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task IssueCertificateAsyncSetsBasicConstraintsToNotCa()
     {
-        SkipOnWindows();
+        Skip.If(RuntimeInformation.IsOSPlatform(OSPlatform.Windows), "Extracting Private Keys not allowed on MS Windows");
+
 
         // Arrange
         var parsedCsr = CreateParsedCsr("CN=BasicConstraintsTest");
@@ -154,10 +154,11 @@ public class SelfSignedCaConnectorTests : IDisposable
         basicConstraints!.CertificateAuthority.Should().BeFalse();
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task IssueCertificateAsyncSetsKeyUsageFromProfile()
     {
-        SkipOnWindows();
+        Skip.If(RuntimeInformation.IsOSPlatform(OSPlatform.Windows), "Extracting Private Keys not allowed on MS Windows");
+
 
         // Arrange
         var parsedCsr = CreateParsedCsr("CN=KeyUsageTest");
@@ -176,10 +177,11 @@ public class SelfSignedCaConnectorTests : IDisposable
         keyUsage.KeyUsages.Should().HaveFlag(X509KeyUsageFlags.KeyEncipherment);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task IssueCertificateAsyncSetsAuthorityKeyIdentifier()
     {
-        SkipOnWindows();
+        Skip.If(RuntimeInformation.IsOSPlatform(OSPlatform.Windows), "Extracting Private Keys not allowed on MS Windows");
+
 
         // Arrange
         var parsedCsr = CreateParsedCsr("CN=AkiTest");
@@ -197,10 +199,10 @@ public class SelfSignedCaConnectorTests : IDisposable
         aki.Should().NotBeNull();
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task IssueCertificateAsyncSetsSubjectKeyIdentifier()
     {
-        SkipOnWindows();
+        Skip.If(RuntimeInformation.IsOSPlatform(OSPlatform.Windows), "Extracting Private Keys not allowed on MS Windows");
 
         // Arrange
         var parsedCsr = CreateParsedCsr("CN=SkiTest");
@@ -217,10 +219,11 @@ public class SelfSignedCaConnectorTests : IDisposable
         ski.Should().NotBeNull();
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task IssueCertificateAsyncWithNullCsrThrowsArgumentNullException()
     {
-        SkipOnWindows();
+        Skip.If(RuntimeInformation.IsOSPlatform(OSPlatform.Windows), "Extracting Private Keys not allowed on MS Windows");
+
 
         // Arrange
         var profile = CreateEstProfile();
@@ -232,10 +235,11 @@ public class SelfSignedCaConnectorTests : IDisposable
         await act.Should().ThrowAsync<ArgumentNullException>();
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task IssueCertificateAsyncWithNullProfileThrowsArgumentNullException()
     {
-        SkipOnWindows();
+        Skip.If(RuntimeInformation.IsOSPlatform(OSPlatform.Windows), "Extracting Private Keys not allowed on MS Windows");
+
 
         // Arrange
         var parsedCsr = CreateParsedCsr("CN=Test");
@@ -251,10 +255,10 @@ public class SelfSignedCaConnectorTests : IDisposable
 
     #region TestConnectionAsync Tests
 
-    [Fact]
+    [SkippableFact]
     public async Task TestConnectionAsyncWithValidCaReturnsTrue()
     {
-        SkipOnWindows();
+        Skip.If(RuntimeInformation.IsOSPlatform(OSPlatform.Windows), "Extracting Private Keys not allowed on MS Windows");
 
         // Act
         var result = await _sut.TestConnectionAsync();
@@ -263,10 +267,11 @@ public class SelfSignedCaConnectorTests : IDisposable
         result.Should().BeTrue();
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task TestConnectionAsyncHandlesTimezoneConversionCorrectly()
     {
-        SkipOnWindows();
+        Skip.If(RuntimeInformation.IsOSPlatform(OSPlatform.Windows), "Extracting Private Keys not allowed on MS Windows");
+
 
         // This test verifies the fix for the timezone bug where:
         // - X509Certificate2.NotBefore/NotAfter return Local time
@@ -284,10 +289,11 @@ public class SelfSignedCaConnectorTests : IDisposable
 
     #region RevokeCertificateAsync Tests
 
-    [Fact]
+    [SkippableFact]
     public async Task RevokeCertificateAsyncReturnsFalse()
     {
-        SkipOnWindows();
+        Skip.If(RuntimeInformation.IsOSPlatform(OSPlatform.Windows), "Extracting Private Keys not allowed on MS Windows");
+
 
         // Revocation not implemented for self-signed CA
 
@@ -302,10 +308,11 @@ public class SelfSignedCaConnectorTests : IDisposable
 
     #region Certificate Chain Tests
 
-    [Fact]
+    [SkippableFact]
     public async Task IssueCertificateAsyncCertificateChainHasCorrectOrder()
     {
-        SkipOnWindows();
+        Skip.If(RuntimeInformation.IsOSPlatform(OSPlatform.Windows), "Extracting Private Keys not allowed on MS Windows");
+
 
         // Arrange
         var parsedCsr = CreateParsedCsr("CN=ChainOrderTest");
@@ -325,10 +332,11 @@ public class SelfSignedCaConnectorTests : IDisposable
         result.CertificateChain[1].Subject.Should().Be(_caCertificate.Subject);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task IssueCertificateAsyncEndEntityIssuerMatchesCaSubject()
     {
-        SkipOnWindows();
+        Skip.If(RuntimeInformation.IsOSPlatform(OSPlatform.Windows), "Extracting Private Keys not allowed on MS Windows");
+
 
         // Arrange
         var parsedCsr = CreateParsedCsr("CN=IssuerMatchTest");
@@ -346,10 +354,10 @@ public class SelfSignedCaConnectorTests : IDisposable
 
     #region ECDSA CA Tests
 
-    [Fact]
+    [SkippableFact]
     public async Task IssueCertificateAsyncWithEcdsaCaIssuesValidCertificate()
     {
-        SkipOnWindows();
+        Skip.If(RuntimeInformation.IsOSPlatform(OSPlatform.Windows), "Extracting Private Keys not allowed on MS Windows");
 
         // Arrange
         using var ecdsaCa = CreateEcdsaCaCertificate();
@@ -494,10 +502,6 @@ public class SelfSignedCaConnectorTests : IDisposable
     private static void SkipOnWindows()
     {
         // Skip on Windows due to CNG private key export limitations
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-        {
-            // Use xUnit's Skip.If when available, or just return
-            // Tests will show as skipped in the test results
-        }
+        Skip.If(RuntimeInformation.IsOSPlatform(OSPlatform.Windows));
     }
 }
