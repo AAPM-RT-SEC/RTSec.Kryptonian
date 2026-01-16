@@ -145,10 +145,10 @@ jobs:
           comment_mode: 'always'
           fail_on: 'test failures'
 
-      # Publish coverage to PR comment
+      # Publish coverage to PR comment (Windows only, where coverage is generated)
       - name: Coverage PR Comment
         uses: marocchino/sticky-pull-request-comment@v2
-        if: github.event_name == 'pull_request' && success()
+        if: github.event_name == 'pull_request' && success() && matrix.platform == 'windows'
         with:
           recreate: true
           path: coverage-report/SummaryGithub.md
