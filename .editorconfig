@@ -3,6 +3,12 @@
 
 root = true
 
+# Husky.NET Configuration
+# Pre-commit hooks for code formatting and quality checks
+# Install: dotnet tool install Husky --global
+# Initialize: husky install
+# Add hook: husky add pre-commit -c "dotnet format --verify-no-changes --include **/*.cs"
+
 [*]
 charset = utf-8
 end_of_line = lf
