@@ -208,7 +208,7 @@ public class EnrollmentOrchestrator : IEnrollmentOrchestrator
             await _unitOfWork.SaveChangesAsync(ct);
 
             // Build certificate chain for response
-            var certChain = issuanceResult.CertificateChain ?? new[] { issuanceResult.Certificate };
+            var certChain = issuanceResult.CertificateChain?.ToArray() ?? new[] { issuanceResult.Certificate! };
             var pkcs7 = _pkcsService.EncodeToPkcs7(certChain);
             var responseBody = _pkcsService.EncodeEstResponseBody(pkcs7);
 
@@ -238,6 +238,7 @@ public class EnrollmentOrchestrator : IEnrollmentOrchestrator
         string? clientIp,
         CancellationToken ct = default)
     {
+        ArgumentNullException.ThrowIfNull(existingCert);
         _logger.LogInformation("Starting re-enrollment for profile {ProfileId}, existing cert serial {Serial}",
             profileId, existingCert.SerialNumber);
 

@@ -165,7 +165,7 @@
             {
                 Name = ExistingBackend.Name,
                 Type = ExistingBackend.Type,
-                Url = ExistingBackend.Url,
+                Url = ExistingBackend.Url?.ToString(),
                 IsEnabled = ExistingBackend.IsEnabled
             };
 
@@ -202,20 +202,20 @@
         }
     }
 
-    private void BuildConfig()
+    private Dictionary<string, object> BuildConfig()
     {
-        _model.Config = new Dictionary<string, object>();
+        var config = new Dictionary<string, object>();
 
         if (_model.Type == "acme")
         {
             // Use exact keys expected by CaConnectorFactory.CreateAcmeConnector
             if (!string.IsNullOrWhiteSpace(_acmeEmail))
-                _model.Config["Email"] = _acmeEmail;
-            _model.Config["PreferredChallengeType"] = _preferredChallenge;
+                config["Email"] = _acmeEmail;
+            config["PreferredChallengeType"] = _preferredChallenge;
             if (!string.IsNullOrWhiteSpace(_eabKeyId))
-                _model.Config["EabKeyId"] = _eabKeyId;
+                config["EabKeyId"] = _eabKeyId;
             if (!string.IsNullOrWhiteSpace(_eabHmacKey))
-                _model.Config["EabHmacKey"] = _eabHmacKey;
+                config["EabHmacKey"] = _eabHmacKey;
         }
         else if (_model.Type == "selfsigned")
         {
@@ -223,18 +223,20 @@
             if (_certMode == "pfx")
             {
                 if (!string.IsNullOrWhiteSpace(_pfxPath))
-                    _model.Config["PfxPath"] = _pfxPath;
+                    config["PfxPath"] = _pfxPath;
                 if (!string.IsNullOrWhiteSpace(_pfxPassword))
-                    _model.Config["PfxPassword"] = _pfxPassword;
+                    config["PfxPassword"] = _pfxPassword;
             }
             else
             {
                 if (!string.IsNullOrWhiteSpace(_certPath))
-                    _model.Config["CertPath"] = _certPath;
+                    config["CertPath"] = _certPath;
                 if (!string.IsNullOrWhiteSpace(_keyPath))
-                    _model.Config["KeyPath"] = _keyPath;
+                    config["KeyPath"] = _keyPath;
             }
         }
+        // Other backend types don't need config
+        return config;
     }
 
     private async Task Submit()
@@ -277,7 +279,7 @@
         _saving = true;
         try
         {
-            BuildConfig();
+            var config = BuildConfig();
 
             if (_isEdit)
             {
@@ -286,7 +288,7 @@
                     Name = _model.Name,
                     Type = _model.Type,
                     Url = _model.Url,
-                    Config = _model.Config,
+                    Config = config,
                     IsEnabled = _model.IsEnabled
                 };
                 var result = await ApiClient.UpdateCaBackendAsync(ExistingBackend!.Id, updateDto);
@@ -298,7 +300,15 @@
             }
             else
             {
-                var result = await ApiClient.CreateCaBackendAsync(_model);
+                var createDto = new CaBackendCreateDto
+                {
+                    Name = _model.Name,
+                    Type = _model.Type,
+                    Url = _model.Url,
+                    Config = config,
+                    IsEnabled = _model.IsEnabled
+                };
+                var result = await ApiClient.CreateCaBackendAsync(createDto);
                 if (result.Success && result.Data != null)
                 {
                     MudDialog.Close(DialogResult.Ok(result.Data));

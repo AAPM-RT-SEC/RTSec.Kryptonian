@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.Text.Json.Serialization;
 
 namespace RTSec.Kryptonian.Application.DTOs;
@@ -17,10 +18,10 @@ public class CaBackendDto
     public string Type { get; set; } = string.Empty;
 
     [JsonPropertyName("url")]
-    public string? Url { get; set; }
+    public Uri? Url { get; set; }
 
     [JsonPropertyName("config")]
-    public Dictionary<string, object>? Config { get; set; }
+    public Dictionary<string, object> Config { get; } = new Dictionary<string, object>();
 
     [JsonPropertyName("isEnabled")]
     public bool IsEnabled { get; set; }
@@ -47,7 +48,7 @@ public class CaBackendCreateDto
     public string? Url { get; set; }
 
     [JsonPropertyName("config")]
-    public Dictionary<string, object>? Config { get; set; }
+    public Dictionary<string, object>? Config { get; init; }
 
     [JsonPropertyName("isEnabled")]
     public bool IsEnabled { get; set; } = true;
@@ -68,7 +69,7 @@ public class CaBackendUpdateDto
     public string? Url { get; set; }
 
     [JsonPropertyName("config")]
-    public Dictionary<string, object>? Config { get; set; }
+    public Dictionary<string, object>? Config { get; init; }
 
     [JsonPropertyName("isEnabled")]
     public bool? IsEnabled { get; set; }

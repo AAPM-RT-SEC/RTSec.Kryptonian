@@ -9,7 +9,7 @@ namespace RTSec.Kryptonian.Domain.Tests.ValueObjects;
 public class CertificateIssuanceResultTests
 {
     [Fact]
-    public void Successful_CreatesSuccessfulResult()
+    public void SuccessfulCreatesSuccessfulResult()
     {
         // Arrange
         using var cert = CreateTestCertificate();
@@ -28,7 +28,7 @@ public class CertificateIssuanceResultTests
     }
 
     [Fact]
-    public void Failed_CreatesFailedResult()
+    public void FailedCreatesFailedResult()
     {
         // Act
         var result = CertificateIssuanceResult.Failed("Connection timeout");
@@ -43,7 +43,7 @@ public class CertificateIssuanceResultTests
     }
 
     [Fact]
-    public void Pending_CreatesPendingResult()
+    public void PendingCreatesPendingResult()
     {
         // Act
         var result = CertificateIssuanceResult.Pending(30);

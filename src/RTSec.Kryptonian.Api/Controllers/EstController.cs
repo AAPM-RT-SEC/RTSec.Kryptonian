@@ -391,7 +391,7 @@ public class EstController : ControllerBase
         if (result.Success)
         {
             Response.Headers["Content-Transfer-Encoding"] = "base64";
-            return File(result.Pkcs7Response!, Pkcs7MimeType);
+            return File(result.Pkcs7Response!.ToArray(), Pkcs7MimeType);
         }
 
         // Handle pending/async enrollment (HTTP 202 with Retry-After)

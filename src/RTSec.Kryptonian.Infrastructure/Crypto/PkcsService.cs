@@ -197,12 +197,12 @@ public class PkcsService : IPkcsService
     {
         ArgumentNullException.ThrowIfNull(csr);
 
-        if (csr.RawData == null || csr.RawData.Length == 0)
+        if (csr.RawData == null || csr.RawData.Count == 0)
             return false;
 
         try
         {
-            var pkcs10 = new Pkcs10CertificationRequest(csr.RawData);
+            var pkcs10 = new Pkcs10CertificationRequest(csr.RawData.ToArray());
             return pkcs10.Verify();
         }
         catch (Exception ex)

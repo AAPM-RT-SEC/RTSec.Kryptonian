@@ -20,7 +20,7 @@ public class CertificateIssuanceResult
     /// <summary>
     /// The full certificate chain including intermediates and root.
     /// </summary>
-    public X509Certificate2[]? CertificateChain { get; init; }
+    public IReadOnlyList<X509Certificate2>? CertificateChain { get; init; }
 
     /// <summary>
     /// Error message (if failed).

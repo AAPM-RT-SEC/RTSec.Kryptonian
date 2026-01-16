@@ -211,7 +211,7 @@ emyPxgcYxn/eR44/KJ4EBs+lVDR3veyJm+kXQ99b21/+jh5Xos1AnX5iItreGCc=
             var certKey = GenerateCertificateKey(csr);
 
             // Finalize the order with the CSR - Certes expects raw CSR bytes
-            var finalizedOrder = await order.Finalize(csr.RawData);
+            var finalizedOrder = await order.Finalize(csr.RawData.ToArray());
 
             _logger.LogDebug("Order finalized, waiting for certificate issuance...");
 
@@ -303,7 +303,7 @@ emyPxgcYxn/eR44/KJ4EBs+lVDR3veyJm+kXQ99b21/+jh5Xos1AnX5iItreGCc=
 
         // Try to load existing account from database
         var existingAccount = await _unitOfWork.AcmeAccounts.GetByDirectoryAndEmailAsync(
-            _config.DirectoryUrl, _config.Email, ct);
+            new Uri(_config.DirectoryUrl), _config.Email, ct);
 
         if (existingAccount != null)
         {
@@ -343,9 +343,9 @@ emyPxgcYxn/eR44/KJ4EBs+lVDR3veyJm+kXQ99b21/+jh5Xos1AnX5iItreGCc=
 
             var newAccount = new AcmeAccount
             {
-                DirectoryUrl = _config.DirectoryUrl,
+                DirectoryUrl = new Uri(_config.DirectoryUrl),
                 Email = _config.Email,
-                AccountUrl = _accountContext.Location?.ToString(),
+                AccountUrl = _accountContext.Location,
                 EncryptedPrivateKey = encryptedKey,
                 TermsOfServiceAccepted = true,
                 IsActive = true,

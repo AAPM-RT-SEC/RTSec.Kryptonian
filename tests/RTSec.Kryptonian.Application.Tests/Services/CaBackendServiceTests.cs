@@ -46,7 +46,7 @@ public class CaBackendServiceTests
     #region GetAllAsync Tests
 
     [Fact]
-    public async Task GetAllAsync_ReturnsAllBackends()
+    public async Task GetAllAsyncReturnsAllBackends()
     {
         // Arrange
         var backends = new List<CaBackend>
@@ -69,7 +69,7 @@ public class CaBackendServiceTests
     #region GetByIdAsync Tests
 
     [Fact]
-    public async Task GetByIdAsync_WithExistingId_ReturnsBackend()
+    public async Task GetByIdAsyncWithExistingIdReturnsBackend()
     {
         // Arrange
         var id = Guid.NewGuid();
@@ -86,7 +86,7 @@ public class CaBackendServiceTests
     }
 
     [Fact]
-    public async Task GetByIdAsync_WithNonExistingId_ReturnsNull()
+    public async Task GetByIdAsyncWithNonExistingIdReturnsNull()
     {
         // Arrange
         var id = Guid.NewGuid();
@@ -105,7 +105,7 @@ public class CaBackendServiceTests
     #region CreateAsync Tests
 
     [Fact]
-    public async Task CreateAsync_WithValidDto_CreatesBackend()
+    public async Task CreateAsyncWithValidDtoCreatesBackend()
     {
         // Arrange
         var dto = new CaBackendCreateDto
@@ -130,7 +130,7 @@ public class CaBackendServiceTests
     }
 
     [Fact]
-    public async Task CreateAsync_WithInvalidType_ThrowsAutoMapperMappingException()
+    public async Task CreateAsyncWithInvalidTypeThrowsAutoMapperMappingException()
     {
         // Arrange
         var dto = new CaBackendCreateDto
@@ -151,7 +151,7 @@ public class CaBackendServiceTests
     #region UpdateAsync Tests
 
     [Fact]
-    public async Task UpdateAsync_WithExistingBackend_UpdatesAndReturns()
+    public async Task UpdateAsyncWithExistingBackendUpdatesAndReturns()
     {
         // Arrange
         var id = Guid.NewGuid();
@@ -173,7 +173,7 @@ public class CaBackendServiceTests
     }
 
     [Fact]
-    public async Task UpdateAsync_WithNonExistingBackend_ReturnsNull()
+    public async Task UpdateAsyncWithNonExistingBackendReturnsNull()
     {
         // Arrange
         var id = Guid.NewGuid();
@@ -192,7 +192,7 @@ public class CaBackendServiceTests
     #region DeleteAsync Tests
 
     [Fact]
-    public async Task DeleteAsync_WithNoLinkedProfiles_Deletes()
+    public async Task DeleteAsyncWithNoLinkedProfilesDeletes()
     {
         // Arrange
         var id = Guid.NewGuid();
@@ -213,7 +213,7 @@ public class CaBackendServiceTests
     }
 
     [Fact]
-    public async Task DeleteAsync_WithLinkedProfiles_ThrowsInvalidOperationException()
+    public async Task DeleteAsyncWithLinkedProfilesThrowsInvalidOperationException()
     {
         // Arrange
         var id = Guid.NewGuid();
@@ -232,7 +232,7 @@ public class CaBackendServiceTests
     }
 
     [Fact]
-    public async Task DeleteAsync_WithNonExistingBackend_ReturnsFalse()
+    public async Task DeleteAsyncWithNonExistingBackendReturnsFalse()
     {
         // Arrange
         var id = Guid.NewGuid();
@@ -251,7 +251,7 @@ public class CaBackendServiceTests
     #region TestConnectionAsync Tests
 
     [Fact]
-    public async Task TestConnectionAsync_WithSuccessfulConnection_ReturnsTrue()
+    public async Task TestConnectionAsyncWithSuccessfulConnectionReturnsTrue()
     {
         // Arrange
         var id = Guid.NewGuid();
@@ -273,7 +273,7 @@ public class CaBackendServiceTests
     }
 
     [Fact]
-    public async Task TestConnectionAsync_WithFailedConnection_ReturnsFalse()
+    public async Task TestConnectionAsyncWithFailedConnectionReturnsFalse()
     {
         // Arrange
         var id = Guid.NewGuid();

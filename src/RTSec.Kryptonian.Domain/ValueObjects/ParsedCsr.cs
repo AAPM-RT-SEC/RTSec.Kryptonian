@@ -10,10 +10,10 @@ public class ParsedCsr
     /// <summary>
     /// The raw DER-encoded CSR bytes.
     /// </summary>
-    public byte[] RawData { get; init; } = Array.Empty<byte>();
+    public IReadOnlyList<byte> RawData { get; init; } = Array.Empty<byte>();
 
     /// <summary>
-    /// The subject distinguished name from the CSR.
+    /// Subject Distinguished Name from the CSR.
     /// </summary>
     public string SubjectDn { get; init; } = string.Empty;
 
@@ -35,7 +35,7 @@ public class ParsedCsr
     /// <summary>
     /// Subject Alternative Names (if present).
     /// </summary>
-    public List<string> SubjectAlternativeNames { get; init; } = new();
+    public IReadOnlyList<string> SubjectAlternativeNames { get; init; } = new List<string>();
 
     /// <summary>
     /// The signature algorithm used.

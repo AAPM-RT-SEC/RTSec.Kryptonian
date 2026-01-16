@@ -43,6 +43,7 @@ public class EstProfileService : IEstProfileService
     /// <inheritdoc />
     public async Task<EstProfileDto> CreateAsync(EstProfileCreateDto dto, CancellationToken ct = default)
     {
+        ArgumentNullException.ThrowIfNull(dto);
         _logger.LogInformation("Creating EST profile: {Name}", dto.Name);
 
         // Validate CA backend ID format
@@ -86,6 +87,7 @@ public class EstProfileService : IEstProfileService
     /// <inheritdoc />
     public async Task<EstProfileDto?> UpdateAsync(Guid id, EstProfileUpdateDto dto, CancellationToken ct = default)
     {
+        ArgumentNullException.ThrowIfNull(dto);
         var entity = await _unitOfWork.EstProfiles.GetByIdAsync(id, ct);
         if (entity == null)
         {
@@ -114,7 +116,7 @@ public class EstProfileService : IEstProfileService
 
         // Check for duplicate path/hostname if being changed
         var newPath = dto.PathPrefix ?? entity.PathPrefix;
-        var newHostnames = dto.Hostnames ?? entity.Hostnames;
+        var newHostnames = dto.Hostnames?.ToList() ?? entity.Hostnames.ToList();
 
         if (dto.PathPrefix != null || dto.Hostnames != null)
         {
@@ -133,7 +135,13 @@ public class EstProfileService : IEstProfileService
             entity.Name = dto.Name;
 
         if (dto.Hostnames != null)
-            entity.Hostnames = dto.Hostnames;
+        {
+            entity.Hostnames.Clear();
+            foreach (var hostname in dto.Hostnames)
+            {
+                entity.Hostnames.Add(hostname);
+            }
+        }
 
         if (dto.PathPrefix != null)
             entity.PathPrefix = dto.PathPrefix;
@@ -142,7 +150,13 @@ public class EstProfileService : IEstProfileService
             entity.CertificateTemplate = dto.CertificateTemplate;
 
         if (dto.AllowedKeyUsages != null)
-            entity.AllowedKeyUsages = dto.AllowedKeyUsages;
+        {
+            entity.AllowedKeyUsages.Clear();
+            foreach (var keyUsage in dto.AllowedKeyUsages)
+            {
+                entity.AllowedKeyUsages.Add(keyUsage);
+            }
+        }
 
         if (dto.ValidityDays.HasValue)
             entity.ValidityDays = dto.ValidityDays.Value;
@@ -170,7 +184,13 @@ public class EstProfileService : IEstProfileService
             entity.ValidateClientCertificateChain = dto.ValidateClientCertificateChain.Value;
 
         if (dto.TrustedClientCaThumbprints != null)
-            entity.TrustedClientCaThumbprints = dto.TrustedClientCaThumbprints;
+        {
+            entity.TrustedClientCaThumbprints.Clear();
+            foreach (var thumbprint in dto.TrustedClientCaThumbprints)
+            {
+                entity.TrustedClientCaThumbprints.Add(thumbprint);
+            }
+        }
 
         entity.UpdatedAt = DateTime.UtcNow;
 

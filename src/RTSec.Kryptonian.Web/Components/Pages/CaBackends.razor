@@ -40,7 +40,7 @@ else
             <MudTd DataLabel="Type">
                 <MudChip T="string" Size="Size.Small" Color="@GetTypeColor(context.Type)">@context.Type</MudChip>
             </MudTd>
-            <MudTd DataLabel="URL">@(context.Url ?? "-")</MudTd>
+            <MudTd DataLabel="URL">@(context.Url?.ToString() ?? "-")</MudTd>
             <MudTd DataLabel="Status">
                 @if (context.IsEnabled)
                 {

@@ -7,7 +7,7 @@ namespace RTSec.Kryptonian.Infrastructure.Tests.Acme;
 public class AcmeConnectorConfigTests
 {
     [Fact]
-    public void DefaultConfig_HasLetsEncryptDirectory()
+    public void DefaultConfigHasLetsEncryptDirectory()
     {
         // Arrange & Act
         var config = new AcmeConnectorConfig();
@@ -17,7 +17,7 @@ public class AcmeConnectorConfigTests
     }
 
     [Fact]
-    public void DefaultConfig_HasEmptyEmail()
+    public void DefaultConfigHasEmptyEmail()
     {
         // Arrange & Act
         var config = new AcmeConnectorConfig();
@@ -27,7 +27,7 @@ public class AcmeConnectorConfigTests
     }
 
     [Fact]
-    public void DefaultConfig_HasNullEabSettings()
+    public void DefaultConfigHasNullEabSettings()
     {
         // Arrange & Act
         var config = new AcmeConnectorConfig();
@@ -38,7 +38,7 @@ public class AcmeConnectorConfigTests
     }
 
     [Fact]
-    public void DefaultConfig_PrefersHttp01Challenge()
+    public void DefaultConfigPrefersHttp01Challenge()
     {
         // Arrange & Act
         var config = new AcmeConnectorConfig();
@@ -48,7 +48,7 @@ public class AcmeConnectorConfigTests
     }
 
     [Fact]
-    public void Config_CanBeConfiguredForZeroSsl()
+    public void ConfigCanBeConfiguredForZeroSsl()
     {
         // Arrange & Act
         var config = new AcmeConnectorConfig
@@ -66,7 +66,7 @@ public class AcmeConnectorConfigTests
     }
 
     [Fact]
-    public void Config_CanBeConfiguredForLetsEncryptStaging()
+    public void ConfigCanBeConfiguredForLetsEncryptStaging()
     {
         // Arrange & Act
         var config = new AcmeConnectorConfig
