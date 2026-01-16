@@ -12,6 +12,16 @@ using Xunit;
 
 namespace RTSec.Kryptonian.Infrastructure.Tests.Crypto;
 
+public class NotWindowsFactAttribute : FactAttribute
+{
+    public NotWindowsFactAttribute()
+    {
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            Skip = "This test does not on Windows.";
+        }
+    }
+}
 public class SelfSignedCaConnectorTests : IDisposable
 {
     private readonly Mock<ILogger<SelfSignedCaConnector>> _loggerMock;
@@ -73,7 +83,8 @@ public class SelfSignedCaConnectorTests : IDisposable
 
     #region GetCaCertificatesAsync Tests
 
-    [SkippableFact]
+
+    [NotWindowsFact]
     public async Task GetCaCertificatesAsyncReturnsCaCertificate()
     {
         Skip.If(RuntimeInformation.IsOSPlatform(OSPlatform.Windows), "Extracting Private Keys not allowed on MS Windows");
@@ -91,7 +102,7 @@ public class SelfSignedCaConnectorTests : IDisposable
 
     #region IssueCertificateAsync Tests
 
-    [SkippableFact]
+    [NotWindowsFact]
     public async Task IssueCertificateAsyncWithValidCsrReturnsSuccessfulResult()
     {
         Skip.If(RuntimeInformation.IsOSPlatform(OSPlatform.Windows), "Extracting Private Keys not allowed on MS Windows");
@@ -111,7 +122,7 @@ public class SelfSignedCaConnectorTests : IDisposable
         result.CertificateChain.Should().HaveCount(2);
     }
 
-    [SkippableFact]
+    [NotWindowsFact]
     public async Task IssueCertificateAsyncSetsCorrectValidityPeriod()
     {
         Skip.If(RuntimeInformation.IsOSPlatform(OSPlatform.Windows), "Extracting Private Keys not allowed on MS Windows");
@@ -132,7 +143,7 @@ public class SelfSignedCaConnectorTests : IDisposable
             .Should().BeCloseTo(expectedNotAfter, TimeSpan.FromMinutes(10));
     }
 
-    [SkippableFact]
+    [NotWindowsFact]
     public async Task IssueCertificateAsyncSetsBasicConstraintsToNotCa()
     {
         Skip.If(RuntimeInformation.IsOSPlatform(OSPlatform.Windows), "Extracting Private Keys not allowed on MS Windows");
@@ -154,7 +165,7 @@ public class SelfSignedCaConnectorTests : IDisposable
         basicConstraints!.CertificateAuthority.Should().BeFalse();
     }
 
-    [SkippableFact]
+    [NotWindowsFact]
     public async Task IssueCertificateAsyncSetsKeyUsageFromProfile()
     {
         Skip.If(RuntimeInformation.IsOSPlatform(OSPlatform.Windows), "Extracting Private Keys not allowed on MS Windows");
@@ -177,7 +188,7 @@ public class SelfSignedCaConnectorTests : IDisposable
         keyUsage.KeyUsages.Should().HaveFlag(X509KeyUsageFlags.KeyEncipherment);
     }
 
-    [SkippableFact]
+    [NotWindowsFact]
     public async Task IssueCertificateAsyncSetsAuthorityKeyIdentifier()
     {
         Skip.If(RuntimeInformation.IsOSPlatform(OSPlatform.Windows), "Extracting Private Keys not allowed on MS Windows");
@@ -199,7 +210,7 @@ public class SelfSignedCaConnectorTests : IDisposable
         aki.Should().NotBeNull();
     }
 
-    [SkippableFact]
+    [NotWindowsFact]
     public async Task IssueCertificateAsyncSetsSubjectKeyIdentifier()
     {
         Skip.If(RuntimeInformation.IsOSPlatform(OSPlatform.Windows), "Extracting Private Keys not allowed on MS Windows");
@@ -219,7 +230,7 @@ public class SelfSignedCaConnectorTests : IDisposable
         ski.Should().NotBeNull();
     }
 
-    [SkippableFact]
+    [NotWindowsFact]
     public async Task IssueCertificateAsyncWithNullCsrThrowsArgumentNullException()
     {
         Skip.If(RuntimeInformation.IsOSPlatform(OSPlatform.Windows), "Extracting Private Keys not allowed on MS Windows");
@@ -235,7 +246,7 @@ public class SelfSignedCaConnectorTests : IDisposable
         await act.Should().ThrowAsync<ArgumentNullException>();
     }
 
-    [SkippableFact]
+    [NotWindowsFact]
     public async Task IssueCertificateAsyncWithNullProfileThrowsArgumentNullException()
     {
         Skip.If(RuntimeInformation.IsOSPlatform(OSPlatform.Windows), "Extracting Private Keys not allowed on MS Windows");
@@ -255,7 +266,7 @@ public class SelfSignedCaConnectorTests : IDisposable
 
     #region TestConnectionAsync Tests
 
-    [SkippableFact]
+    [NotWindowsFact]
     public async Task TestConnectionAsyncWithValidCaReturnsTrue()
     {
         Skip.If(RuntimeInformation.IsOSPlatform(OSPlatform.Windows), "Extracting Private Keys not allowed on MS Windows");
@@ -267,7 +278,7 @@ public class SelfSignedCaConnectorTests : IDisposable
         result.Should().BeTrue();
     }
 
-    [SkippableFact]
+    [NotWindowsFact]
     public async Task TestConnectionAsyncHandlesTimezoneConversionCorrectly()
     {
         Skip.If(RuntimeInformation.IsOSPlatform(OSPlatform.Windows), "Extracting Private Keys not allowed on MS Windows");
@@ -289,7 +300,7 @@ public class SelfSignedCaConnectorTests : IDisposable
 
     #region RevokeCertificateAsync Tests
 
-    [SkippableFact]
+    [NotWindowsFact]
     public async Task RevokeCertificateAsyncReturnsFalse()
     {
         Skip.If(RuntimeInformation.IsOSPlatform(OSPlatform.Windows), "Extracting Private Keys not allowed on MS Windows");
@@ -308,7 +319,7 @@ public class SelfSignedCaConnectorTests : IDisposable
 
     #region Certificate Chain Tests
 
-    [SkippableFact]
+    [NotWindowsFact]
     public async Task IssueCertificateAsyncCertificateChainHasCorrectOrder()
     {
         Skip.If(RuntimeInformation.IsOSPlatform(OSPlatform.Windows), "Extracting Private Keys not allowed on MS Windows");
@@ -332,7 +343,7 @@ public class SelfSignedCaConnectorTests : IDisposable
         result.CertificateChain[1].Subject.Should().Be(_caCertificate.Subject);
     }
 
-    [SkippableFact]
+    [NotWindowsFact]
     public async Task IssueCertificateAsyncEndEntityIssuerMatchesCaSubject()
     {
         Skip.If(RuntimeInformation.IsOSPlatform(OSPlatform.Windows), "Extracting Private Keys not allowed on MS Windows");
@@ -354,7 +365,7 @@ public class SelfSignedCaConnectorTests : IDisposable
 
     #region ECDSA CA Tests
 
-    [SkippableFact]
+    [NotWindowsFact]
     public async Task IssueCertificateAsyncWithEcdsaCaIssuesValidCertificate()
     {
         Skip.If(RuntimeInformation.IsOSPlatform(OSPlatform.Windows), "Extracting Private Keys not allowed on MS Windows");
