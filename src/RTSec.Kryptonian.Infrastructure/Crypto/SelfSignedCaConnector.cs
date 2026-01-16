@@ -337,27 +337,49 @@ public class SelfSignedCaConnector : ICaConnector
     {
         if (cert.GetRSAPrivateKey() is RSA rsa)
         {
-            var rsaParams = rsa.ExportParameters(true);
-            return new RsaPrivateCrtKeyParameters(
-                new BigInteger(1, rsaParams.Modulus!),
-                new BigInteger(1, rsaParams.Exponent!),
-                new BigInteger(1, rsaParams.D!),
-                new BigInteger(1, rsaParams.P!),
-                new BigInteger(1, rsaParams.Q!),
-                new BigInteger(1, rsaParams.DP!),
-                new BigInteger(1, rsaParams.DQ!),
-                new BigInteger(1, rsaParams.InverseQ!));
+            // Try to export parameters (works on Linux/macOS)
+            try
+            {
+                var rsaParams = rsa.ExportParameters(true);
+                return new RsaPrivateCrtKeyParameters(
+                    new BigInteger(1, rsaParams.Modulus!),
+                    new BigInteger(1, rsaParams.Exponent!),
+                    new BigInteger(1, rsaParams.D!),
+                    new BigInteger(1, rsaParams.P!),
+                    new BigInteger(1, rsaParams.Q!),
+                    new BigInteger(1, rsaParams.DP!),
+                    new BigInteger(1, rsaParams.DQ!),
+                    new BigInteger(1, rsaParams.InverseQ!));
+            }
+            catch (CryptographicException)
+            {
+                // Windows CNG doesn't support exporting private key parameters
+                // Use PKCS#8 export/import as a workaround
+                var pkcs8 = rsa.ExportPkcs8PrivateKey();
+                return Org.BouncyCastle.Security.PrivateKeyFactory.CreateKey(pkcs8);
+            }
         }
 
         if (cert.GetECDsaPrivateKey() is ECDsa ecdsa)
         {
-            var ecParams = ecdsa.ExportParameters(true);
-            var curve = GetBouncyCastleCurve(ecParams.Curve);
-            var domainParams = new ECDomainParameters(curve.Curve, curve.G, curve.N, curve.H);
+            // Try to export parameters (works on Linux/macOS)
+            try
+            {
+                var ecParams = ecdsa.ExportParameters(true);
+                var curve = GetBouncyCastleCurve(ecParams.Curve);
+                var domainParams = new ECDomainParameters(curve.Curve, curve.G, curve.N, curve.H);
 
-            return new ECPrivateKeyParameters(
-                new BigInteger(1, ecParams.D!),
-                domainParams);
+                return new ECPrivateKeyParameters(
+                    new BigInteger(1, ecParams.D!),
+                    domainParams);
+            }
+            catch (CryptographicException)
+            {
+                // Windows CNG doesn't support exporting private key parameters
+                // Use PKCS#8 export/import as a workaround
+                var pkcs8 = ecdsa.ExportPkcs8PrivateKey();
+                return Org.BouncyCastle.Security.PrivateKeyFactory.CreateKey(pkcs8);
+            }
         }
 
         throw new NotSupportedException("Unsupported private key type");
