@@ -101,7 +101,7 @@ jobs:
           if [ "${{ matrix.platform }}" == "windows" ]; then
             ./build.sh coverage
           else
-            ./build.sh test
+            dotnet test --no-build --configuration Release --logger "trx;LogFileName=test_results.trx" --results-directory "TestResults"
           fi
 
       # -----------------------------------------------------------------------
