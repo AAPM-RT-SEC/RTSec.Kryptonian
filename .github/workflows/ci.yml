@@ -165,14 +165,15 @@ jobs:
         uses: anchore/sbom-action@v0
         with:
           format: spdx-json
-          output-file: sbom.spdx.json
+          output-file: sbom-${{ matrix.platform }}.spdx.json
+          upload-artifact: false
 
       # Upload SBOM as artifact
       - name: Upload SBOM
         uses: actions/upload-artifact@v4
         with:
           name: sbom-${{ matrix.platform }}
-          path: sbom.spdx.json
+          path: sbom-${{ matrix.platform }}.spdx.json
           retention-days: 90
 
   # Quality gate - summary job
