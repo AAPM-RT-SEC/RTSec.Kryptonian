@@ -21,7 +21,7 @@ public class SelfSignedCaConnectorTests : IDisposable
     public SelfSignedCaConnectorTests()
     {
         _loggerMock = new Mock<ILogger<SelfSignedCaConnector>>();
-        
+
         // Skip test setup on Windows due to CNG private key export limitations
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
@@ -29,7 +29,7 @@ public class SelfSignedCaConnectorTests : IDisposable
             _sut = null!;
             return;
         }
-        
+
         _caCertificate = CreateCaCertificate();
         _sut = new SelfSignedCaConnector(_loggerMock.Object, _caCertificate);
     }
@@ -81,7 +81,7 @@ public class SelfSignedCaConnectorTests : IDisposable
     public async Task GetCaCertificatesAsyncReturnsCaCertificate()
     {
         SkipOnWindows();
-        
+
         // Act
         var result = await _sut.GetCaCertificatesAsync();
 
@@ -98,7 +98,7 @@ public class SelfSignedCaConnectorTests : IDisposable
     public async Task IssueCertificateAsyncWithValidCsrReturnsSuccessfulResult()
     {
         SkipOnWindows();
-        
+
         // Arrange
         var parsedCsr = CreateParsedCsr("CN=TestDevice");
         var profile = CreateEstProfile();
@@ -117,7 +117,7 @@ public class SelfSignedCaConnectorTests : IDisposable
     public async Task IssueCertificateAsyncSetsCorrectValidityPeriod()
     {
         SkipOnWindows();
-        
+
         // Arrange
         var parsedCsr = CreateParsedCsr("CN=ValidityTest");
         var profile = CreateEstProfile(validityDays: 30);
@@ -137,7 +137,7 @@ public class SelfSignedCaConnectorTests : IDisposable
     public async Task IssueCertificateAsyncSetsBasicConstraintsToNotCa()
     {
         SkipOnWindows();
-        
+
         // Arrange
         var parsedCsr = CreateParsedCsr("CN=BasicConstraintsTest");
         var profile = CreateEstProfile();
@@ -158,7 +158,7 @@ public class SelfSignedCaConnectorTests : IDisposable
     public async Task IssueCertificateAsyncSetsKeyUsageFromProfile()
     {
         SkipOnWindows();
-        
+
         // Arrange
         var parsedCsr = CreateParsedCsr("CN=KeyUsageTest");
         var profile = CreateEstProfile(allowedKeyUsages: new List<string> { "DigitalSignature", "KeyEncipherment" });
@@ -180,7 +180,7 @@ public class SelfSignedCaConnectorTests : IDisposable
     public async Task IssueCertificateAsyncSetsAuthorityKeyIdentifier()
     {
         SkipOnWindows();
-        
+
         // Arrange
         var parsedCsr = CreateParsedCsr("CN=AkiTest");
         var profile = CreateEstProfile();
@@ -201,7 +201,7 @@ public class SelfSignedCaConnectorTests : IDisposable
     public async Task IssueCertificateAsyncSetsSubjectKeyIdentifier()
     {
         SkipOnWindows();
-        
+
         // Arrange
         var parsedCsr = CreateParsedCsr("CN=SkiTest");
         var profile = CreateEstProfile();
@@ -221,7 +221,7 @@ public class SelfSignedCaConnectorTests : IDisposable
     public async Task IssueCertificateAsyncWithNullCsrThrowsArgumentNullException()
     {
         SkipOnWindows();
-        
+
         // Arrange
         var profile = CreateEstProfile();
 
@@ -236,7 +236,7 @@ public class SelfSignedCaConnectorTests : IDisposable
     public async Task IssueCertificateAsyncWithNullProfileThrowsArgumentNullException()
     {
         SkipOnWindows();
-        
+
         // Arrange
         var parsedCsr = CreateParsedCsr("CN=Test");
 
@@ -255,7 +255,7 @@ public class SelfSignedCaConnectorTests : IDisposable
     public async Task TestConnectionAsyncWithValidCaReturnsTrue()
     {
         SkipOnWindows();
-        
+
         // Act
         var result = await _sut.TestConnectionAsync();
 
@@ -267,7 +267,7 @@ public class SelfSignedCaConnectorTests : IDisposable
     public async Task TestConnectionAsyncHandlesTimezoneConversionCorrectly()
     {
         SkipOnWindows();
-        
+
         // This test verifies the fix for the timezone bug where:
         // - X509Certificate2.NotBefore/NotAfter return Local time
         // - Comparison with DateTime.UtcNow was failing
@@ -288,7 +288,7 @@ public class SelfSignedCaConnectorTests : IDisposable
     public async Task RevokeCertificateAsyncReturnsFalse()
     {
         SkipOnWindows();
-        
+
         // Revocation not implemented for self-signed CA
 
         // Act
@@ -306,7 +306,7 @@ public class SelfSignedCaConnectorTests : IDisposable
     public async Task IssueCertificateAsyncCertificateChainHasCorrectOrder()
     {
         SkipOnWindows();
-        
+
         // Arrange
         var parsedCsr = CreateParsedCsr("CN=ChainOrderTest");
         var profile = CreateEstProfile();
@@ -329,7 +329,7 @@ public class SelfSignedCaConnectorTests : IDisposable
     public async Task IssueCertificateAsyncEndEntityIssuerMatchesCaSubject()
     {
         SkipOnWindows();
-        
+
         // Arrange
         var parsedCsr = CreateParsedCsr("CN=IssuerMatchTest");
         var profile = CreateEstProfile();
@@ -350,7 +350,7 @@ public class SelfSignedCaConnectorTests : IDisposable
     public async Task IssueCertificateAsyncWithEcdsaCaIssuesValidCertificate()
     {
         SkipOnWindows();
-        
+
         // Arrange
         using var ecdsaCa = CreateEcdsaCaCertificate();
         var ecdsaConnector = new SelfSignedCaConnector(_loggerMock.Object, ecdsaCa);
