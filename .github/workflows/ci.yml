@@ -94,53 +94,35 @@ jobs:
         run: ./build.sh build
         shell: bash
 
-      - name: Install ReportGenerator tool
-        if: matrix.platform == 'windows'
-        run: |
-          dotnet tool install -g dotnet-reportgenerator-globaltool --version 5.1.14
-          export PATH="$HOME/.dotnet/tools:$PATH"
-        shell: bash
-
-      # Run comprehensive tests with coverage (only on Windows for efficiency)
-      - name: Run tests with coverage
-        if: matrix.platform == 'windows'
-        run: ./build.sh coverage
-        shell: bash
-        
-      - name: Create Cobertura coverage file from TestResults
-        if: matrix.platform == 'windows'
-        run: |
-          export PATH="$HOME/.dotnet/tools:$PATH"
-          # convert whatever raw coverage files exist into Cobertura in coverage-report/
-          reportgenerator \
-            -reports:"TestResults/**/coverage.opencover.xml;TestResults/**/coverage.xml;TestResults/**/coverage.cobertura.xml" \
-            -targetdir:coverage-report \
-            -reporttypes:Html;Cobertura
-          # Normalize file name expected by CodeCoverageSummary
-          if [ -f coverage-report/Cobertura.xml ]; then
-            mv coverage-report/Cobertura.xml coverage-report/coverage.cobertura.xml
-          fi
-          ls -R coverage-report || true
-        shell: bash
-      # Run tests without coverage (on non-Windows platforms)
+      # Run Tests (Windows gets Coverage, others just run tests)
       - name: Run tests
-        if: matrix.platform != 'windows'
-        run: ./build.sh test
         shell: bash
+        run: |
+          if [ "${{ matrix.platform }}" == "windows" ]; then
+            ./build.sh coverage
+          else
+            ./build.sh test
+          fi
 
-      # Generate coverage report using ReportGenerator (only on Windows)
-      - name: Generate coverage report
+      # -----------------------------------------------------------------------
+      # OPTIMIZED SECTION: Report Generation
+      # Replaces "Install ReportGenerator", "Create Cobertura...", and "Generate coverage report"
+      # -----------------------------------------------------------------------
+      
+      - name: Generate Coverage Reports
         if: matrix.platform == 'windows'
         uses: danielpalme/ReportGenerator-GitHub-Action@5.2.0
         with:
-          reports: '**/TestResults/**/coverage.cobertura.xml'
+          # Inputs: All raw coverage files found
+          reports: 'TestResults/**/coverage.opencover.xml;TestResults/**/coverage.xml;TestResults/**/coverage.cobertura.xml' 
           targetdir: 'coverage-report'
-          reporttypes: 'Html;MarkdownSummaryGithub;Badges'
+          # We generate Cobertura (for CodeCoverageSummary) AND MarkdownSummaryGithub (for Sticky Comment) here
+          reporttypes: 'Html;Cobertura;MarkdownSummaryGithub;Badges'
           assemblyfilters: '-*.Tests*'
           verbosity: 'Info'
           title: 'RTSec.Kryptonian Coverage'
 
-      # Upload coverage report as artifact (only on Windows)
+      # Upload coverage artifact
       - name: Upload coverage artifact
         if: matrix.platform == 'windows'
         uses: actions/upload-artifact@v4
@@ -148,7 +130,7 @@ jobs:
           name: coverage-${{ matrix.platform }}
           path: coverage-report/
           retention-days: 30
-
+          
       # Upload test results as artifacts
       - name: Upload test results
         uses: actions/upload-artifact@v4
