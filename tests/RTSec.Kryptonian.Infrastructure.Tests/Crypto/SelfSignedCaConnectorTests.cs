@@ -46,14 +46,14 @@ public class SelfSignedCaConnectorTests : IDisposable
 
     #region Constructor Tests
 
-    [Fact]
+    [NotWindowsFact]
     public void ConstructorWithValidCaCertSetsTypeToSelfSigned()
     {
         // Assert
         _sut.Type.Should().Be(CaBackendType.SelfSigned);
     }
 
-    [Fact]
+    [NotWindowsFact]
     public void ConstructorWithNullCaCertThrowsArgumentNullException()
     {
         // Act
