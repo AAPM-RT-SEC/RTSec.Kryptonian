@@ -63,7 +63,7 @@ public class SelfSignedCaConnectorTests : IDisposable
         act.Should().Throw<ArgumentNullException>();
     }
 
-    [Fact]
+    [NotWindowsFact]
     public void ConstructorWithCertWithoutPrivateKeyThrowsArgumentException()
     {
         // Arrange
