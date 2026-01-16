@@ -140,9 +140,9 @@ cmd_coverage() {
     if command -v reportgenerator &> /dev/null; then
         print_status "Generating coverage report..."
         reportgenerator \
-            -reports:**/TestResults/**/coverage.cobertura.xml \
+            -reports:"TestResults/**/coverage.cobertura.xml" \
             -targetdir:coverage-report \
-            -reporttypes:Html;MarkdownSummaryGithub;Badges \
+            -reporttypes:"Html;Cobertura;MarkdownSummaryGithub;Badges" \
             -verbosity:Info
         
         print_status "Coverage report generated in coverage-report/"
