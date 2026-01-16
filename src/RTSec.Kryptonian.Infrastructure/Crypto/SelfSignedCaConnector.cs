@@ -74,7 +74,7 @@ public class SelfSignedCaConnector : ICaConnector
         try
         {
             // Parse the CSR using BouncyCastle
-            var pkcs10 = new Pkcs10CertificationRequest(csr.RawData);
+            var pkcs10 = new Pkcs10CertificationRequest(csr.RawData.ToArray());
             var csrInfo = pkcs10.GetCertificationRequestInfo();
 
             // Generate serial number
@@ -162,7 +162,7 @@ public class SelfSignedCaConnector : ICaConnector
             new BasicConstraints(false));
 
         // Key Usage based on profile
-        var keyUsage = GetKeyUsage(profile.AllowedKeyUsages);
+        var keyUsage = GetKeyUsage(profile.AllowedKeyUsages.ToList());
         if (keyUsage != 0)
         {
             certGen.AddExtension(
@@ -172,7 +172,7 @@ public class SelfSignedCaConnector : ICaConnector
         }
 
         // Extended Key Usage (if specified)
-        var extendedKeyUsages = GetExtendedKeyUsages(profile.AllowedKeyUsages);
+        var extendedKeyUsages = GetExtendedKeyUsages(profile.AllowedKeyUsages.ToList());
         if (extendedKeyUsages.Count != 0)
         {
             certGen.AddExtension(

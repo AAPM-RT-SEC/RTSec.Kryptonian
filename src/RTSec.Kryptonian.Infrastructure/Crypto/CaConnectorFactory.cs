@@ -143,7 +143,7 @@ public class CaConnectorFactory : ICaConnectorFactory, IDisposable
 
         // Get ACME configuration from backend config or environment
         var directoryUrl = GetConfigValue(backend, "DirectoryUrl", "KRYPTONIAN__ACME__DIRECTORYURL")
-            ?? backend.Url
+            ?? backend.Url?.ToString()
             ?? WellKnownServers.LetsEncryptV2.ToString();
 
         var email = GetConfigValue(backend, "Email", "KRYPTONIAN__ACME__EMAIL")

@@ -367,18 +367,20 @@ public class EstIntegrationTests
         bool requireClientCert = true,
         bool isEnabled = true)
     {
-        return new EstProfile
+        var profile = new EstProfile
         {
             Id = id,
             Name = "Test Profile",
             PathPrefix = "/.well-known/est",
-            Hostnames = new List<string> { "localhost" },
             HostnameMatchType = HostnameMatchType.Exact,
             CaBackendId = Guid.NewGuid(),
             ValidityDays = 365,
             RequireClientCertificate = requireClientCert,
             IsEnabled = isEnabled
         };
+        profile.Hostnames.Clear();
+        profile.Hostnames.Add("localhost");
+        return profile;
     }
 
     private static byte[] CreateTestCsrBytes()

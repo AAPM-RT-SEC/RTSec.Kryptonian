@@ -488,18 +488,19 @@ public class EnrollmentOrchestratorTests : IDisposable
         Guid backendId,
         bool isEnabled = true)
     {
-        return new EstProfile
+        var profile = new EstProfile
         {
             Id = id,
             Name = "Test Profile",
             PathPrefix = "/.well-known/est",
-            Hostnames = new List<string> { "test.example.com" },
             CaBackendId = backendId,
             ValidityDays = 365,
             IsEnabled = isEnabled,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };
+        profile.Hostnames.Add("test.example.com");
+        return profile;
     }
 
     private static CaBackend CreateCaBackend(Guid id, bool isEnabled = true)

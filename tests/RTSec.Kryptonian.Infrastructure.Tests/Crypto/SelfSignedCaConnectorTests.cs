@@ -428,16 +428,25 @@ public class SelfSignedCaConnectorTests : IDisposable
         int validityDays = 365,
         List<string>? allowedKeyUsages = null)
     {
-        return new EstProfile
+        var profile = new EstProfile
         {
             Id = Guid.NewGuid(),
             Name = "Test Profile",
             PathPrefix = "/.well-known/est",
-            Hostnames = new List<string> { "test.example.com" },
             ValidityDays = validityDays,
-            AllowedKeyUsages = allowedKeyUsages ?? new List<string>(),
             IsEnabled = true
         };
+        profile.Hostnames.Clear();
+        profile.Hostnames.Add("test.example.com");
+        profile.AllowedKeyUsages.Clear();
+        if (allowedKeyUsages != null)
+        {
+            foreach (var usage in allowedKeyUsages)
+            {
+                profile.AllowedKeyUsages.Add(usage);
+            }
+        }
+        return profile;
     }
 
     #endregion

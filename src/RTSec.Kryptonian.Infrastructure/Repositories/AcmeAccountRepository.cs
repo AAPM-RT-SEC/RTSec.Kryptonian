@@ -15,7 +15,7 @@ public class AcmeAccountRepository : BaseRepository<AcmeAccount>, IAcmeAccountRe
     }
 
     /// <inheritdoc />
-    public async Task<AcmeAccount?> GetByDirectoryUrlAsync(string directoryUrl, CancellationToken ct = default)
+    public async Task<AcmeAccount?> GetByDirectoryUrlAsync(Uri directoryUrl, CancellationToken ct = default)
     {
         return await _dbSet
             .Where(a => a.DirectoryUrl == directoryUrl && a.IsActive)
@@ -24,7 +24,7 @@ public class AcmeAccountRepository : BaseRepository<AcmeAccount>, IAcmeAccountRe
     }
 
     /// <inheritdoc />
-    public async Task<AcmeAccount?> GetByDirectoryAndEmailAsync(string directoryUrl, string email, CancellationToken ct = default)
+    public async Task<AcmeAccount?> GetByDirectoryAndEmailAsync(Uri directoryUrl, string email, CancellationToken ct = default)
     {
         return await _dbSet
             .Where(a => a.DirectoryUrl == directoryUrl && a.Email == email && a.IsActive)

@@ -46,6 +46,7 @@ public class CaBackendService : ICaBackendService
     /// <inheritdoc />
     public async Task<CaBackendDto> CreateAsync(CaBackendCreateDto dto, CancellationToken ct = default)
     {
+        ArgumentNullException.ThrowIfNull(dto);
         _logger.LogInformation("Creating CA backend: {Name}, Type: {Type}", dto.Name, dto.Type);
 
         var entity = _mapper.Map<CaBackend>(dto);
@@ -64,6 +65,7 @@ public class CaBackendService : ICaBackendService
     /// <inheritdoc />
     public async Task<CaBackendDto?> UpdateAsync(Guid id, CaBackendUpdateDto dto, CancellationToken ct = default)
     {
+        ArgumentNullException.ThrowIfNull(dto);
         var entity = await _unitOfWork.CaBackends.GetByIdAsync(id, ct);
         if (entity == null)
         {
@@ -88,10 +90,16 @@ public class CaBackendService : ICaBackendService
         }
 
         if (dto.Url != null)
-            entity.Url = dto.Url;
+            entity.Url = new Uri(dto.Url);
 
         if (dto.Config != null)
-            entity.Config = dto.Config;
+        {
+            entity.Config.Clear();
+            foreach (var kvp in dto.Config)
+            {
+                entity.Config.Add(kvp.Key, kvp.Value);
+            }
+        }
 
         if (dto.IsEnabled.HasValue)
             entity.IsEnabled = dto.IsEnabled.Value;

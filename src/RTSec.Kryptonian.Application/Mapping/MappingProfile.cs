@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using AutoMapper;
 using RTSec.Kryptonian.Application.DTOs;
 using RTSec.Kryptonian.Domain.Entities;
@@ -33,6 +34,7 @@ public class MappingProfile : Profile
         CreateMap<EstProfileCreateDto, EstProfile>()
             .ForMember(dest => dest.Id, opt => opt.Ignore())
             .ForMember(dest => dest.CaBackendId, opt => opt.Ignore()) // Handled in service with TryParse
+            .ForMember(dest => dest.Hostnames, opt => opt.MapFrom(src => src.Hostnames ?? new List<string>()))
             .ForMember(dest => dest.AllowedKeyUsages, opt => opt.MapFrom(src => src.AllowedKeyUsages ?? new List<string>()))
             .ForMember(dest => dest.HostnameMatchType, opt => opt.MapFrom(src => ParseHostnameMatchType(src.HostnameMatchType)))
             .ForMember(dest => dest.TrustedClientCaThumbprints, opt => opt.MapFrom(src => src.TrustedClientCaThumbprints ?? new List<string>()))

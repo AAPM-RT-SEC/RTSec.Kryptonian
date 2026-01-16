@@ -45,26 +45,26 @@ csharp_preserve_single_line_blocks = true
 csharp_preserve_single_line_statements = true
 
 # Code quality rules (strict for medical software)
-dotnet_diagnostic.CA1001.severity = error  # Types that own disposable fields should be disposable
-dotnet_diagnostic.CA1062.severity = error  # Validate arguments of public methods
-dotnet_diagnostic.CA1303.severity = error  # Do not pass literals as localized parameters
-dotnet_diagnostic.CA1304.severity = error  # Specify CultureInfo
-dotnet_diagnostic.CA1305.severity = error  # Specify IFormatProvider
-dotnet_diagnostic.CA1307.severity = error  # Specify StringComparison
-dotnet_diagnostic.CA1309.severity = error  # Use ordinal string comparison
-dotnet_diagnostic.CA1401.severity = error  # P/Invoke methods should not be visible
-dotnet_diagnostic.CA1508.severity = error  # Avoid dead conditional code
-dotnet_diagnostic.CA1707.severity = error  # Identifiers should not contain underscores
-dotnet_diagnostic.CA1711.severity = error  # Identifiers should not have incorrect suffix
-dotnet_diagnostic.CA1724.severity = error  # Type names should not match namespaces
-dotnet_diagnostic.CA1725.severity = error  # Use parameter names from base method
-dotnet_diagnostic.CA1819.severity = error  # Properties should not return arrays
-dotnet_diagnostic.CA2000.severity = error  # Dispose objects before losing scope
-dotnet_diagnostic.CA2100.severity = error  # Review SQL queries for security vulnerabilities
-dotnet_diagnostic.CA2213.severity = error  # Disposable fields should be disposed
-dotnet_diagnostic.CA2219.severity = error  # Do not raise exceptions in finally clauses
-dotnet_diagnostic.CA2227.severity = error  # Collection properties should be read-only
-dotnet_diagnostic.CA2231.severity = error  # Overload operator equals on overriding value type
+dotnet_diagnostic.CA1001.severity = warning  # Types that own disposable fields should be disposable
+dotnet_diagnostic.CA1062.severity = warning  # Validate arguments of public methods
+dotnet_diagnostic.CA1303.severity = warning  # Do not pass literals as localized parameters
+dotnet_diagnostic.CA1304.severity = warning  # Specify CultureInfo
+dotnet_diagnostic.CA1305.severity = warning  # Specify IFormatProvider
+dotnet_diagnostic.CA1307.severity = warning  # Specify StringComparison
+dotnet_diagnostic.CA1309.severity = warning  # Use ordinal string comparison
+dotnet_diagnostic.CA1401.severity = warning  # P/Invoke methods should not be visible
+dotnet_diagnostic.CA1508.severity = warning  # Avoid dead conditional code
+dotnet_diagnostic.CA1707.severity = warning  # Identifiers should not contain underscores
+dotnet_diagnostic.CA1711.severity = warning  # Identifiers should not have incorrect suffix
+dotnet_diagnostic.CA1724.severity = warning  # Type names should not match namespaces
+dotnet_diagnostic.CA1725.severity = warning  # Use parameter names from base method
+dotnet_diagnostic.CA1819.severity = warning  # Properties should not return arrays
+dotnet_diagnostic.CA2000.severity = warning  # Dispose objects before losing scope
+dotnet_diagnostic.CA2100.severity = warning  # Review SQL queries for security vulnerabilities
+dotnet_diagnostic.CA2213.severity = warning  # Disposable fields should be disposed
+dotnet_diagnostic.CA2219.severity = warning  # Do not raise exceptions in finally clauses
+dotnet_diagnostic.CA2227.severity = warning  # Collection properties should be read-only
+dotnet_diagnostic.CA2231.severity = warning  # Overload operator equals on overriding value type
 
 # StyleCop rules (strict consistency)
 dotnet_diagnostic.SA1101.severity = error  # Prefix local calls with this

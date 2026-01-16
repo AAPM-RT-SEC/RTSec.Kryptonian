@@ -289,18 +289,20 @@ public class AcmeCaConnectorTests
 
     private static EstProfile CreateTestProfile()
     {
-        return new EstProfile
+        var profile = new EstProfile
         {
             Id = Guid.NewGuid(),
             Name = "Test Profile",
             PathPrefix = "/.well-known/est",
-            Hostnames = new List<string> { "test.example.com" },
             HostnameMatchType = HostnameMatchType.Exact,
             CaBackendId = Guid.NewGuid(),
             ValidityDays = 90,
             RequireClientCertificate = false,
             IsEnabled = true
         };
+        profile.Hostnames.Clear();
+        profile.Hostnames.Add("test.example.com");
+        return profile;
     }
 
     private static ParsedCsr CreateTestParsedCsr(string cn)

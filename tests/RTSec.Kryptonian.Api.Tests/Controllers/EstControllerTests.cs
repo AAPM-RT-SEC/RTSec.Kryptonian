@@ -386,20 +386,29 @@ public class EstControllerTests
         bool validateClientCertChain = false,
         List<string>? trustedThumbprints = null)
     {
-        return new EstProfile
+        var profile = new EstProfile
         {
             Id = id,
             Name = "Test Profile",
             PathPrefix = "/.well-known/est",
-            Hostnames = new List<string> { "localhost" },
             HostnameMatchType = HostnameMatchType.Exact,
             CaBackendId = Guid.NewGuid(),
             ValidityDays = 365,
             RequireClientCertificate = requireClientCert,
             ValidateClientCertificateChain = validateClientCertChain,
-            TrustedClientCaThumbprints = trustedThumbprints ?? new List<string>(),
             IsEnabled = isEnabled
         };
+        profile.Hostnames.Clear();
+        profile.Hostnames.Add("localhost");
+        profile.TrustedClientCaThumbprints.Clear();
+        if (trustedThumbprints != null)
+        {
+            foreach (var thumbprint in trustedThumbprints)
+            {
+                profile.TrustedClientCaThumbprints.Add(thumbprint);
+            }
+        }
+        return profile;
     }
 
     private static byte[] CreateTestCsrBytes()

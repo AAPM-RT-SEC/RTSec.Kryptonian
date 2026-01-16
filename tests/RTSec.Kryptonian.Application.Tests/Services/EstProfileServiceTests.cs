@@ -191,9 +191,9 @@ public class EstProfileServiceTests
             Id = id,
             Name = "Old Name",
             CaBackendId = caBackendId,
-            Hostnames = new List<string> { "old.example.com" },
             PathPrefix = "/.well-known/est"
         };
+        existing.Hostnames.Add("old.example.com");
         _estProfileRepoMock.Setup(r => r.GetByIdAsync(id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(existing);
         _unitOfWorkMock.Setup(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()))
@@ -236,9 +236,9 @@ public class EstProfileServiceTests
             Id = id,
             Name = "Test",
             CaBackendId = Guid.NewGuid(),
-            Hostnames = new List<string> { "est.example.com" },
             PathPrefix = "/.well-known/est"
         };
+        existing.Hostnames.Add("est.example.com");
         _estProfileRepoMock.Setup(r => r.GetByIdAsync(id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(existing);
         _caBackendRepoMock.Setup(r => r.GetByIdAsync(newCaBackendId, It.IsAny<CancellationToken>()))
