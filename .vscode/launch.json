@@ -1,0 +1,43 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Run API",
+      "type": "coreclr",
+      "request": "launch",
+      "program": "${workspaceFolder}/src/RTSec.Kryptonian.Api/bin/Debug/net8.0/RTSec.Kryptonian.Api.dll",
+      "cwd": "${workspaceFolder}/src/RTSec.Kryptonian.Api",
+      "preLaunchTask": "build-api",
+      "env": {
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "ASPNETCORE_URLS": "http://0.0.0.0:5000"
+      },
+      "serverReadyAction": {
+        "action": "openExternally",
+        "pattern": "Now listening on: (https?://\\S+)"
+      }
+    },
+    {
+      "name": "Run Web",
+      "type": "coreclr",
+      "request": "launch",
+      "program": "${workspaceFolder}/src/RTSec.Kryptonian.Web/bin/Debug/net8.0/RTSec.Kryptonian.Web.dll",
+      "cwd": "${workspaceFolder}/src/RTSec.Kryptonian.Web",
+      "preLaunchTask": "build-web",
+      "env": {
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "ASPNETCORE_URLS": "http://0.0.0.0:5001"
+      },
+      "serverReadyAction": {
+        "action": "openExternally",
+        "pattern": "Now listening on: (https?://\\S+)"
+      }
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Run Full Stack (API + Web)",
+      "configurations": ["Run API", "Run Web"]
+    }
+  ]
+}

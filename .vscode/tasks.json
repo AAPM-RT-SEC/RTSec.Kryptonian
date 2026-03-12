@@ -1,0 +1,29 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "build-api",
+      "type": "process",
+      "command": "dotnet",
+      "args": [
+        "build",
+        "${workspaceFolder}/src/RTSec.Kryptonian.Api/RTSec.Kryptonian.Api.csproj",
+        "--configuration",
+        "Debug"
+      ],
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "build-web",
+      "type": "process",
+      "command": "dotnet",
+      "args": [
+        "build",
+        "${workspaceFolder}/src/RTSec.Kryptonian.Web/RTSec.Kryptonian.Web.csproj",
+        "--configuration",
+        "Debug"
+      ],
+      "problemMatcher": "$msCompile"
+    }
+  ]
+}

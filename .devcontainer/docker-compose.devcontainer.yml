@@ -1,17 +1,26 @@
+version: '3.8'
+
 services:
-  devcontainer:
-    build:
-      context: ..
-      dockerfile: .devcontainer/Dockerfile
-    container_name: kryptonian-devcontainer
-    command: sleep infinity
+  dev:
+    image: mcr.microsoft.com/dotnet/sdk:10.0
     volumes:
       - ..:/workspace:cached
+    command: sleep infinity
+    working_dir: /workspace
     environment:
-      ASPNETCORE_ENVIRONMENT: Development
-      ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=kryptonian;Username=kryptonian;Password=${POSTGRES_PASSWORD:-kryptonian_dev_password}
-    networks:
-      - kryptonian-network
-    depends_on:
-      postgres:
-        condition: service_healthy
+      DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+
+  postgres:
+    image: postgres:15
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: kryptonian
+      POSTGRES_USER: kryptonian
+      POSTGRES_PASSWORD: kryptonian
+    ports:
+      - "5432:5432"
+    volumes:
+      - kryptonian_postgres:/var/lib/postgresql/data
+
+volumes:
+  kryptonian_postgres:

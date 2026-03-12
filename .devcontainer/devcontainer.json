@@ -1,36 +1,42 @@
 {
-  "name": "RTSec.Kryptonian Dev",
+  "name": "RTSec Kryptonian Dev",
+
   "dockerComposeFile": [
-    "../docker-compose.yml",
     "docker-compose.devcontainer.yml"
   ],
-  "service": "devcontainer",
+
+  "service": "dev",
   "workspaceFolder": "/workspace",
-  "runServices": [
-    "postgres"
-  ],
-  "shutdownAction": "stopCompose",
-  "forwardPorts": [5000, 5001, 5432],
-  "remoteUser": "vscode",
-  "features": {
-    "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {}
-  },
+
+  "runServices": ["postgres"],
+
   "customizations": {
     "vscode": {
-      "settings": {
-        "dotnet.defaultSolution": "RTSec.Kryptonian.sln",
-        "terminal.integrated.defaultProfile.linux": "bash"
-      },
       "extensions": [
+        "ms-vscode-remote.remote-wsl",
         "ms-dotnettools.csharp",
         "ms-dotnettools.csdevkit",
-        "ms-azuretools.vscode-docker",
-        "EditorConfig.EditorConfig",
+        "editorconfig.editorconfig",
+        "redhat.vscode-yaml",
+        "aaron-bond.better-comments",
         "github.copilot",
-        "github.copilot-chat"
-      ]
+        "github.copilot-chat",
+        "ms-dotnettools.vscode-dotnet-runtime",
+        "redocly.openapi-vs-code",
+        "humao.rest-client",
+        "davidanson.vscode-markdownlint",
+        "dnut.rewrap-revived",
+        "wayou.vscode-todo-highlight"
+      ],
+      "settings": {
+        "dotnet.defaultSolution": "RTSec.Kryptonian.sln"
+      }
     }
   },
-  "postCreateCommand": "bash -lc 'dotnet restore RTSec.Kryptonian.sln && (dotnet tool update --global dotnet-ef || dotnet tool install --global dotnet-ef)'",
-  "postStartCommand": "bash -lc 'git config --global --add safe.directory /workspace'"
+
+  // We REMOVE the dotnet feature because the base image already includes the full SDK
+  "features": {},
+
+  "postCreateCommand": "dotnet restore RTSec.Kryptonian.sln",
+  "remoteUser": "root"
 }
