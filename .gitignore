@@ -47,6 +47,10 @@ appsettings.*.secrets.json
 .env.*
 secrets.json
 
+# Generated local certificates
+certs/*
+!certs/.gitkeep
+
 # Blazor / web assets
 wwwroot/dist/
 wwwroot/lib/

@@ -53,6 +53,21 @@ When a medical device needs a certificate, here's what happens:
 
 ## Quick Start
 
+Use the helper scripts for the easiest local startup/shutdown flow:
+
+```bash
+# Start backend + frontend (web profile)
+./start-up.sh
+
+# Stop services and clean up containers/networks
+./tear-down.sh
+
+# Optional: also remove DB volume/data
+./tear-down.sh --volumes
+```
+
+Manual startup (equivalent low-level commands):
+
 ```bash
 # Generate test certificates
 chmod +x scripts/generate-test-certs.sh
@@ -63,6 +78,39 @@ docker compose up -d
 
 # Verify health
 curl http://localhost:5000/api/status/health
+```
+
+## Development Container (VS Code)
+
+This repository includes a VS Code dev container configuration under `.devcontainer/`.
+
+### Included Tools
+
+- .NET 8 SDK
+- OpenSSL
+- PostgreSQL client tools (`psql`)
+- Docker CLI access from inside the container (via dev container feature)
+
+### Open In Dev Container
+
+1. Install Docker Desktop and the VS Code Dev Containers extension.
+2. Open this repository in VS Code.
+3. Run: `Dev Containers: Reopen in Container`.
+
+The dev container starts a dedicated `devcontainer` service and the existing `postgres` service from Compose.
+
+### First Run Behavior
+
+- `dotnet restore RTSec.Kryptonian.sln` runs automatically.
+- `dotnet-ef` is installed or updated as a global tool.
+- Ports `5000`, `5001`, and `5432` are forwarded.
+
+### Typical Commands Inside Container
+
+```bash
+dotnet build RTSec.Kryptonian.sln
+dotnet test RTSec.Kryptonian.sln
+docker compose up -d
 ```
 
 ## Blazor Admin Portal

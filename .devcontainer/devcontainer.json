@@ -1,0 +1,36 @@
+{
+  "name": "RTSec.Kryptonian Dev",
+  "dockerComposeFile": [
+    "../docker-compose.yml",
+    "docker-compose.devcontainer.yml"
+  ],
+  "service": "devcontainer",
+  "workspaceFolder": "/workspace",
+  "runServices": [
+    "postgres"
+  ],
+  "shutdownAction": "stopCompose",
+  "forwardPorts": [5000, 5001, 5432],
+  "remoteUser": "vscode",
+  "features": {
+    "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {}
+  },
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "dotnet.defaultSolution": "RTSec.Kryptonian.sln",
+        "terminal.integrated.defaultProfile.linux": "bash"
+      },
+      "extensions": [
+        "ms-dotnettools.csharp",
+        "ms-dotnettools.csdevkit",
+        "ms-azuretools.vscode-docker",
+        "EditorConfig.EditorConfig",
+        "github.copilot",
+        "github.copilot-chat"
+      ]
+    }
+  },
+  "postCreateCommand": "bash -lc 'dotnet restore RTSec.Kryptonian.sln && (dotnet tool update --global dotnet-ef || dotnet tool install --global dotnet-ef)'",
+  "postStartCommand": "bash -lc 'git config --global --add safe.directory /workspace'"
+}
