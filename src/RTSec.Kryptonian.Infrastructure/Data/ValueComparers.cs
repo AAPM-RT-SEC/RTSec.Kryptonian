@@ -16,7 +16,7 @@ public static class ValueComparers
     /// Value comparer for Collection&lt;string&gt; properties.
     /// Compares by sequence equality rather than reference equality.
     /// </summary>
-    public static ValueComparer<Collection<string>> StringListComparer { get; } = new(
+    public static ValueComparer<Collection<string>> StringCollectionComparer { get; } = new(
         (c1, c2) => c1 != null && c2 != null && c1.SequenceEqual(c2) || c1 == null && c2 == null,
         c => c == null ? 0 : c.Aggregate(0, (a, v) => HashCode.Combine(a, v.GetHashCode())),
         c => c == null ? null! : new Collection<string>(c.ToList()));

@@ -46,6 +46,13 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# Ensure CA_PFX_PASSWORD is set consistently for both cert generation and docker-compose.
+# generate-test-certs.sh defaults to TestPassword123! when unset; docker-compose.yml uses
+# ${CA_PFX_PASSWORD:-} which would pass an empty string, causing CA load failure at startup.
+if [[ -z "${CA_PFX_PASSWORD:-}" ]]; then
+    export CA_PFX_PASSWORD="TestPassword123!"
+fi
+
 # Generate local test certs once if missing.
 if [[ ! -f "certs/ca.pfx" ]]; then
     if [[ -x "scripts/generate-test-certs.sh" ]]; then

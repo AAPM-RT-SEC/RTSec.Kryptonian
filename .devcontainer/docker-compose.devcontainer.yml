@@ -1,12 +1,12 @@
 services:
   devcontainer:
     build:
-      context: .
+      context: ..
       dockerfile: .devcontainer/Dockerfile
     container_name: kryptonian-devcontainer
     command: sleep infinity
     volumes:
-      - .:/workspace:cached
+      - ..:/workspace:cached
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=kryptonian;Username=kryptonian;Password=${POSTGRES_PASSWORD:-kryptonian_dev_password}

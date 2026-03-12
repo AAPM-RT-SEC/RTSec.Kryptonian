@@ -29,7 +29,7 @@ public class EstProfileConfiguration : IEntityTypeConfiguration<EstProfile>
         builder.Property(e => e.Hostnames)
             .HasColumnName("hostnames")
             .HasColumnType("text[]")
-            .Metadata.SetValueComparer(ValueComparers.StringListComparer);
+            .Metadata.SetValueComparer(ValueComparers.StringCollectionComparer);
 
         builder.Property(e => e.HostnameMatchType)
             .HasColumnName("hostname_match_type")
@@ -52,7 +52,7 @@ public class EstProfileConfiguration : IEntityTypeConfiguration<EstProfile>
         builder.Property(e => e.AllowedKeyUsages)
             .HasColumnName("allowed_key_usages")
             .HasColumnType("jsonb")
-            .Metadata.SetValueComparer(ValueComparers.StringListComparer);
+            .Metadata.SetValueComparer(ValueComparers.StringCollectionComparer);
 
         builder.Property(e => e.ValidityDays)
             .HasColumnName("validity_days")
