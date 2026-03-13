@@ -20,7 +20,6 @@ nuget.exe
 
 # Tooling metadata
 .vs/
-.vscode/
 .idea/
 *.iml
 *.suo
@@ -46,6 +45,10 @@ appsettings.*.secrets.json
 .env
 .env.*
 secrets.json
+
+# Generated local certificates
+certs/*
+!certs/.gitkeep
 
 # Blazor / web assets
 wwwroot/dist/

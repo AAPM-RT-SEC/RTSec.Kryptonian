@@ -1,0 +1,42 @@
+{
+  "name": "RTSec Kryptonian Dev",
+
+  "dockerComposeFile": [
+    "docker-compose.devcontainer.yml"
+  ],
+
+  "service": "dev",
+  "workspaceFolder": "/workspace",
+
+  "runServices": ["postgres"],
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-vscode-remote.remote-wsl",
+        "ms-dotnettools.csharp",
+        "ms-dotnettools.csdevkit",
+        "editorconfig.editorconfig",
+        "redhat.vscode-yaml",
+        "aaron-bond.better-comments",
+        "github.copilot",
+        "github.copilot-chat",
+        "ms-dotnettools.vscode-dotnet-runtime",
+        "redocly.openapi-vs-code",
+        "humao.rest-client",
+        "davidanson.vscode-markdownlint",
+        "dnut.rewrap-revived",
+        "wayou.vscode-todo-highlight"
+      ],
+      "settings": {
+        "dotnet.defaultSolution": "RTSec.Kryptonian.sln"
+      }
+    }
+  },
+
+  // We REMOVE the dotnet feature because the base image already includes the full SDK
+  "features": {},
+
+  "postCreateCommand": "dotnet restore RTSec.Kryptonian.sln",
+  "remoteUser": "root"
+}
