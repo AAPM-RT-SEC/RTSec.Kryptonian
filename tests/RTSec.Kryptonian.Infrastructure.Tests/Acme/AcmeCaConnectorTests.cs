@@ -9,6 +9,7 @@ using RTSec.Kryptonian.Domain.Interfaces;
 using RTSec.Kryptonian.Domain.ValueObjects;
 using RTSec.Kryptonian.Infrastructure.Acme;
 using Xunit;
+using AcmeCertificateChain = Certes.Acme.CertificateChain;
 
 namespace RTSec.Kryptonian.Infrastructure.Tests.Acme;
 
@@ -198,24 +199,91 @@ public class AcmeCaConnectorTests
     [Fact]
     public void ExtractDomainsFromCsrWithInvalidDomainReturnsEmpty()
     {
-        // This test verifies the domain extraction logic without making real ACME calls.
-        // The actual IssueCertificateAsync test would require extensive mocking of Certes.
-        // The domain extraction returns empty for names without dots (not valid domains).
+        // Arrange
+        var csr = CreateTestParsedCsr("localname");
 
-        // "localname" without dots is not a valid domain name
-        // The AcmeCaConnector's ExtractDomainsFromCsr method validates this.
-        // This is tested indirectly through the AcmeCaConnector's error handling.
+        // Act
+        var domains = AcmeCaConnector.ExtractDomainsFromCsr(csr);
 
-        // For now, we test the config and type setup
-        var config = new AcmeConnectorConfig
+        // Assert
+        domains.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void ExtractDomainsFromCsrReturnsCnAndUniqueDnsSans()
+    {
+        // Arrange
+        var csr = new ParsedCsr
         {
-            DirectoryUrl = WellKnownServers.LetsEncryptStagingV2.ToString(),
-            Email = "test@example.com"
+            SubjectDn = "CN=device.example.com",
+            PublicKeyAlgorithm = "RSA",
+            KeySize = 2048,
+            RawData = new byte[] { 0x30, 0x00 },
+            SubjectAlternativeNames = new[]
+            {
+                "DNS:device.example.com",
+                "DNS:alt.example.com",
+                "IP:192.0.2.10",
+                "localname"
+            }
         };
-        var connector = CreateConnector(config);
 
-        // Verify connector type
-        connector.Type.Should().Be(CaBackendType.Acme);
+        // Act
+        var domains = AcmeCaConnector.ExtractDomainsFromCsr(csr);
+
+        // Assert
+        domains.Should().Equal("device.example.com", "alt.example.com");
+    }
+
+    [Fact]
+    public void IsAllowedByProfileAcceptsMatchingProfileHostname()
+    {
+        // Arrange
+        var profile = CreateTestProfile();
+
+        // Act
+        var allowed = AcmeCaConnector.IsAllowedByProfile(profile, "test.example.com");
+
+        // Assert
+        allowed.Should().BeTrue();
+    }
+
+    [Fact]
+    public void IsAllowedByProfileRejectsHostnameOutsideProfilePolicy()
+    {
+        // Arrange
+        var profile = CreateTestProfile();
+
+        // Act
+        var allowed = AcmeCaConnector.IsAllowedByProfile(profile, "other.example.com");
+
+        // Assert
+        allowed.Should().BeFalse();
+    }
+
+    [Fact]
+    public void ParseCertificateChainDoesNotAttachPrivateKey()
+    {
+        // Arrange
+        using var rsa = RSA.Create(2048);
+        var request = new CertificateRequest(
+            new X500DistinguishedName("CN=device.example.com"),
+            rsa,
+            HashAlgorithmName.SHA256,
+            RSASignaturePadding.Pkcs1);
+        using var sourceCert = request.CreateSelfSigned(
+            DateTimeOffset.UtcNow.AddMinutes(-5),
+            DateTimeOffset.UtcNow.AddDays(30));
+        var chain = new AcmeCertificateChain(sourceCert.ExportCertificatePem());
+
+        // Act
+        var parsed = AcmeCaConnector.ParseCertificateChain(chain);
+
+        // Assert
+        parsed.Leaf.Subject.Should().Contain("device.example.com");
+        parsed.Leaf.HasPrivateKey.Should().BeFalse();
+        parsed.FullChain.Should().ContainSingle();
+        parsed.Issuers.Should().BeEmpty();
     }
 
     #endregion

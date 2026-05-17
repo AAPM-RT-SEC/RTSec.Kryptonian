@@ -78,4 +78,81 @@ public class AcmeConnectorConfigTests
         // Assert
         config.DirectoryUrl.Should().Contain("staging");
     }
+
+    [Fact]
+    public void ValidateAcceptsMinimalValidConfig()
+    {
+        // Arrange
+        var config = new AcmeConnectorConfig
+        {
+            DirectoryUrl = WellKnownServers.LetsEncryptStagingV2.ToString(),
+            Email = "admin@example.com",
+            PreferredChallengeType = "http-01"
+        };
+
+        // Act
+        var act = () => config.Validate();
+
+        // Assert
+        act.Should().NotThrow();
+    }
+
+    [Fact]
+    public void ValidateRejectsMissingEmail()
+    {
+        // Arrange
+        var config = new AcmeConnectorConfig
+        {
+            DirectoryUrl = WellKnownServers.LetsEncryptStagingV2.ToString(),
+            Email = ""
+        };
+
+        // Act
+        var act = () => config.Validate();
+
+        // Assert
+        act.Should().Throw<InvalidOperationException>()
+            .WithMessage("*email*");
+    }
+
+    [Fact]
+    public void ValidateRejectsUnsupportedChallengeType()
+    {
+        // Arrange
+        var config = new AcmeConnectorConfig
+        {
+            DirectoryUrl = WellKnownServers.LetsEncryptStagingV2.ToString(),
+            Email = "admin@example.com",
+            PreferredChallengeType = "tls-alpn-01"
+        };
+
+        // Act
+        var act = () => config.Validate();
+
+        // Assert
+        act.Should().Throw<InvalidOperationException>()
+            .WithMessage("*Unsupported ACME challenge type*");
+    }
+
+    [Theory]
+    [InlineData("kid", null)]
+    [InlineData(null, "hmac")]
+    public void ValidateRejectsPartialEabConfig(string? keyId, string? hmacKey)
+    {
+        // Arrange
+        var config = new AcmeConnectorConfig
+        {
+            DirectoryUrl = WellKnownServers.LetsEncryptStagingV2.ToString(),
+            Email = "admin@example.com",
+            EabKeyId = keyId,
+            EabHmacKey = hmacKey
+        };
+
+        // Act
+        var act = () => config.Validate();
+
+        // Assert
+        act.Should().Throw<InvalidOperationException>()
+            .WithMessage("*External Account Binding*");
+    }
 }

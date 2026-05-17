@@ -1,4 +1,3 @@
-using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using Certes;
 using Certes.Acme;
@@ -8,6 +7,7 @@ using RTSec.Kryptonian.Domain.Entities;
 using RTSec.Kryptonian.Domain.Enums;
 using RTSec.Kryptonian.Domain.Exceptions;
 using RTSec.Kryptonian.Domain.Interfaces;
+using RTSec.Kryptonian.Domain.Services;
 using RTSec.Kryptonian.Domain.ValueObjects;
 
 namespace RTSec.Kryptonian.Infrastructure.Acme;
@@ -40,11 +40,15 @@ public class AcmeCaConnector : ICaConnector
         IDataProtectionService dataProtection,
         AcmeConnectorConfig config)
     {
+        ArgumentNullException.ThrowIfNull(config);
+
         _logger = logger;
         _unitOfWork = unitOfWork;
         _challengeProvider = challengeProvider;
         _dataProtection = dataProtection;
         _config = config;
+
+        config.Validate();
 
         _logger.LogInformation("ACME connector initialized for directory: {DirectoryUrl}", config.DirectoryUrl);
     }
@@ -194,6 +198,15 @@ emyPxgcYxn/eR44/KJ4EBs+lVDR3veyJm+kXQ99b21/+jh5Xos1AnX5iItreGCc=
 
             _logger.LogInformation("Requesting certificate for domains: {Domains}", string.Join(", ", domains));
 
+            var invalidProfileDomains = domains
+                .Where(domain => !IsAllowedByProfile(profile, domain))
+                .ToList();
+            if (invalidProfileDomains.Count > 0)
+            {
+                return CertificateIssuanceResult.Failed(
+                    $"CSR contains DNS names outside the EST profile policy: {string.Join(", ", invalidProfileDomains)}");
+            }
+
             // Create ACME order
             var order = await _acmeContext!.NewOrder(domains);
             var orderResource = await order.Resource();
@@ -207,54 +220,25 @@ emyPxgcYxn/eR44/KJ4EBs+lVDR3veyJm+kXQ99b21/+jh5Xos1AnX5iItreGCc=
                 await ProcessAuthorizationAsync(auth, ct);
             }
 
-            // Generate a key for the certificate
-            var certKey = GenerateCertificateKey(csr);
-
             // Finalize the order with the CSR - Certes expects raw CSR bytes
-            var finalizedOrder = await order.Finalize(csr.RawData.ToArray());
+            await order.Finalize(csr.RawData.ToArray());
 
             _logger.LogDebug("Order finalized, waiting for certificate issuance...");
 
             // Download the certificate
             var certChain = await order.Download();
-
-            // Generate a strong random password for PFX to protect the private key in memory
-            // This ensures the key is never held unprotected, even transiently
-            var pfxPassword = GenerateSecurePassword();
-            var pfxBuilder = certChain.ToPfx(certKey);
-            var pfxBytes = pfxBuilder.Build("acme-cert", pfxPassword);
-
-            // Load the PFX with EphemeralKeySet to keep key in memory only (not persisted to disk)
-            // The password protects the key material during the brief window it exists as PFX bytes
-            var issuedCert = new X509Certificate2(
-                pfxBytes,
-                pfxPassword,
-                X509KeyStorageFlags.EphemeralKeySet);
-
-            // Clear the PFX bytes and password from memory as soon as possible
-            Array.Clear(pfxBytes);
-
-            // Build the chain
-            var chain = new List<X509Certificate2> { issuedCert };
-
-            // Add issuer certificates from the chain using the Issuers collection
-            var issuerCerts = new List<X509Certificate2>();
-            foreach (var issuer in certChain.Issuers)
-            {
-                // Convert to PEM string then to certificate
-                var issuerPem = issuer.ToPem();
-                var issuerCert = X509Certificate2.CreateFromPem(issuerPem);
-                chain.Add(issuerCert);
-                issuerCerts.Add(issuerCert);
-            }
+            var parsedChain = ParseCertificateChain(certChain);
+            var issuedCert = parsedChain.Leaf;
+            var chain = parsedChain.FullChain;
+            var issuerCerts = parsedChain.Issuers;
 
             // Cache the issuer chain for subsequent /cacerts requests
-            UpdateCachedCaChain(issuerCerts.ToArray());
+            UpdateCachedCaChain(issuerCerts);
 
             _logger.LogInformation("Certificate issued via ACME: Serial={Serial}, Subject={Subject}",
                 issuedCert.SerialNumber, issuedCert.Subject);
 
-            return CertificateIssuanceResult.Successful(issuedCert, chain.ToArray());
+            return CertificateIssuanceResult.Successful(issuedCert, chain);
         }
         catch (AcmeRequestException ex)
         {
@@ -380,33 +364,28 @@ emyPxgcYxn/eR44/KJ4EBs+lVDR3veyJm+kXQ99b21/+jh5Xos1AnX5iItreGCc=
         // Get available challenges
         var challenges = await auth.Challenges();
 
-        // Prefer HTTP-01 for simplicity, fall back to DNS-01
         IChallengeContext? selectedChallenge = null;
         string? keyAuth = null;
-        string challengeType = "unknown";
+        var challengeType = _challengeProvider.ChallengeType;
 
-        // Try HTTP-01 first
-        var http01 = challenges.FirstOrDefault(c => c.Type == ChallengeTypes.Http01);
-        if (http01 != null && _challengeProvider.ChallengeType == "http-01")
+        if (string.Equals(_challengeProvider.ChallengeType, "http-01", StringComparison.OrdinalIgnoreCase))
         {
-            selectedChallenge = http01;
-            keyAuth = http01.KeyAuthz;
-            challengeType = "http-01";
+            selectedChallenge = challenges.FirstOrDefault(c => c.Type == ChallengeTypes.Http01);
+            keyAuth = selectedChallenge?.KeyAuthz;
         }
-
-        // Fall back to DNS-01
-        var dns01 = challenges.FirstOrDefault(c => c.Type == ChallengeTypes.Dns01);
-        if (selectedChallenge == null && dns01 != null)
+        else if (string.Equals(_challengeProvider.ChallengeType, "dns-01", StringComparison.OrdinalIgnoreCase))
         {
-            selectedChallenge = dns01;
-            keyAuth = _acmeContext!.AccountKey.DnsTxt(dns01.Token);
-            challengeType = "dns-01";
+            selectedChallenge = challenges.FirstOrDefault(c => c.Type == ChallengeTypes.Dns01);
+            if (selectedChallenge != null)
+            {
+                keyAuth = _acmeContext!.AccountKey.DnsTxt(selectedChallenge.Token);
+            }
         }
 
         if (selectedChallenge == null || keyAuth == null)
         {
             throw new InvalidOperationException(
-                $"No supported challenge type available for domain {domain}. " +
+                $"Configured challenge type '{_challengeProvider.ChallengeType}' is not available for domain {domain}. " +
                 $"Available: {string.Join(", ", challenges.Select(c => c.Type))}");
         }
 
@@ -488,7 +467,7 @@ emyPxgcYxn/eR44/KJ4EBs+lVDR3veyJm+kXQ99b21/+jh5Xos1AnX5iItreGCc=
         }
     }
 
-    private static List<string> ExtractDomainsFromCsr(ParsedCsr csr)
+    internal static List<string> ExtractDomainsFromCsr(ParsedCsr csr)
     {
         var domains = new List<string>();
 
@@ -507,10 +486,12 @@ emyPxgcYxn/eR44/KJ4EBs+lVDR3veyJm+kXQ99b21/+jh5Xos1AnX5iItreGCc=
         // Add SANs
         foreach (var san in csr.SubjectAlternativeNames)
         {
-            // Handle DNS: prefix
-            var domain = san.StartsWith("DNS:", StringComparison.OrdinalIgnoreCase)
-                ? san[4..].Trim()
-                : san.Trim();
+            if (!san.StartsWith("DNS:", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var domain = san[4..].Trim();
 
             if (IsValidDomainName(domain) && !domains.Contains(domain, StringComparer.OrdinalIgnoreCase))
             {
@@ -521,35 +502,42 @@ emyPxgcYxn/eR44/KJ4EBs+lVDR3veyJm+kXQ99b21/+jh5Xos1AnX5iItreGCc=
         return domains;
     }
 
-    private static bool IsValidDomainName(string domain)
+    internal static bool IsAllowedByProfile(EstProfile profile, string domain)
+    {
+        ArgumentNullException.ThrowIfNull(profile);
+
+        if (profile.Hostnames.Count == 0)
+        {
+            return true;
+        }
+
+        return HostnameMatcher.Matches(profile, domain);
+    }
+
+    internal static bool IsValidDomainName(string domain)
     {
         if (string.IsNullOrWhiteSpace(domain))
             return false;
 
         // Basic domain validation - contains at least one dot and no spaces
-        return domain.Contains('.') && !domain.Contains(' ') && domain.Length <= 253;
+        return domain.Contains('.', StringComparison.Ordinal) &&
+            !domain.Contains(' ', StringComparison.Ordinal) &&
+            domain.All(c => char.IsLetterOrDigit(c) || c == '.' || c == '-') &&
+            domain.Length <= 253;
     }
 
-    private static IKey GenerateCertificateKey(ParsedCsr csr)
+    internal static (X509Certificate2 Leaf, X509Certificate2[] FullChain, X509Certificate2[] Issuers) ParseCertificateChain(
+        CertificateChain certChain)
     {
-        // Use the key type matching the CSR if possible
-        return csr.PublicKeyAlgorithm.ToUpperInvariant() switch
-        {
-            "RSA" => KeyFactory.NewKey(KeyAlgorithm.RS256),
-            "ECDSA" or "EC" => KeyFactory.NewKey(KeyAlgorithm.ES256),
-            _ => KeyFactory.NewKey(KeyAlgorithm.RS256) // Default to RSA
-        };
-    }
+        ArgumentNullException.ThrowIfNull(certChain);
 
-    /// <summary>
-    /// Generates a cryptographically secure random password for PFX protection.
-    /// </summary>
-    private static string GenerateSecurePassword()
-    {
-        // Generate 32 bytes of random data and convert to base64 for a strong password
-        var randomBytes = new byte[32];
-        RandomNumberGenerator.Fill(randomBytes);
-        return Convert.ToBase64String(randomBytes);
+        var leaf = X509Certificate2.CreateFromPem(certChain.Certificate.ToPem());
+        var issuers = certChain.Issuers
+            .Select(issuer => X509Certificate2.CreateFromPem(issuer.ToPem()))
+            .ToArray();
+        var fullChain = new[] { leaf }.Concat(issuers).ToArray();
+
+        return (leaf, fullChain, issuers);
     }
 
     /// <summary>
@@ -604,6 +592,35 @@ public class AcmeConnectorConfig
     /// Preferred challenge type: "http-01" or "dns-01".
     /// </summary>
     public string PreferredChallengeType { get; set; } = "http-01";
+
+    /// <summary>
+    /// Validates the ACME connector configuration.
+    /// </summary>
+    public void Validate()
+    {
+        if (string.IsNullOrWhiteSpace(DirectoryUrl) ||
+            !Uri.TryCreate(DirectoryUrl, UriKind.Absolute, out _))
+        {
+            throw new InvalidOperationException("ACME connector requires an absolute DirectoryUrl.");
+        }
+
+        if (string.IsNullOrWhiteSpace(Email))
+        {
+            throw new InvalidOperationException("ACME connector requires an email address.");
+        }
+
+        if (!string.Equals(PreferredChallengeType, "http-01", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(PreferredChallengeType, "dns-01", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                $"Unsupported ACME challenge type '{PreferredChallengeType}'. Supported values are 'http-01' and 'dns-01'.");
+        }
+
+        if (string.IsNullOrWhiteSpace(EabKeyId) != string.IsNullOrWhiteSpace(EabHmacKey))
+        {
+            throw new InvalidOperationException("ACME External Account Binding requires both EabKeyId and EabHmacKey.");
+        }
+    }
 }
 
 /// <summary>
