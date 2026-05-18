@@ -30,6 +30,22 @@ Save the token — it cannot be retrieved. All subsequent requests use:
 
 ---
 
+## Available `{backend}` values
+
+Use these strings wherever a URL contains `{backend}`:
+
+| Value | CA type | EST enroll | ACME |
+|---|---|---|---|
+| `selfsigned` | Self-signed CA | ✓ | — |
+| `adcs` | Microsoft AD CS | ✓ | — |
+| `ejbca` | EJBCA | ✓ | — |
+| `acme` | ACME via step-ca | — | ✓ (use `DirectoryUrl`) |
+
+**EST-enrollable backends:** `selfsigned`, `adcs`, `ejbca`  
+**ACME backend:** configure your gateway's `DirectoryUrl` to `/teams/{token}/acme/directory` — do not use `acme` in EST paths.
+
+---
+
 ## Scoring overview
 
 Three flows score points on the leaderboard. **All three require your gateway to use the EST enrollment path** — certificates from the `/issue` JSON API do not earn gateway credit.
@@ -314,9 +330,11 @@ curl -X POST https://ca-harness.mangotree-b3d09362.eastus.azurecontainerapps.io/
 
 ## DIMSE infrastructure
 
-| Service | Address | Notes |
-|---|---|---|
-| Orthanc plain DIMSE | `kryptonian-dimse.eastus.cloudapp.azure.com:4242` | AET: `KRYPTONIAN`. No TLS. C-MOVE source, C-STORE target. |
-| DIMSE TLS proxy | `kryptonian-dimse.eastus.cloudapp.azure.com:4243` | mTLS. Present EST-enrolled cert as client credential. |
-| Orthanc DICOMweb | `http://kryptonian-dimse.eastus.cloudapp.azure.com:8042` | WADO-RS, STOW-RS, QIDO-RS. |
-| Proxy server cert | `http://kryptonian-dimse.eastus.cloudapp.azure.com:8044/server-cert` | Download and trust before connecting to port 4243. |
+| Service | Hostname | IP | Port | Notes |
+|---|---|---|---|---|
+| Orthanc plain DIMSE | `kryptonian-dimse.eastus.cloudapp.azure.com` | `20.119.67.236` | `4242` | AET: `KRYPTONIAN`. No TLS. C-MOVE source, C-STORE target. |
+| DIMSE TLS proxy (mTLS) | `kryptonian-dimse.eastus.cloudapp.azure.com` | `20.119.67.236` | `4243` | Present EST-enrolled cert as client credential. |
+| Orthanc DICOMweb | `kryptonian-dimse.eastus.cloudapp.azure.com` | `20.119.67.236` | `8042` | WADO-RS, STOW-RS, QIDO-RS at `/dicom-web/`. |
+| Proxy server cert | `kryptonian-dimse.eastus.cloudapp.azure.com` | `20.119.67.236` | `8044` | `GET /server-cert` — download and trust before connecting to port 4243. |
+
+> Both the hostname and IP resolve to the same host. Use the hostname where possible (TLS SNI); use the IP if your DICOM gateway requires a numeric address.

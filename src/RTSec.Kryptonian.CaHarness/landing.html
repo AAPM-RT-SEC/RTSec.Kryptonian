@@ -910,29 +910,47 @@
         <thead>
           <tr>
             <th>Service</th>
-            <th>Address</th>
+            <th>Hostname / URL</th>
+            <th>IP</th>
+            <th>Port</th>
+            <th>Notes</th>
           </tr>
         </thead>
         <tbody>
           <tr>
             <td>CA Harness API</td>
-            <td><span class="addr">https://ca-harness.mangotree-b3d09362.eastus.azurecontainerapps.io</span></td>
+            <td><span class="addr">ca-harness.mangotree-b3d09362.eastus.azurecontainerapps.io</span></td>
+            <td><span class="addr">—</span></td>
+            <td><span class="addr">443</span></td>
+            <td>HTTPS only</td>
           </tr>
           <tr>
             <td>Orthanc DIMSE (plain, no TLS)</td>
-            <td><span class="addr">kryptonian-dimse.eastus.cloudapp.azure.com:4242</span></td>
+            <td><span class="addr">kryptonian-dimse.eastus.cloudapp.azure.com</span></td>
+            <td><span class="addr">20.119.67.236</span></td>
+            <td><span class="addr">4242</span></td>
+            <td>AET: <code>KRYPTONIAN</code> — C-MOVE source, C-STORE target</td>
           </tr>
           <tr>
-            <td>DIMSE TLS Proxy (mTLS)</td>
-            <td><span class="addr">kryptonian-dimse.eastus.cloudapp.azure.com:4243</span></td>
+            <td>DIMSE TLS Proxy (mTLS, Flow 1)</td>
+            <td><span class="addr">kryptonian-dimse.eastus.cloudapp.azure.com</span></td>
+            <td><span class="addr">20.119.67.236</span></td>
+            <td><span class="addr">4243</span></td>
+            <td>AET: <code>KRYPTONIAN</code> — present EST-enrolled cert</td>
           </tr>
           <tr>
-            <td>Orthanc DICOMweb (WADO-RS)</td>
-            <td><span class="addr">http://kryptonian-dimse.eastus.cloudapp.azure.com:8042</span></td>
+            <td>Orthanc DICOMweb (WADO-RS / STOW-RS)</td>
+            <td><span class="addr">kryptonian-dimse.eastus.cloudapp.azure.com</span></td>
+            <td><span class="addr">20.119.67.236</span></td>
+            <td><span class="addr">8042</span></td>
+            <td>Base path: <code>/dicom-web/</code></td>
           </tr>
           <tr>
-            <td>Proxy server cert download</td>
-            <td><span class="addr">http://kryptonian-dimse.eastus.cloudapp.azure.com:8044/server-cert</span></td>
+            <td>Proxy server cert</td>
+            <td><span class="addr">kryptonian-dimse.eastus.cloudapp.azure.com</span></td>
+            <td><span class="addr">20.119.67.236</span></td>
+            <td><span class="addr">8044</span></td>
+            <td><code>GET /server-cert</code> — trust before connecting to 4243</td>
           </tr>
         </tbody>
       </table>
