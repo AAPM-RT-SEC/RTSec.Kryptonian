@@ -56,9 +56,11 @@ public sealed class DicomVerificationService
             r.Thumbprint.Equals(sha256Thumbprint, StringComparison.OrdinalIgnoreCase));
         var deviceId = record?.DeviceId ?? "";
 
-        // Gateway verification: check for the EST OID extension embedded during simpleenroll.
-        // Certs issued via the JSON /issue API never carry this extension, so it cannot be forged.
-        var usedGateway = cert.Extensions[EstExtension.Oid] is not null;
+        // Gateway verification: check for protocol OID extensions embedded during gateway enrollment.
+        // Certs issued via the JSON /issue API never carry these extensions, so they cannot be forged.
+        var usedGateway = cert.Extensions[EstExtension.Oid] is not null
+            || cert.Extensions[ScepExtension.Oid] is not null
+            || cert.Extensions[EjbcaRestExtension.Oid] is not null;
 
         return new VerificationResult(serial, sha256Thumbprint, deviceId, usedGateway);
     }

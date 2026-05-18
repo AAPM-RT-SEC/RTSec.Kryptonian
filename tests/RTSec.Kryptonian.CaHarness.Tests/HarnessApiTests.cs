@@ -439,14 +439,11 @@ public sealed class HarnessApiTests : IClassFixture<WebApplicationFactory<Progra
 
     // ---------- EST enrollment ----------
 
-    [Theory]
-    [InlineData("selfsigned")]
-    [InlineData("adcs")]
-    [InlineData("ejbca")]
-    public async Task Est_Simpleenroll_ValidCsr_ReturnsIssued(string backend)
+    [Fact]
+    public async Task Est_Simpleenroll_Selfsigned_ValidCsr_ReturnsIssued()
     {
         var csr = MakeCsrBase64("CN=est-device");
-        var req = new HttpRequestMessage(HttpMethod.Post, $"/teams/{_token}/est/{backend}/simpleenroll");
+        var req = new HttpRequestMessage(HttpMethod.Post, $"/teams/{_token}/est/selfsigned/simpleenroll");
         req.Content = new StringContent(csr, System.Text.Encoding.UTF8, "application/pkcs10");
         req.Headers.Add("X-Device-Id", "est-device-001");
 
@@ -456,6 +453,19 @@ public sealed class HarnessApiTests : IClassFixture<WebApplicationFactory<Progra
         var result = await resp.Content.ReadFromJsonAsync<IssueResponse>(JsonOpts);
         result!.Status.Should().Be("issued");
         result.CertificatePem.Should().Contain("BEGIN CERTIFICATE");
+    }
+
+    [Theory]
+    [InlineData("adcs")]
+    [InlineData("ejbca")]
+    public async Task Est_Simpleenroll_AdcsEjbca_Returns410(string backend)
+    {
+        var csr = MakeCsrBase64("CN=est-device");
+        var req = new HttpRequestMessage(HttpMethod.Post, $"/teams/{_token}/est/{backend}/simpleenroll");
+        req.Content = new StringContent(csr, System.Text.Encoding.UTF8, "application/pkcs10");
+
+        var resp = await _client.SendAsync(req);
+        resp.StatusCode.Should().Be(HttpStatusCode.Gone);
     }
 
     [Fact]
@@ -512,6 +522,166 @@ public sealed class HarnessApiTests : IClassFixture<WebApplicationFactory<Progra
 
         var result = await resp.Content.ReadFromJsonAsync<IssueResponse>(JsonOpts);
         result!.Status.Should().Be("issued");
+    }
+
+    // ---------- SCEP (ADCS backend) ----------
+
+    [Fact]
+    public async Task Scep_GetCACert_Returns200_WithBinaryContent()
+    {
+        var resp = await _client.GetAsync($"/teams/{_token}/scep/adcs?operation=GetCACert");
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        resp.Content.Headers.ContentType?.MediaType.Should().Be("application/x-x509-ca-cert");
+        var bytes = await resp.Content.ReadAsByteArrayAsync();
+        bytes.Should().NotBeEmpty();
+    }
+
+    [Fact]
+    public async Task Scep_GetCACaps_Returns200_ContainsSha256()
+    {
+        var resp = await _client.GetAsync($"/teams/{_token}/scep/adcs?operation=GetCACaps");
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var text = await resp.Content.ReadAsStringAsync();
+        text.Should().Contain("SHA-256");
+    }
+
+    [Fact]
+    public async Task Scep_UnknownOperation_Returns400()
+    {
+        var resp = await _client.GetAsync($"/teams/{_token}/scep/adcs?operation=UnknownOp");
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task Scep_UnknownToken_Returns404()
+    {
+        var resp = await _client.GetAsync("/teams/00000000-0000-0000-0000-000000000000/scep/adcs?operation=GetCACert");
+        resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    // ---------- EJBCA REST API ----------
+
+    [Fact]
+    public async Task EjbcaRest_Enroll_AllowedProfile_Returns200WithCertificate()
+    {
+        using var key = System.Security.Cryptography.RSA.Create(2048);
+        var csrDer = new System.Security.Cryptography.X509Certificates.CertificateRequest(
+            "CN=ejbca-device", key,
+            System.Security.Cryptography.HashAlgorithmName.SHA256,
+            System.Security.Cryptography.RSASignaturePadding.Pkcs1)
+            .CreateSigningRequest();
+        var pem = "-----BEGIN CERTIFICATE REQUEST-----\n"
+            + Convert.ToBase64String(csrDer, Base64FormattingOptions.InsertLineBreaks)
+            + "\n-----END CERTIFICATE REQUEST-----";
+
+        var body = new
+        {
+            certificate_request = pem,
+            certificate_profile_name = "MedicalDeviceTLS",
+            username = "ejbca-test-device"
+        };
+
+        var resp = await _client.PostAsJsonAsync(
+            $"/teams/{_token}/ejbca/ejbca-rest-api/v1/certificate/pkcs10enroll", body);
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var result = await resp.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
+        result.GetProperty("certificate").GetString().Should().NotBeNullOrWhiteSpace();
+        result.GetProperty("serial_number").GetString().Should().NotBeNullOrWhiteSpace();
+        result.GetProperty("response_type").GetString().Should().Be("CERTIFICATE");
+    }
+
+    [Fact]
+    public async Task EjbcaRest_Enroll_UnknownProfile_Returns422()
+    {
+        using var key = System.Security.Cryptography.RSA.Create(2048);
+        var csrDer = new System.Security.Cryptography.X509Certificates.CertificateRequest(
+            "CN=ejbca-device", key,
+            System.Security.Cryptography.HashAlgorithmName.SHA256,
+            System.Security.Cryptography.RSASignaturePadding.Pkcs1)
+            .CreateSigningRequest();
+        var pem = "-----BEGIN CERTIFICATE REQUEST-----\n"
+            + Convert.ToBase64String(csrDer, Base64FormattingOptions.InsertLineBreaks)
+            + "\n-----END CERTIFICATE REQUEST-----";
+
+        var body = new
+        {
+            certificate_request = pem,
+            certificate_profile_name = "NoSuchProfile"
+        };
+
+        var resp = await _client.PostAsJsonAsync(
+            $"/teams/{_token}/ejbca/ejbca-rest-api/v1/certificate/pkcs10enroll", body);
+        resp.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+    }
+
+    [Fact]
+    public async Task EjbcaRest_Enroll_MissingProfile_Returns422()
+    {
+        using var key = System.Security.Cryptography.RSA.Create(2048);
+        var csrDer = new System.Security.Cryptography.X509Certificates.CertificateRequest(
+            "CN=ejbca-device", key,
+            System.Security.Cryptography.HashAlgorithmName.SHA256,
+            System.Security.Cryptography.RSASignaturePadding.Pkcs1)
+            .CreateSigningRequest();
+        var pem = "-----BEGIN CERTIFICATE REQUEST-----\n"
+            + Convert.ToBase64String(csrDer, Base64FormattingOptions.InsertLineBreaks)
+            + "\n-----END CERTIFICATE REQUEST-----";
+
+        var body = new
+        {
+            certificate_request = pem
+            // no certificate_profile_name
+        };
+
+        var resp = await _client.PostAsJsonAsync(
+            $"/teams/{_token}/ejbca/ejbca-rest-api/v1/certificate/pkcs10enroll", body);
+        resp.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+    }
+
+    [Fact]
+    public async Task EjbcaRest_Enroll_UnknownToken_Returns404()
+    {
+        var body = new { certificate_request = "pem", certificate_profile_name = "MedicalDeviceTLS" };
+        var resp = await _client.PostAsJsonAsync(
+            "/teams/00000000-0000-0000-0000-000000000000/ejbca/ejbca-rest-api/v1/certificate/pkcs10enroll", body);
+        resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    // ---------- EJBCA REST confirms DICOM gateway enrollment ----------
+
+    [Fact]
+    public async Task EjbcaRest_DicomStow_EnrolledCert_UsedGatewayTrue()
+    {
+        // Enroll via EJBCA REST
+        using var key = System.Security.Cryptography.RSA.Create(2048);
+        var csrDer = new System.Security.Cryptography.X509Certificates.CertificateRequest(
+            "CN=ejbca-dicom-device", key,
+            System.Security.Cryptography.HashAlgorithmName.SHA256,
+            System.Security.Cryptography.RSASignaturePadding.Pkcs1)
+            .CreateSigningRequest();
+        var pem = "-----BEGIN CERTIFICATE REQUEST-----\n"
+            + Convert.ToBase64String(csrDer, Base64FormattingOptions.InsertLineBreaks)
+            + "\n-----END CERTIFICATE REQUEST-----";
+
+        var enrollResp = await _client.PostAsJsonAsync(
+            $"/teams/{_token}/ejbca/ejbca-rest-api/v1/certificate/pkcs10enroll",
+            new { certificate_request = pem, certificate_profile_name = "MedicalDeviceTLS", username = "ejbca-dicom-device" });
+
+        enrollResp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var enrolled = await enrollResp.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
+        var certDerBase64 = enrolled.GetProperty("certificate").GetString()!;
+
+        // Submit DICOM with the EJBCA-enrolled cert
+        var stowReq = new HttpRequestMessage(HttpMethod.Post, $"/teams/{_token}/dicom/backends/ejbca/stow");
+        stowReq.Content = new StringContent("fake-dicom", System.Text.Encoding.UTF8, "application/dicom");
+        stowReq.Headers.Add("X-Device-Certificate", certDerBase64);
+        var stowResp = await _client.SendAsync(stowReq);
+        stowResp.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var body = await stowResp.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
+        body.GetProperty("accepted").GetBoolean().Should().BeTrue();
+        body.GetProperty("usedGateway").GetBoolean().Should().BeTrue();
     }
 
     // ---------- unknown backend ----------

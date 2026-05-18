@@ -763,11 +763,18 @@
         <div class="flow-title">Flow 1 — DIMSE mTLS C-STORE</div>
         <div class="flow-badge">&times;4 backends &nbsp;·&nbsp; 4 pts max</div>
         <p class="flow-body">
-          Enroll a device via EST <code style="font-family:var(--mono);font-size:11px;color:#79c0ff">simpleenroll</code>.
+          Enroll a device through your gateway using the protocol required by each backend:
+          <strong>EST</strong> for <code style="font-family:var(--mono);font-size:11px;color:#79c0ff">selfsigned</code>,
+          <strong>SCEP</strong> for <code style="font-family:var(--mono);font-size:11px;color:#79c0ff">adcs</code>,
+          <strong>EJBCA REST</strong> for <code style="font-family:var(--mono);font-size:11px;color:#79c0ff">ejbca</code>, and
+          <strong>ACME</strong> for <code style="font-family:var(--mono);font-size:11px;color:#79c0ff">acme</code>.
           Present the issued certificate as mTLS client credential to the DIMSE TLS proxy on
-          port&nbsp;4243. C-STORE a DICOM file. Scored independently for each CA backend.
+          port&nbsp;4243. C-STORE a DICOM file. Scored independently per backend.
         </p>
-        <div class="code-snippet">POST /teams/{token}/est/{backend}/simpleenroll</div>
+        <div class="code-snippet">selfsigned → EST /est/selfsigned/simpleenroll
+adcs &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;→ SCEP /scep/adcs?operation=PKIOperation
+ejbca &nbsp;&nbsp;&nbsp;&nbsp;→ REST /ejbca/ejbca-rest-api/v1/certificate/pkcs10enroll
+acme &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;→ ACME /acme/directory</div>
       </div>
 
       <!-- Flow 2 -->
@@ -778,7 +785,7 @@
         <p class="flow-body">
           Trigger a C-MOVE from Orthanc (port&nbsp;4242, plain DIMSE) to your SCP.
           Receive the DICOM file. Submit it to the harness via STOW-RS with your
-          EST-enrolled certificate in the request header.
+          gateway-enrolled certificate in the request header.
         </p>
         <div class="code-snippet">POST /teams/{token}/dicom/backends/{backend}/stow</div>
       </div>
@@ -865,15 +872,15 @@
       </div>
       <div class="score-item">
         <div class="score-pt">1</div>
-        <div class="score-label"><strong>Flow 1 — adcs</strong> EST enroll &rarr; port 4243 mTLS</div>
+        <div class="score-label"><strong>Flow 1 — adcs</strong> SCEP enroll &rarr; port 4243 mTLS</div>
       </div>
       <div class="score-item">
         <div class="score-pt">1</div>
-        <div class="score-label"><strong>Flow 1 — ejbca</strong> EST enroll &rarr; port 4243 mTLS</div>
+        <div class="score-label"><strong>Flow 1 — ejbca</strong> EJBCA REST enroll &rarr; port 4243 mTLS</div>
       </div>
       <div class="score-item">
         <div class="score-pt">1</div>
-        <div class="score-label"><strong>Flow 1 — acme</strong> EST enroll &rarr; port 4243 mTLS</div>
+        <div class="score-label"><strong>Flow 1 — acme</strong> ACME enroll &rarr; port 4243 mTLS</div>
       </div>
       <div class="score-item">
         <div class="score-pt">1</div>
@@ -936,7 +943,7 @@
             <td><span class="addr">kryptonian-dimse.eastus.cloudapp.azure.com</span></td>
             <td><span class="addr">20.119.67.236</span></td>
             <td><span class="addr">4243</span></td>
-            <td>AET: <code>KRYPTONIAN</code> — present EST-enrolled cert</td>
+            <td>AET: <code>KRYPTONIAN</code> — present gateway-enrolled cert (EST/SCEP/REST/ACME)</td>
           </tr>
           <tr>
             <td>Orthanc DICOMweb (WADO-RS / STOW-RS)</td>

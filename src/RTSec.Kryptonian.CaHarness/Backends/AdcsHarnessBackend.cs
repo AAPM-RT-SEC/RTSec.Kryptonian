@@ -74,22 +74,21 @@ public sealed class AdcsHarnessBackend : IHarnessBackend
 
     public IssueResponse IssueViaEst(string csrPkcs10Base64, string deviceId = "")
     {
-        byte[] csrDer;
-        try
-        {
-            csrDer = Convert.FromBase64String(csrPkcs10Base64);
-        }
-        catch
-        {
-            return SelfSignedHarnessBackend.Rejected(BackendId, "CSR body is not valid base64", "invalid-csr");
-        }
-
-        var (record, error) = _engine.Sign(csrDer, 7, deviceId, estEnrolled: true);
-        if (record is null)
-            return SelfSignedHarnessBackend.Rejected(BackendId, error ?? "Signing failed", "signing-failed");
-
-        return SelfSignedHarnessBackend.Issued(BackendId, record, _engine.GetCaCertificatePem(), _engine.IssuerName);
+        // ADCS no longer uses EST — return a rejection with a clear message.
+        // SCEP is the enrollment protocol for ADCS. Use IssueViaScep() instead.
+        return SelfSignedHarnessBackend.Rejected(BackendId,
+            "ADCS backend uses SCEP, not EST. Use the SCEP endpoint.",
+            "protocol-mismatch");
     }
+
+    // Called by the SCEP handler after parsing the PKCS#10 from the SCEP PKCSReq.
+    public (IssuedCertRecord? Record, string? Error) IssueViaScep(byte[] csrDer, string deviceId = "")
+    {
+        return _engine.Sign(csrDer, 7, deviceId, enrollmentProtocol: "scep");
+    }
+
+    public Org.BouncyCastle.Crypto.AsymmetricCipherKeyPair GetCaKeyPair() => _engine.GetCaKeyPair();
+    public Org.BouncyCastle.X509.X509Certificate GetCaCert() => _engine.GetCaCert();
 
     private IssueResponse SignRequest(IssueRequest request)
     {

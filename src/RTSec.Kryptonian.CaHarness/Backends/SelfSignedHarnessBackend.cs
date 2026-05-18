@@ -43,7 +43,7 @@ public sealed class SelfSignedHarnessBackend : IHarnessBackend
             return Rejected(BackendId, "CSR body is not valid base64", "invalid-csr");
         }
 
-        var (record, error) = _engine.Sign(csrDer, 7, deviceId, estEnrolled: true);
+        var (record, error) = _engine.Sign(csrDer, 7, deviceId, enrollmentProtocol: "est");
         if (record is null)
             return Rejected(BackendId, error ?? "Signing failed", "signing-failed");
 

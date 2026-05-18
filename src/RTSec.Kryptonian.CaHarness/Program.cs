@@ -124,7 +124,7 @@ app.MapGet("/scoreboard", () =>
                 "enrolled" => ("#9e6a03", "Enrolled"),
                 _ => ("#30363d", "Not Started")
             };
-            var gw = b.UsedGateway ? " <span title='EST gateway verified' style='color:#58a6ff'>⇌</span>" : "";
+            var gw = b.UsedGateway ? " <span title='Gateway-enrolled (EST/SCEP/EJBCA REST/ACME)' style='color:#58a6ff'>⇌</span>" : "";
             var dimse = b.DimseStoreTlsComplete ? " <span title='DIMSE mTLS C-STORE complete' style='color:#3fb950'>🔒</span>" : "";
             return $"<td style='text-align:center'><span style='background:{bg};color:#fff;padding:2px 8px;border-radius:4px;font-size:12px'>{label}</span>{gw}{dimse}</td>";
         }));
@@ -177,7 +177,7 @@ app.MapGet("/scoreboard", () =>
             </tr></thead>
             <tbody>{{rows}}</tbody>
           </table>
-          <div style="margin-top:16px;color:#8b949e;font-size:12px">🔒 = DIMSE mTLS C-STORE via EST cert (1 pt each, 4 max) &nbsp;·&nbsp; ⇌ = EST gateway verified &nbsp;·&nbsp; Flow 2 = C-MOVE→DICOMWeb (1 pt) &nbsp;·&nbsp; Flow 3 = DICOMWeb→DIMSE (1 pt) &nbsp;·&nbsp; Max 6 pts</div>
+          <div style="margin-top:16px;color:#8b949e;font-size:12px">🔒 = DIMSE mTLS C-STORE via gateway cert (1 pt each, 4 max) &nbsp;·&nbsp; ⇌ = gateway-enrolled (EST/SCEP/REST/ACME) &nbsp;·&nbsp; Flow 2 = C-MOVE→DICOMWeb (1 pt) &nbsp;·&nbsp; Flow 3 = DICOMWeb→DIMSE (1 pt) &nbsp;·&nbsp; Max 6 pts</div>
           <div style="margin-top:12px;color:#8b949e;font-size:12px">
             📥 <a href="https://stkryptonianfiles.blob.core.windows.net/downloads/dicom-examples.zip" style="color:#58a6ff" download>Download DICOM test files (28 MB)</a> — 138 CT instances to use as your DICOM payload
           </div>
@@ -335,6 +335,26 @@ app.MapMethods("/teams/{token}/est/{backend}/simpleenroll",
             return;
         }
 
+        // Reject adcs and ejbca — they now use SCEP and EJBCA REST respectively
+        if (backend.Equals("adcs", StringComparison.OrdinalIgnoreCase))
+        {
+            context.Response.StatusCode = 410;
+            await context.Response.WriteAsJsonAsync(new
+            {
+                error = "ADCS backend uses SCEP, not EST. Use GET/POST /teams/{token}/scep/adcs?operation=..."
+            });
+            return;
+        }
+        if (backend.Equals("ejbca", StringComparison.OrdinalIgnoreCase))
+        {
+            context.Response.StatusCode = 410;
+            await context.Response.WriteAsJsonAsync(new
+            {
+                error = "EJBCA backend uses the EJBCA REST API, not EST. Use POST /teams/{token}/ejbca/ejbca-rest-api/v1/certificate/pkcs10enroll"
+            });
+            return;
+        }
+
         var b = team.Backends.ResolveBackend(backend);
         if (b is null)
         {
@@ -399,6 +419,99 @@ app.MapMethods("/teams/{token}/est/{backend}/simplereenroll",
 
         context.Response.StatusCode = result.Status == "issued" ? 200 : 400;
         await context.Response.WriteAsJsonAsync(result);
+    });
+
+// ── SCEP (ADCS backend) ────────────────────────────────────────────────────────
+
+app.MapGet("/teams/{token}/scep/adcs", (HttpContext context, string token) =>
+{
+    var team = registry.GetByToken(token);
+    if (team is null) return Results.NotFound();
+
+    var scep = new ScepAdcsEndpoint(team.Backends.Adcs);
+    var operation = context.Request.Query["operation"].FirstOrDefault() ?? "";
+
+    return operation switch
+    {
+        "GetCACert" => Results.Bytes(scep.GetCaCert(), "application/x-x509-ca-cert"),
+        "GetCACaps" => Results.Text(scep.GetCaCaps(), "text/plain"),
+        _ => Results.BadRequest(new { error = $"Unknown operation: {operation}. Supported: GetCACert, GetCACaps" })
+    };
+});
+
+app.MapPost("/teams/{token}/scep/adcs", async (HttpContext context, string token) =>
+{
+    var team = registry.GetByToken(token);
+    if (team is null) return Results.NotFound();
+
+    var operation = context.Request.Query["operation"].FirstOrDefault() ?? "";
+    if (operation != "PKIOperation")
+        return Results.BadRequest(new { error = "POST only supports operation=PKIOperation" });
+
+    var scep = new ScepAdcsEndpoint(team.Backends.Adcs);
+    var deviceId = context.Request.Headers["X-Device-Id"].FirstOrDefault() ?? "";
+
+    using var ms = new MemoryStream();
+    await context.Request.Body.CopyToAsync(ms);
+    var body = ms.ToArray();
+
+    var (response, error) = scep.HandlePkiOperation(body, deviceId);
+    if (response is null)
+        return Results.BadRequest(new { error });
+
+    return Results.Bytes(response, "application/x-pki-message");
+});
+
+// ── EJBCA REST API (EJBCA backend) ────────────────────────────────────────────
+
+app.MapPost("/teams/{token}/ejbca/ejbca-rest-api/v1/certificate/pkcs10enroll",
+    async (HttpContext context, string token) =>
+    {
+        var team = registry.GetByToken(token);
+        if (team is null)
+            return Results.NotFound(new { error = "Unknown team token" });
+
+        var body = await context.Request.ReadFromJsonAsync<EjbcaEnrollRequest>();
+        if (body is null)
+            return Results.BadRequest(new { error = "Invalid JSON body" });
+
+        if (string.IsNullOrWhiteSpace(body.CertificateRequest))
+            return Results.BadRequest(new { error = "certificate_request is required (PEM-encoded PKCS#10)" });
+
+        // Parse PEM → DER
+        byte[] csrDer;
+        try
+        {
+            var pem = body.CertificateRequest.Trim();
+            var b64 = pem
+                .Replace("-----BEGIN CERTIFICATE REQUEST-----", "")
+                .Replace("-----END CERTIFICATE REQUEST-----", "")
+                .Replace("-----BEGIN NEW CERTIFICATE REQUEST-----", "")
+                .Replace("-----END NEW CERTIFICATE REQUEST-----", "")
+                .Replace("\r", "").Replace("\n", "").Trim();
+            csrDer = Convert.FromBase64String(b64);
+        }
+        catch
+        {
+            return Results.BadRequest(new { error = "certificate_request must be a PEM-encoded PKCS#10 CSR" });
+        }
+
+        var deviceId = body.Username ?? "";
+        var (record, error) = team.Backends.Ejbca.IssueViaRest(csrDer, body.CertificateProfileName, deviceId);
+
+        if (record is null)
+            return Results.UnprocessableEntity(new
+            {
+                error_code = "CERT_PROFILE_NOT_FOUND",
+                error_message = error ?? "Enrollment failed"
+            });
+
+        return Results.Ok(new
+        {
+            certificate = record.CertificateDerBase64,
+            serial_number = record.SerialNumber,
+            response_type = "CERTIFICATE"
+        });
     });
 
 // ── DICOM submission endpoint ─────────────────────────────────────────────────
@@ -545,3 +658,19 @@ static string HtmlEncode(string s) =>
 public partial class Program { }
 
 internal sealed record DicomWebToDimseClaimRequest(string SopInstanceUid);
+
+internal sealed record EjbcaEnrollRequest(
+    [property: System.Text.Json.Serialization.JsonPropertyName("certificate_request")]
+    string CertificateRequest,
+    [property: System.Text.Json.Serialization.JsonPropertyName("certificate_profile_name")]
+    string? CertificateProfileName,
+    [property: System.Text.Json.Serialization.JsonPropertyName("end_entity_profile_name")]
+    string? EndEntityProfileName,
+    [property: System.Text.Json.Serialization.JsonPropertyName("certificate_authority_name")]
+    string? CertificateAuthorityName,
+    [property: System.Text.Json.Serialization.JsonPropertyName("username")]
+    string? Username,
+    [property: System.Text.Json.Serialization.JsonPropertyName("password")]
+    string? Password,
+    [property: System.Text.Json.Serialization.JsonPropertyName("include_chain")]
+    bool? IncludeChain);

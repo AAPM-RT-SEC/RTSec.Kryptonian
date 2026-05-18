@@ -24,13 +24,25 @@ public sealed record IssuedCertRecord(
     DateTime NotAfterUtc,
     bool IsRevoked,
     string DeviceId,
-    bool IsEstEnrolled);
+    string? EnrollmentProtocol);   // "est" | "scep" | "ejbca-rest" | null
 
 // OID embedded in certs issued via the EST simpleenroll path.
 // Presence of this extension is the only enforced proof of EST enrollment.
 public static class EstExtension
 {
     public const string Oid = "1.3.6.1.4.1.99999.1";
+}
+
+// OID embedded in certs issued via the SCEP PKCSReq path (ADCS backend).
+public static class ScepExtension
+{
+    public const string Oid = "1.3.6.1.4.1.99999.2";
+}
+
+// OID embedded in certs issued via the EJBCA REST API path (EJBCA backend).
+public static class EjbcaRestExtension
+{
+    public const string Oid = "1.3.6.1.4.1.99999.3";
 }
 
 public sealed class InMemoryCaEngine
@@ -59,7 +71,10 @@ public sealed class InMemoryCaEngine
 
     public string GetCaCertificatePem() => ToPem(_ca.Cert.GetEncoded(), "CERTIFICATE");
 
-    public (IssuedCertRecord? Record, string? Error) Sign(byte[] csrDer, int validityDays, string deviceId = "", bool estEnrolled = false)
+    public AsymmetricCipherKeyPair GetCaKeyPair() => _ca.KeyPair;
+    public X509Certificate GetCaCert() => _ca.Cert;
+
+    public (IssuedCertRecord? Record, string? Error) Sign(byte[] csrDer, int validityDays, string deviceId = "", string? enrollmentProtocol = null)
     {
         try
         {
@@ -97,13 +112,25 @@ public sealed class InMemoryCaEngine
             certGen.AddExtension(X509Extensions.AuthorityKeyIdentifier, false,
                 new AuthorityKeyIdentifierStructure(ca.Cert));
 
-            if (estEnrolled)
+            if (enrollmentProtocol == "est")
             {
                 // Marks this cert as EST-enrolled. Presence of this extension is checked
                 // during DICOM scoring to prove the device enrolled through a gateway.
                 var estOid = new Org.BouncyCastle.Asn1.DerObjectIdentifier(EstExtension.Oid);
                 certGen.AddExtension(estOid, false,
                     new Org.BouncyCastle.Asn1.DerUtf8String("est-enrolled"));
+            }
+            else if (enrollmentProtocol == "scep")
+            {
+                var scepOid = new Org.BouncyCastle.Asn1.DerObjectIdentifier(ScepExtension.Oid);
+                certGen.AddExtension(scepOid, false,
+                    new Org.BouncyCastle.Asn1.DerUtf8String("scep-enrolled"));
+            }
+            else if (enrollmentProtocol == "ejbca-rest")
+            {
+                var ejbcaOid = new Org.BouncyCastle.Asn1.DerObjectIdentifier(EjbcaRestExtension.Oid);
+                certGen.AddExtension(ejbcaOid, false,
+                    new Org.BouncyCastle.Asn1.DerUtf8String("ejbca-rest-enrolled"));
             }
 
             var signatureFactory = new Asn1SignatureFactory("SHA256WithRSA", ca.KeyPair.Private);
@@ -122,7 +149,7 @@ public sealed class InMemoryCaEngine
                 NotAfterUtc: notAfter,
                 IsRevoked: false,
                 DeviceId: deviceId,
-                IsEstEnrolled: estEnrolled);
+                EnrollmentProtocol: enrollmentProtocol);
 
             _issued[serialHex] = record;
             return (record, null);

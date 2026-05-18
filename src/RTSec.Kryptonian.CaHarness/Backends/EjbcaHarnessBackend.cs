@@ -54,21 +54,24 @@ public sealed class EjbcaHarnessBackend : IHarnessBackend
 
     public IssueResponse IssueViaEst(string csrPkcs10Base64, string deviceId = "")
     {
-        byte[] csrDer;
-        try
-        {
-            csrDer = Convert.FromBase64String(csrPkcs10Base64);
-        }
-        catch
-        {
-            return SelfSignedHarnessBackend.Rejected(BackendId, "CSR body is not valid base64", "invalid-csr");
-        }
+        // EJBCA no longer uses EST — return a rejection with a clear message.
+        // EJBCA REST API is the enrollment protocol for EJBCA. Use IssueViaRest() instead.
+        return SelfSignedHarnessBackend.Rejected(BackendId,
+            "EJBCA backend uses the EJBCA REST API, not EST. Use the EJBCA REST endpoint.",
+            "protocol-mismatch");
+    }
 
-        var (record, error) = _engine.Sign(csrDer, 7, deviceId, estEnrolled: true);
-        if (record is null)
-            return SelfSignedHarnessBackend.Rejected(BackendId, error ?? "Signing failed", "signing-failed");
+    // Called by the EJBCA REST handler after parsing the PEM CSR.
+    public (IssuedCertRecord? Record, string? Error) IssueViaRest(byte[] csrDer, string? profileName, string deviceId = "")
+    {
+        if (string.IsNullOrWhiteSpace(profileName))
+            return (null, "certificate_profile_name is required");
+        if (RejectedProfiles.Contains(profileName))
+            return (null, $"Certificate profile {profileName} is not permitted on this CA");
+        if (!AllowedProfiles.Contains(profileName))
+            return (null, $"Unknown certificate profile: {profileName}");
 
-        return SelfSignedHarnessBackend.Issued(BackendId, record, _engine.GetCaCertificatePem(), _engine.IssuerName);
+        return _engine.Sign(csrDer, 7, deviceId, enrollmentProtocol: "ejbca-rest");
     }
 
     public bool Revoke(string serialNumber) => _engine.Revoke(serialNumber);

@@ -34,21 +34,23 @@ Save the token — it cannot be retrieved. All subsequent requests use:
 
 Use these strings wherever a URL contains `{backend}`:
 
-| Value | CA type | EST enroll | ACME |
+| Value | CA type | Enrollment protocol | Endpoint |
 |---|---|---|---|
-| `selfsigned` | Self-signed CA | ✓ | — |
-| `adcs` | Microsoft AD CS | ✓ | — |
-| `ejbca` | EJBCA | ✓ | — |
-| `acme` | ACME via step-ca | — | ✓ (use `DirectoryUrl`) |
+| `selfsigned` | Self-signed CA | EST | `/teams/{token}/est/selfsigned/simpleenroll` |
+| `adcs` | Microsoft AD CS | SCEP | `/teams/{token}/scep/adcs?operation=...` |
+| `ejbca` | EJBCA | EJBCA REST API | `/teams/{token}/ejbca/ejbca-rest-api/v1/certificate/pkcs10enroll` |
+| `acme` | ACME via step-ca | ACME | `/teams/{token}/acme/directory` |
 
-**EST-enrollable backends:** `selfsigned`, `adcs`, `ejbca`  
-**ACME backend:** configure your gateway's `DirectoryUrl` to `/teams/{token}/acme/directory` — do not use `acme` in EST paths.
+**EST backend:** `selfsigned` only.  
+**SCEP backend:** `adcs` — use the SCEP endpoint, not EST.  
+**EJBCA REST backend:** `ejbca` — use the EJBCA REST endpoint, not EST.  
+**ACME backend:** configure your gateway's `DirectoryUrl` to `/teams/{token}/acme/directory`.
 
 ---
 
 ## Scoring overview
 
-Three flows score points on the leaderboard. **All three require your gateway to use the EST enrollment path** — certificates from the `/issue` JSON API do not earn gateway credit.
+Three flows score points on the leaderboard. **All three require your gateway to use a gateway enrollment protocol** — certificates from the `/issue` JSON API do not earn gateway credit. Each backend requires a different protocol: EST for `selfsigned`, SCEP for `adcs`, EJBCA REST for `ejbca`, and ACME for `acme`.
 
 | Flow | What it tests | Points |
 |---|---|---|
@@ -58,16 +60,16 @@ Three flows score points on the leaderboard. **All three require your gateway to
 
 ---
 
-## EST enrollment (required for scoring)
+## EST enrollment — `selfsigned` backend only
 
-To earn gateway credit your device certificates **must** be issued via the EST endpoints. These embed a private OID (`1.3.6.1.4.1.99999.1`) that is verified by both the DIMSE proxy and the STOW-RS endpoint. Certificates from `/issue` never carry this OID.
+To earn gateway credit for the `selfsigned` backend your device certificates **must** be issued via the EST endpoint. This embeds a private OID (`1.3.6.1.4.1.99999.1`) that is verified at scoring time. Certificates from `/issue` never carry this OID.
 
 **Enroll a new device:**
 ```bash
 CSR=$(openssl req -newkey rsa:2048 -nodes -keyout device.key \
   -subj "/CN=my-device/O=Hospital/C=US" -outform DER 2>/dev/null | base64 -w 0)
 
-curl -s -X POST https://ca-harness.mangotree-b3d09362.eastus.azurecontainerapps.io/teams/{token}/est/{backend}/simpleenroll \
+curl -s -X POST https://ca-harness.mangotree-b3d09362.eastus.azurecontainerapps.io/teams/{token}/est/selfsigned/simpleenroll \
   -H "Content-Type: application/pkcs10" \
   -H "X-Device-Id: my-device-001" \
   --data "$CSR"
@@ -75,7 +77,7 @@ curl -s -X POST https://ca-harness.mangotree-b3d09362.eastus.azurecontainerapps.
 
 **Renew a device certificate:**
 ```bash
-curl -s -X POST https://ca-harness.mangotree-b3d09362.eastus.azurecontainerapps.io/teams/{token}/est/{backend}/simplereenroll \
+curl -s -X POST https://ca-harness.mangotree-b3d09362.eastus.azurecontainerapps.io/teams/{token}/est/selfsigned/simplereenroll \
   -H "Content-Type: application/pkcs10" \
   -H "X-Device-Id: my-device-001" \
   --data "$CSR"
@@ -83,7 +85,81 @@ curl -s -X POST https://ca-harness.mangotree-b3d09362.eastus.azurecontainerapps.
 
 Both return a standard `IssueResponse` JSON with `certificatePem` and `certificateDerBase64`.
 
-`{backend}` can be `selfsigned`, `adcs`, or `ejbca` for EST enrollment. For ACME, point your gateway `DirectoryUrl` at the harness (see ACME section below).
+> **Note:** The `adcs` and `ejbca` backends no longer accept EST. Use SCEP for `adcs` and the EJBCA REST API for `ejbca` (see sections below).
+
+---
+
+## SCEP enrollment — `adcs` backend
+
+The ADCS backend uses SCEP (Simple Certificate Enrollment Protocol). Three operations are supported via query parameter.
+
+**Get CA certificate** (degenerate PKCS#7, `application/x-x509-ca-cert`):
+```bash
+curl -s "https://ca-harness.mangotree-b3d09362.eastus.azurecontainerapps.io/teams/{token}/scep/adcs?operation=GetCACert" \
+  -o adcs-ca.p7
+```
+
+**Get CA capabilities** (text list):
+```bash
+curl -s "https://ca-harness.mangotree-b3d09362.eastus.azurecontainerapps.io/teams/{token}/scep/adcs?operation=GetCACaps"
+# Returns: SHA-256\nAES\nPOSTPKIOperation
+```
+
+**PKI operation** (enroll — POST with SCEP PKCSReq as DER `application/x-pki-message`):
+```bash
+curl -s -X POST \
+  "https://ca-harness.mangotree-b3d09362.eastus.azurecontainerapps.io/teams/{token}/scep/adcs?operation=PKIOperation" \
+  -H "Content-Type: application/x-pki-message" \
+  -H "X-Device-Id: my-device-001" \
+  --data-binary @scep-request.bin \
+  -o scep-response.bin
+```
+
+The SCEP response is a signed `CertRep` PKCS#7. The issued certificate embeds OID `1.3.6.1.4.1.99999.2` (SCEP enrollment marker) for gateway credit.
+
+---
+
+## EJBCA REST enrollment — `ejbca` backend
+
+The EJBCA backend uses the EJBCA REST API. Send a JSON body with a PEM-encoded PKCS#10 CSR.
+
+**Enroll a new device:**
+```bash
+# Generate CSR
+openssl req -newkey rsa:2048 -nodes -keyout device.key \
+  -subj "/CN=my-device/O=Hospital/C=US" -out device.csr
+
+CSR_PEM=$(cat device.csr)
+
+curl -s -X POST \
+  "https://ca-harness.mangotree-b3d09362.eastus.azurecontainerapps.io/teams/{token}/ejbca/ejbca-rest-api/v1/certificate/pkcs10enroll" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "certificate_request": "'"$CSR_PEM"'",
+    "certificate_profile_name": "MedicalDeviceTLS",
+    "username": "my-device-001"
+  }'
+```
+
+**Allowed `certificate_profile_name` values:**
+
+| Value | Result |
+|---|---|
+| `MedicalDeviceTLS` | Issued |
+| `DicomWebBridgeMTLS` | Issued |
+| `RejectedProfile` | 422 Unprocessable Entity |
+| Any other / omitted | 422 Unprocessable Entity |
+
+**Response (200 OK):**
+```json
+{
+  "certificate": "MIIC...",
+  "serial_number": "1A2B3C...",
+  "response_type": "CERTIFICATE"
+}
+```
+
+The `certificate` field is base64-encoded DER. Use it as the `X-Device-Certificate` header in DICOM STOW-RS submissions. The issued certificate embeds OID `1.3.6.1.4.1.99999.3` (EJBCA REST enrollment marker) for gateway credit.
 
 ---
 
@@ -97,7 +173,13 @@ curl http://kryptonian-dimse.eastus.cloudapp.azure.com:8044/server-cert -o dimse
 # Add dimse-proxy.pem to your DICOM client trust store
 ```
 
-**Step 2 — EST-enroll your device** (see EST section above).
+**Step 2 — Enroll your device** using the protocol for your target backend:
+- `selfsigned`: EST simpleenroll
+- `adcs`: SCEP PKIOperation
+- `ejbca`: EJBCA REST pkcs10enroll
+- `acme`: ACME (DirectoryUrl)
+
+See the per-backend enrollment sections above.
 
 **Step 3 — C-STORE to the proxy:**
 
@@ -130,7 +212,7 @@ curl -s -X POST https://ca-harness.mangotree-b3d09362.eastus.azurecontainerapps.
   --data-binary @received-file.dcm
 ```
 
-`X-Device-Certificate` must be the `certificateDerBase64` from your EST enrollment (base64 DER — **not PEM**, which has newlines that are invalid in headers).
+`X-Device-Certificate` must be the `certificateDerBase64` from your gateway enrollment (base64 DER — **not PEM**, which has newlines that are invalid in headers). For EST this is `certificateDerBase64`. For EJBCA REST this is the `certificate` field. For SCEP, decode the CertRep and extract the issued cert DER.
 
 ---
 
@@ -163,12 +245,12 @@ The harness verifies the UID exists in Orthanc and awards the point.
 
 ## CA Backends
 
-| Backend | What it emulates | EST / issue requirement |
-|---|---|---|
-| `selfsigned` | Generic self-signed CA | none |
-| `adcs` | Microsoft AD CS | `templateName`: `DicomDeviceAuthentication` or `DicomBridgeMtls` |
-| `ejbca` | EJBCA | `templateName`: `MedicalDeviceTLS` or `DicomWebBridgeMTLS` |
-| `acme` | ACME (step-ca) | `DirectoryUrl` in gateway config |
+| Backend | What it emulates | Gateway enrollment | Issue requirement |
+|---|---|---|---|
+| `selfsigned` | Generic self-signed CA | EST | none |
+| `adcs` | Microsoft AD CS | SCEP | none for SCEP; `templateName` for `/issue` JSON path |
+| `ejbca` | EJBCA | EJBCA REST | `certificate_profile_name` required |
+| `acme` | ACME (step-ca) | ACME | `DirectoryUrl` in gateway config |
 
 ### selfsigned
 
