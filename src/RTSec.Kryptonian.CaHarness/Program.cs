@@ -352,6 +352,17 @@ app.MapPost("/api/admin/manual-scores", async (HttpContext context) =>
     });
 });
 
+app.MapGet("/api/admin/teams", (HttpContext context) =>
+{
+    if (context.Request.Headers["X-Admin-Key"].FirstOrDefault() != internalApiKey)
+        return Results.StatusCode(403);
+
+    var teams = registry.GetAllTeams()
+        .Select(t => new { t.Token, t.TeamName })
+        .ToArray();
+    return Results.Ok(teams);
+});
+
 app.MapDelete("/api/admin/teams/{token}", (string token, HttpContext context) =>
 {
     if (context.Request.Headers["X-Admin-Key"].FirstOrDefault() != internalApiKey)
