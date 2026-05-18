@@ -48,25 +48,36 @@ public sealed class EjbcaCaConnector : ICaConnector
         EstProfile profile,
         CancellationToken ct = default)
     {
-        var request = new HarnessIssueRequest
+        var request = new EjbcaRestEnrollRequest
         {
-            CsrBase64Der = Convert.ToBase64String(csr.RawData.ToArray()),
-            ProfileName = _config.CertificateProfile,
-            TemplateName = _config.EndEntityProfile,
-            ValidityDays = _config.ValidityDays,
-            DeviceId = profile.Name,
-            Metadata = new Dictionary<string, string> { ["requestedBy"] = "gateway" }
+            CertificateRequest = ToPem(csr.RawData.ToArray(), "CERTIFICATE REQUEST"),
+            CertificateProfileName = _config.CertificateProfile,
+            EndEntityProfileName = _config.EndEntityProfile,
+            Username = profile.Name,
+            IncludeChain = true
         };
 
-        HarnessIssueResponse? response;
+        EjbcaRestEnrollResponse? response;
         try
         {
-            var httpResponse = await _http.PostAsJsonAsync("api/backends/ejbca/issue", request, JsonOpts, ct);
-            response = await httpResponse.Content.ReadFromJsonAsync<HarnessIssueResponse>(JsonOpts, ct);
+            var httpResponse = await _http.PostAsJsonAsync(
+                "ejbca/ejbca-rest-api/v1/certificate/pkcs10enroll",
+                request,
+                JsonOpts,
+                ct);
+
+            if (!httpResponse.IsSuccessStatusCode)
+            {
+                var error = await httpResponse.Content.ReadAsStringAsync(ct);
+                return CertificateIssuanceResult.Failed(
+                    $"EJBCA REST enrollment failed with {(int)httpResponse.StatusCode}: {error}");
+            }
+
+            response = await httpResponse.Content.ReadFromJsonAsync<EjbcaRestEnrollResponse>(JsonOpts, ct);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "EJBCA harness issue request failed");
+            _logger.LogError(ex, "EJBCA REST enrollment request failed");
             return CertificateIssuanceResult.Failed(ex.Message);
         }
 
@@ -101,30 +112,31 @@ public sealed class EjbcaCaConnector : ICaConnector
         }
     }
 
-    private CertificateIssuanceResult ParseResponse(HarnessIssueResponse? response)
+    private CertificateIssuanceResult ParseResponse(EjbcaRestEnrollResponse? response)
     {
         if (response is null)
             return CertificateIssuanceResult.Failed("Empty response from EJBCA harness");
 
-        if (response.Status == "issued" && !string.IsNullOrEmpty(response.CertificatePem))
+        if (!string.IsNullOrWhiteSpace(response.Certificate))
         {
             try
             {
-                var cert = X509Certificate2.CreateFromPem(response.CertificatePem);
-                var chain = (response.CaChainPem ?? Array.Empty<string>())
-                    .Where(p => !string.IsNullOrWhiteSpace(p))
-                    .Select(p => X509Certificate2.CreateFromPem(p))
-                    .ToArray();
-                return CertificateIssuanceResult.Successful(cert, chain);
+                var cert = new X509Certificate2(Convert.FromBase64String(response.Certificate));
+                return CertificateIssuanceResult.Successful(cert, new[] { cert });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to parse certificate from EJBCA harness response");
+                _logger.LogError(ex, "Failed to parse certificate from EJBCA REST response");
                 return CertificateIssuanceResult.Failed($"Certificate parse failed: {ex.Message}");
             }
         }
 
-        return CertificateIssuanceResult.Failed(
-            response.Message ?? $"EJBCA harness rejected: {response.ReasonCode}");
+        return CertificateIssuanceResult.Failed("EJBCA REST response did not include a certificate");
+    }
+
+    private static string ToPem(byte[] der, string label)
+    {
+        var base64 = Convert.ToBase64String(der, Base64FormattingOptions.InsertLineBreaks);
+        return $"-----BEGIN {label}-----\n{base64}\n-----END {label}-----";
     }
 }

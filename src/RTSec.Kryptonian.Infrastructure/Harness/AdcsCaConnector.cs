@@ -1,12 +1,15 @@
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Logging;
+using Org.BouncyCastle.Cms;
 using RTSec.Kryptonian.Domain.Entities;
 using RTSec.Kryptonian.Domain.Enums;
 using RTSec.Kryptonian.Domain.Interfaces;
 using RTSec.Kryptonian.Domain.ValueObjects;
+using BcX509Certificate = Org.BouncyCastle.X509.X509Certificate;
 
 namespace RTSec.Kryptonian.Infrastructure.Harness;
 
@@ -48,28 +51,40 @@ public sealed class AdcsCaConnector : ICaConnector
         EstProfile profile,
         CancellationToken ct = default)
     {
-        var request = new HarnessIssueRequest
-        {
-            CsrBase64Der = Convert.ToBase64String(csr.RawData.ToArray()),
-            TemplateName = _config.TemplateName,
-            ValidityDays = _config.ValidityDays,
-            DeviceId = profile.Name,
-            Metadata = new Dictionary<string, string> { ["requestedBy"] = "gateway" }
-        };
-
-        HarnessIssueResponse? response;
         try
         {
-            var httpResponse = await _http.PostAsJsonAsync("api/backends/adcs/issue", request, JsonOpts, ct);
-            response = await httpResponse.Content.ReadFromJsonAsync<HarnessIssueResponse>(JsonOpts, ct);
+            var caCert = await GetScepCaCertAsync(ct);
+            using var scep = new ScepClient();
+            var pkcsReq = scep.BuildPkcsReq(csr.RawData.ToArray(), caCert);
+
+            using var body = new ByteArrayContent(pkcsReq);
+            body.Headers.ContentType = new MediaTypeHeaderValue("application/x-pki-message");
+
+            using var request = new HttpRequestMessage(HttpMethod.Post, "scep/adcs?operation=PKIOperation");
+            request.Content = body;
+            request.Headers.Add("X-Device-Id", profile.Name);
+
+            using var response = await _http.SendAsync(request, ct);
+            var responseBytes = await response.Content.ReadAsByteArrayAsync(ct);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                return CertificateIssuanceResult.Failed(
+                    $"ADCS SCEP enrollment failed with {(int)response.StatusCode}: {System.Text.Encoding.UTF8.GetString(responseBytes)}");
+            }
+
+            var (certDer, error) = scep.ParseCertRep(responseBytes);
+            if (certDer is null)
+                return CertificateIssuanceResult.Failed(error ?? "ADCS SCEP response did not include a certificate");
+
+            var cert = new X509Certificate2(certDer);
+            return CertificateIssuanceResult.Successful(cert, new[] { cert });
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "ADCS harness issue request failed");
+            _logger.LogError(ex, "ADCS SCEP enrollment failed");
             return CertificateIssuanceResult.Failed(ex.Message);
         }
-
-        return ParseResponse(response);
     }
 
     public async Task<bool> RevokeCertificateAsync(string serial, RevocationReason reason, CancellationToken ct = default)
@@ -100,33 +115,14 @@ public sealed class AdcsCaConnector : ICaConnector
         }
     }
 
-    private CertificateIssuanceResult ParseResponse(HarnessIssueResponse? response)
+    private async Task<BcX509Certificate> GetScepCaCertAsync(CancellationToken ct)
     {
-        if (response is null)
-            return CertificateIssuanceResult.Failed("Empty response from ADCS harness");
-
-        if (response.Status == "issued" && !string.IsNullOrEmpty(response.CertificatePem))
-        {
-            try
-            {
-                var cert = X509Certificate2.CreateFromPem(response.CertificatePem);
-                var chain = (response.CaChainPem ?? Array.Empty<string>())
-                    .Where(p => !string.IsNullOrWhiteSpace(p))
-                    .Select(p => X509Certificate2.CreateFromPem(p))
-                    .ToArray();
-                return CertificateIssuanceResult.Successful(cert, chain);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to parse certificate from ADCS harness response");
-                return CertificateIssuanceResult.Failed($"Certificate parse failed: {ex.Message}");
-            }
-        }
-
-        if (response.Status == "pending")
-            return CertificateIssuanceResult.Pending(30);
-
-        return CertificateIssuanceResult.Failed(
-            response.Message ?? $"ADCS harness rejected: {response.ReasonCode}");
+        var resp = await _http.GetAsync("scep/adcs?operation=GetCACert", ct);
+        resp.EnsureSuccessStatusCode();
+        var p7 = await resp.Content.ReadAsByteArrayAsync(ct);
+        var sd = new CmsSignedData(p7);
+        var cert = sd.GetCertificates().EnumerateMatches(null).Cast<BcX509Certificate>().FirstOrDefault()
+            ?? throw new InvalidOperationException("ADCS GetCACert response contained no certificate");
+        return cert;
     }
 }

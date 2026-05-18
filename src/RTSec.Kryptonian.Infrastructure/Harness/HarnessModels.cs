@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace RTSec.Kryptonian.Infrastructure.Harness;
 
 internal sealed class HarnessIssueRequest
@@ -24,4 +26,31 @@ internal sealed class HarnessIssueResponse
     public string? Message { get; init; }
     public string? ReasonCode { get; init; }
     public string? RequestId { get; init; }
+}
+
+internal sealed class EjbcaRestEnrollRequest
+{
+    [JsonPropertyName("certificate_request")]
+    public string CertificateRequest { get; init; } = string.Empty;
+
+    [JsonPropertyName("certificate_profile_name")]
+    public string? CertificateProfileName { get; init; }
+
+    [JsonPropertyName("end_entity_profile_name")]
+    public string? EndEntityProfileName { get; init; }
+
+    [JsonPropertyName("username")]
+    public string? Username { get; init; }
+
+    [JsonPropertyName("include_chain")]
+    public bool? IncludeChain { get; init; }
+}
+
+internal sealed class EjbcaRestEnrollResponse
+{
+    [JsonPropertyName("certificate")]
+    public string? Certificate { get; init; }
+
+    [JsonPropertyName("serial_number")]
+    public string? SerialNumber { get; init; }
 }
