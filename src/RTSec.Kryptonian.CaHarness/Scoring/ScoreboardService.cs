@@ -13,6 +13,10 @@ public sealed class ScoreboardService
     private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, int>> _resets = new(StringComparer.OrdinalIgnoreCase);
     // token → set of backend names that completed a DIMSE mTLS C-STORE
     private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, bool>> _dimseStoreTls = new(StringComparer.OrdinalIgnoreCase);
+    // token → completed Flow 2 (C-MOVE → DICOMWeb STOW)
+    private readonly ConcurrentDictionary<string, bool> _cmoveComplete = new(StringComparer.OrdinalIgnoreCase);
+    // token → completed Flow 3 (DICOMWeb → DIMSE)
+    private readonly ConcurrentDictionary<string, bool> _dicomWebToDimseComplete = new(StringComparer.OrdinalIgnoreCase);
 
     public ScoreboardService(TeamBackendRegistry registry) => _registry = registry;
 
@@ -28,6 +32,10 @@ public sealed class ScoreboardService
         var backends = _dimseStoreTls.GetOrAdd(token, _ => new ConcurrentDictionary<string, bool>(StringComparer.OrdinalIgnoreCase));
         backends[backend] = true;
     }
+
+    public void RecordCmoveStow(string token) => _cmoveComplete[token] = true;
+
+    public void RecordDicomWebToDimse(string token) => _dicomWebToDimseComplete[token] = true;
 
     public void RecordReset(string token, string backend)
     {
@@ -69,15 +77,19 @@ public sealed class ScoreboardService
                 return new BackendScore(backend, status, certsIssued, resets, usedGateway, firstDicom, dimseStoreTlsComplete);
             }).ToList();
 
-            var backendsComplete = backends.Count(b => b.Status == "dicom_complete");
+            var backendsComplete = backends.Count(b => b.DimseStoreTlsComplete);
             var firstDicomOverall = transfers.Count > 0 ? transfers.Min(t => t.ReceivedUtc) : (DateTime?)null;
+            var cmoveComplete = _cmoveComplete.ContainsKey(team.Token);
+            var dicomWebToDimseComplete = _dicomWebToDimseComplete.ContainsKey(team.Token);
 
-            scores.Add(new TeamScore(team.TeamName, backends, backendsComplete, firstDicomOverall, 0));
+            scores.Add(new TeamScore(team.TeamName, backends, backendsComplete, firstDicomOverall, 0, cmoveComplete, dicomWebToDimseComplete));
         }
 
         scores.Sort((a, b) =>
         {
-            var cmp = b.BackendsComplete.CompareTo(a.BackendsComplete);
+            var scoreA = a.BackendsComplete + (a.CmoveComplete ? 1 : 0) + (a.DicomWebToDimseComplete ? 1 : 0);
+            var scoreB = b.BackendsComplete + (b.CmoveComplete ? 1 : 0) + (b.DicomWebToDimseComplete ? 1 : 0);
+            var cmp = scoreB.CompareTo(scoreA);
             if (cmp != 0) return cmp;
             if (a.FirstDicomUtc.HasValue && b.FirstDicomUtc.HasValue)
                 return a.FirstDicomUtc.Value.CompareTo(b.FirstDicomUtc.Value);

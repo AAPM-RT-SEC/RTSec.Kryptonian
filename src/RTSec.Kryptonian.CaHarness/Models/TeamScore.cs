@@ -14,4 +14,6 @@ public sealed record TeamScore(
     IReadOnlyList<BackendScore> Backends,
     int BackendsComplete,
     DateTime? FirstDicomUtc,
-    int OverallRank);
+    int OverallRank,
+    bool CmoveComplete,
+    bool DicomWebToDimseComplete);

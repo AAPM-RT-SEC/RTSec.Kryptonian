@@ -132,7 +132,14 @@ app.MapGet("/scoreboard", () =>
             ? s.FirstDicomUtc.Value.ToString("HH:mm:ss UTC")
             : "—";
         var rankBadge = s.OverallRank == 1 ? "🥇" : s.OverallRank == 2 ? "🥈" : s.OverallRank == 3 ? "🥉" : $"#{s.OverallRank}";
-        return $"<tr><td style='font-weight:bold;padding:8px 12px'>{rankBadge}</td><td style='padding:8px 12px'>{HtmlEncode(s.TeamName)}</td>{backendCells}<td style='text-align:center;padding:8px 12px'>{s.BackendsComplete}/4</td><td style='padding:8px 12px;color:#8b949e'>{firstDicom}</td></tr>";
+        var flow2Cell = s.CmoveComplete
+            ? "<td style='text-align:center;padding:8px 12px'><span style='background:#238636;color:#fff;padding:2px 8px;border-radius:4px;font-size:12px'>✓ Done</span></td>"
+            : "<td style='text-align:center;padding:8px 12px'><span style='background:#30363d;color:#fff;padding:2px 8px;border-radius:4px;font-size:12px'>Pending</span></td>";
+        var flow3Cell = s.DicomWebToDimseComplete
+            ? "<td style='text-align:center;padding:8px 12px'><span style='background:#238636;color:#fff;padding:2px 8px;border-radius:4px;font-size:12px'>✓ Done</span></td>"
+            : "<td style='text-align:center;padding:8px 12px'><span style='background:#30363d;color:#fff;padding:2px 8px;border-radius:4px;font-size:12px'>Pending</span></td>";
+        var totalScore = s.BackendsComplete + (s.CmoveComplete ? 1 : 0) + (s.DicomWebToDimseComplete ? 1 : 0);
+        return $"<tr><td style='font-weight:bold;padding:8px 12px'>{rankBadge}</td><td style='padding:8px 12px'>{HtmlEncode(s.TeamName)}</td>{backendCells}{flow2Cell}{flow3Cell}<td style='text-align:center;padding:8px 12px;font-weight:bold;color:#f0f6fc'>{totalScore}/6</td><td style='padding:8px 12px;color:#8b949e'>{firstDicom}</td></tr>";
     }));
 
     var html = $$"""
@@ -159,16 +166,18 @@ app.MapGet("/scoreboard", () =>
           <table>
             <thead><tr>
               <th>Rank</th><th>Team</th>
-              <th style="text-align:center">Self-Signed</th>
-              <th style="text-align:center">ADCS</th>
-              <th style="text-align:center">EJBCA</th>
-              <th style="text-align:center">ACME</th>
-              <th style="text-align:center">Complete</th>
+              <th style="text-align:center">Self-Signed 🔒</th>
+              <th style="text-align:center">ADCS 🔒</th>
+              <th style="text-align:center">EJBCA 🔒</th>
+              <th style="text-align:center">ACME 🔒</th>
+              <th style="text-align:center">Flow 2</th>
+              <th style="text-align:center">Flow 3</th>
+              <th style="text-align:center">Score</th>
               <th>First DICOM</th>
             </tr></thead>
             <tbody>{{rows}}</tbody>
           </table>
-          <div style="margin-top:16px;color:#8b949e;font-size:12px">⇌ = EST gateway verified &nbsp;·&nbsp; ✓ DICOM = DICOMweb transfer received &nbsp;·&nbsp; 🔒 = DIMSE mTLS C-STORE complete</div>
+          <div style="margin-top:16px;color:#8b949e;font-size:12px">🔒 = DIMSE mTLS C-STORE via EST cert (1 pt each, 4 max) &nbsp;·&nbsp; ⇌ = EST gateway verified &nbsp;·&nbsp; Flow 2 = C-MOVE→DICOMWeb (1 pt) &nbsp;·&nbsp; Flow 3 = DICOMWeb→DIMSE (1 pt) &nbsp;·&nbsp; Max 6 pts</div>
           <div style="margin-top:12px;color:#8b949e;font-size:12px">
             📥 <a href="https://stkryptonianfiles.blob.core.windows.net/downloads/dicom-examples.zip" style="color:#58a6ff" download>Download DICOM test files (28 MB)</a> — 138 CT instances to use as your DICOM payload
           </div>
@@ -444,6 +453,10 @@ app.MapPost("/teams/{token}/dicom/backends/{backend}/stow",
 
         scoreboard.RecordTransfer(record);
 
+        var transferMode = context.Request.Headers["X-Transfer-Mode"].FirstOrDefault();
+        if (string.Equals(transferMode, "cmove", StringComparison.OrdinalIgnoreCase))
+            scoreboard.RecordCmoveStow(token);
+
         return Results.Ok(new
         {
             accepted = true,
@@ -451,6 +464,44 @@ app.MapPost("/teams/{token}/dicom/backends/{backend}/stow",
             sopInstanceUid,
             usedGateway = verification.UsedGateway
         });
+    });
+
+// ── Flow 3: DICOMWeb → DIMSE claim ────────────────────────────────────────────
+
+app.MapPost("/teams/{token}/scoring/dicomweb-to-dimse",
+    async (HttpContext context, string token, IHttpClientFactory httpClientFactory) =>
+    {
+        var team = registry.GetByToken(token);
+        if (team is null)
+            return Results.NotFound(new { error = "Unknown team token" });
+
+        var body = await context.Request.ReadFromJsonAsync<DicomWebToDimseClaimRequest>();
+        if (body is null || string.IsNullOrWhiteSpace(body.SopInstanceUid))
+            return Results.BadRequest(new { error = "sopInstanceUid is required" });
+
+        // Verify the SOP instance exists in Orthanc
+        var orthancClient = httpClientFactory.CreateClient("orthanc");
+        try
+        {
+            var findResponse = await orthancClient.PostAsJsonAsync("/tools/find", new
+            {
+                Level = "Instance",
+                Query = new { SOPInstanceUID = body.SopInstanceUid }
+            });
+            if (!findResponse.IsSuccessStatusCode)
+                return Results.Problem("Could not reach Orthanc to verify instance", statusCode: 502);
+
+            var matches = await findResponse.Content.ReadFromJsonAsync<string[]>();
+            if (matches is null || matches.Length == 0)
+                return Results.UnprocessableEntity(new { error = "SOP Instance UID not found in Orthanc — ensure the C-STORE completed first" });
+        }
+        catch
+        {
+            return Results.Problem("Orthanc is unreachable", statusCode: 502);
+        }
+
+        scoreboard.RecordDicomWebToDimse(token);
+        return Results.Ok(new { recorded = true, sopInstanceUid = body.SopInstanceUid });
     });
 
 // ── ACME transparent proxy ─────────────────────────────────────────────────────
@@ -492,3 +543,5 @@ static string HtmlEncode(string s) =>
 
 // Allow WebApplicationFactory to find the entry point assembly in tests
 public partial class Program { }
+
+internal sealed record DicomWebToDimseClaimRequest(string SopInstanceUid);
