@@ -352,6 +352,20 @@ app.MapPost("/api/admin/manual-scores", async (HttpContext context) =>
     });
 });
 
+app.MapDelete("/api/admin/teams/{token}", (string token, HttpContext context) =>
+{
+    if (context.Request.Headers["X-Admin-Key"].FirstOrDefault() != internalApiKey)
+        return Results.StatusCode(403);
+
+    var team = registry.GetByToken(token);
+    if (team is null)
+        return Results.NotFound(new { error = "Unknown team token" });
+
+    scoreboard.DeleteTeam(token);
+    registry.Delete(token);
+    return Results.Ok(new { deleted = true, teamName = team.TeamName });
+});
+
 // ── EST enrollment endpoints ──────────────────────────────────────────────────
 // Implements RFC 7030 simpleenroll / simplereenroll for gateway-proxied enrollment.
 // Certs issued here embed the EST OID (1.3.6.1.4.1.99999.1) — cryptographic proof

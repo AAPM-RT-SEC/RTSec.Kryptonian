@@ -40,6 +40,8 @@ public sealed class TeamBackendRegistry
     public IReadOnlyList<TeamEntry> GetAllTeams() =>
         [.. _teams.Values.OrderBy(e => e.TeamName)];
 
+    public bool Delete(string token) => _teams.TryRemove(token, out _);
+
     public Dictionary<string, int> GetIssuedCounts(string token)
     {
         if (!_teams.TryGetValue(token, out var entry))

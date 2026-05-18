@@ -42,6 +42,16 @@ public sealed class ScoreboardService
 
     public void RecordDicomWebToDimse(string token) => _dicomWebToDimseComplete[token] = true;
 
+    public void DeleteTeam(string token)
+    {
+        _transfers.TryRemove(token, out _);
+        _resets.TryRemove(token, out _);
+        _dimseStoreTls.TryRemove(token, out _);
+        _cmoveComplete.TryRemove(token, out _);
+        _dicomWebToDimseComplete.TryRemove(token, out _);
+        _manualScores.TryRemove(token, out _);
+    }
+
     public void RecordReset(string token, string backend)
     {
         var counts = _resets.GetOrAdd(token, _ => new ConcurrentDictionary<string, int>(StringComparer.OrdinalIgnoreCase));
