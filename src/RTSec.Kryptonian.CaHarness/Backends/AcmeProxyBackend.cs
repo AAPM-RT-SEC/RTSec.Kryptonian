@@ -11,6 +11,8 @@ public sealed class AcmeProxyBackend : IDisposable
     private readonly string? _harnessBaseUrl;
     private readonly string? _teamPath;
     private readonly ConcurrentQueue<AcmeActivityRecord> _activity = new();
+    // Certs explicitly claimed by the team via POST .../acme/claim
+    private readonly ConcurrentQueue<AcmeActivityRecord> _claimedCerts = new();
 
     public AcmeProxyBackend(string upstreamBaseUrl, string? harnessBaseUrl = null, string? teamPath = null)
     {
@@ -36,6 +38,15 @@ public sealed class AcmeProxyBackend : IDisposable
         using var upstreamRequest = new HttpRequestMessage(
             new HttpMethod(context.Request.Method), upstreamUrl);
 
+        // Inject harness Host header so step-ca validates JWS url against the public hostname.
+        // ACME JWS protected.url must match what step-ca sees as the request URL
+        // (scheme + Host header + path). Without this, step-ca rejects requests as "malformed".
+        if (_harnessBaseUrl is not null
+            && Uri.TryCreate(_harnessBaseUrl, UriKind.Absolute, out var harnessUri))
+        {
+            upstreamRequest.Headers.Host = harnessUri.Host;
+        }
+
         // Forward body
         if (context.Request.ContentLength is > 0
             || context.Request.Headers.ContainsKey("Transfer-Encoding"))
@@ -46,7 +57,7 @@ public sealed class AcmeProxyBackend : IDisposable
                     "Content-Type", context.Request.ContentType);
         }
 
-        // Forward headers (skip hop-by-hop and Host)
+        // Forward headers (skip hop-by-hop and Host — Host is set explicitly above)
         foreach (var (key, value) in context.Request.Headers)
         {
             if (IsHopByHop(key) || key.Equals("Host", StringComparison.OrdinalIgnoreCase))
@@ -78,19 +89,18 @@ public sealed class AcmeProxyBackend : IDisposable
             var responseBytes = await upstreamResponse.Content
                 .ReadAsByteArrayAsync(context.RequestAborted);
 
-            // Rewrite directory — replace upstream URLs so the client follows the proxy
+            // Rewrite directory: replace step-ca internal URLs with harness public base.
+            // URLs are kept as /acme/acme/{resource} (no team token) so the ACME client
+            // signs JWS with URLs that match what step-ca sees (Host header = harness host).
             if (path.EndsWith("/directory", StringComparison.OrdinalIgnoreCase)
                 && responseBytes.Length > 0)
             {
                 var harnessBase = _harnessBaseUrl
                     ?? $"{context.Request.Scheme}://{context.Request.Host}";
-                if (_teamPath is not null)
-                    harnessBase = harnessBase.TrimEnd('/') + _teamPath;
-                // Rewrite step-ca URLs: strip the provisioner-name segment (/acme/acme → /acme)
-                // so callers see clean URLs like /teams/{id}/acme/directory instead of
-                // /teams/{id}/acme/acme/directory.
+                // Replace upstream base URL — keep the /acme/acme path as-is.
+                // Result: https://step-ca:9000/acme/acme/new-account
+                //      → https://ca-harness.../acme/acme/new-account
                 var rewritten = Encoding.UTF8.GetString(responseBytes)
-                    .Replace(_upstreamBaseUrl + "/acme/acme", harnessBase + "/acme", StringComparison.Ordinal)
                     .Replace(_upstreamBaseUrl, harnessBase, StringComparison.Ordinal);
                 responseBytes = Encoding.UTF8.GetBytes(rewritten);
             }
@@ -123,14 +133,27 @@ public sealed class AcmeProxyBackend : IDisposable
         }
     }
 
-    public IReadOnlyList<AcmeActivityRecord> GetActivity() => _activity.ToList();
+    // Record an ACME cert that the team explicitly submitted via the claim endpoint.
+    public void RecordClaim(string serial, string thumbprint) =>
+        _claimedCerts.Enqueue(new AcmeActivityRecord(
+            Id: Guid.NewGuid().ToString("N")[..8],
+            TimestampUtc: DateTime.UtcNow,
+            Operation: "certificate-claimed",
+            Method: "POST",
+            Path: "/claim",
+            StatusCode: 200));
 
-    public IReadOnlyList<AcmeActivityRecord> GetIssued() =>
-        _activity
-            .Where(a => a.Operation == "certificate-downloaded" && a.StatusCode == 200)
-            .ToList();
+    public IReadOnlyList<AcmeActivityRecord> GetActivity() =>
+        [.. _activity, .. _claimedCerts];
 
-    public void Reset() => _activity.Clear();
+    // Returns claimed certs — used by scoreboard to mark ACME backend as complete.
+    public IReadOnlyList<AcmeActivityRecord> GetIssued() => _claimedCerts.ToList();
+
+    public void Reset()
+    {
+        _activity.Clear();
+        _claimedCerts.Clear();
+    }
 
     public void Dispose() => _http.Dispose();
 

@@ -92,7 +92,10 @@ public sealed class ScoreboardService
                 return new BackendScore(backend, status, certsIssued, resets, usedGateway, firstDicom, dimseStoreTlsComplete);
             }).ToList();
 
-            var backendsComplete = backends.Count(b => b.DimseStoreTlsComplete);
+            var backendsComplete = backends.Count(b =>
+                b.Backend.Equals("acme", StringComparison.OrdinalIgnoreCase)
+                    ? b.Status == "dicom_complete"   // ACME: cert claimed
+                    : b.DimseStoreTlsComplete);      // others: DIMSE mTLS C-STORE
             var firstDicomOverall = transfers.Count > 0 ? transfers.Min(t => t.ReceivedUtc) : (DateTime?)null;
             var cmoveComplete = _cmoveComplete.ContainsKey(team.Token);
             var dicomWebToDimseComplete = _dicomWebToDimseComplete.ContainsKey(team.Token);

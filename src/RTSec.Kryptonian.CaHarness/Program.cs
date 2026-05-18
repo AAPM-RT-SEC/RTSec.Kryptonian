@@ -11,6 +11,8 @@ var orthancUrl = Environment.GetEnvironmentVariable("ORTHANC_URL") ?? "http://or
 var internalApiKey = Environment.GetEnvironmentVariable("INTERNAL_API_KEY") ?? "changeme";
 
 builder.Services.AddSingleton(new TeamBackendRegistry(acmeUpstreamUrl, acmeHarnessBaseUrl));
+// Shared ACME proxy used by /acme/{**rest} — no team token in path so JWS url validation passes.
+var sharedAcmeProxy = new AcmeProxyBackend(acmeUpstreamUrl, acmeHarnessBaseUrl);
 builder.Services.AddSingleton<ScoreboardService>();
 builder.Services.AddSingleton<DicomVerificationService>();
 builder.Services.AddHttpClient("orthanc", c => c.BaseAddress = new Uri(orthancUrl));
@@ -676,9 +678,50 @@ app.MapPost("/teams/{token}/scoring/dicomweb-to-dimse",
         return Results.Ok(new { recorded = true, sopInstanceUid = body.SopInstanceUid });
     });
 
-// ── ACME transparent proxy ─────────────────────────────────────────────────────
-// Registered after all /api routes so the more-specific routes above take precedence.
-// Strips /teams/{token} from the path before forwarding so step-ca sees /acme/...
+// ── ACME claim endpoint ────────────────────────────────────────────────────────
+// Teams POST their ACME-issued cert PEM here to record completion for scoring.
+
+app.MapPost("/teams/{token}/api/backends/acme/claim", async (HttpContext context, string token) =>
+{
+    var team = registry.GetByToken(token);
+    if (team is null) return Results.NotFound(new { error = "Unknown team token" });
+
+    var body = await context.Request.ReadFromJsonAsync<AcmeClaimRequest>();
+    if (body is null || string.IsNullOrWhiteSpace(body.Certificate))
+        return Results.BadRequest(new { error = "certificate (PEM) is required" });
+
+    System.Security.Cryptography.X509Certificates.X509Certificate2 cert;
+    try
+    {
+        cert = System.Security.Cryptography.X509Certificates.X509Certificate2.CreateFromPem(body.Certificate);
+    }
+    catch
+    {
+        return Results.BadRequest(new { error = "Invalid certificate PEM" });
+    }
+
+    team.Backends.Acme.RecordClaim(cert.SerialNumber, cert.Thumbprint);
+    return Results.Ok(new { claimed = true, serial = cert.SerialNumber, thumbprint = cert.Thumbprint, subject = cert.Subject });
+});
+
+// ── Shared ACME transparent proxy ─────────────────────────────────────────────
+// All ACME protocol requests go through here (no team token in path).
+// The per-team directory route below returns URLs pointing to this shared endpoint.
+// The proxy injects Host: <harness-hostname> so step-ca validates JWS url correctly:
+//   client signs url = "https://ca-harness.../acme/acme/new-account"
+//   proxy sets Host → step-ca sees  "https://ca-harness.../acme/acme/new-account" ✓
+app.MapMethods("/acme/{**rest}",
+    ["GET", "POST", "HEAD", "PUT", "DELETE"],
+    async (HttpContext context) =>
+    {
+        var rest = context.Request.RouteValues["rest"] as string ?? "";
+        context.Request.Path = rest.Length > 0 ? "/acme/acme/" + rest : "/acme/acme";
+        await sharedAcmeProxy.ProxyAsync(context);
+    });
+
+// ── Per-team ACME directory proxy ──────────────────────────────────────────────
+// Only serves the directory. Returned URLs point to the shared /acme/{**rest} route
+// (no team token) so the ACME client's signed JWS url matches what step-ca sees.
 app.MapMethods("/teams/{token}/acme/{**rest}",
     ["GET", "POST", "HEAD", "PUT", "DELETE"],
     async (HttpContext context, string token) =>
@@ -689,7 +732,6 @@ app.MapMethods("/teams/{token}/acme/{**rest}",
             context.Response.StatusCode = 404;
             return;
         }
-        // Map /teams/{token}/acme/{rest} → /acme/acme/{rest} on step-ca.
         var rest = context.Request.RouteValues["rest"] as string ?? "";
         context.Request.Path = rest.Length > 0 ? "/acme/acme/" + rest : "/acme/acme";
         await team.Backends.Acme.ProxyAsync(context);
@@ -717,6 +759,8 @@ static string HtmlEncode(string s) =>
 public partial class Program { }
 
 internal sealed record DicomWebToDimseClaimRequest(string SopInstanceUid);
+
+internal sealed record AcmeClaimRequest(string? Certificate);
 
 internal sealed record ManualScoreRequest(
     string Token,
