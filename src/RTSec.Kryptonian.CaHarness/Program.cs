@@ -678,6 +678,32 @@ app.MapPost("/teams/{token}/scoring/dicomweb-to-dimse",
         return Results.Ok(new { recorded = true, sopInstanceUid = body.SopInstanceUid });
     });
 
+// ── ACME HTTP-01 challenge relay ──────────────────────────────────────────────
+// Teams use the harness hostname as the ACME order domain. Before telling step-ca
+// to validate, they POST the challenge token + key auth here. step-ca then calls
+// GET /.well-known/acme-challenge/{token} on this host and gets the right response.
+var acmeChallenges = new System.Collections.Concurrent.ConcurrentDictionary<string, string>(StringComparer.Ordinal);
+
+app.MapPost("/teams/{teamToken}/acme/challenge", async (HttpContext context, string teamToken) =>
+{
+    var team = registry.GetByToken(teamToken);
+    if (team is null) return Results.NotFound(new { error = "Unknown team token" });
+
+    var body = await context.Request.ReadFromJsonAsync<AcmeChallengeStoreRequest>();
+    if (body is null || string.IsNullOrWhiteSpace(body.Token) || string.IsNullOrWhiteSpace(body.KeyAuth))
+        return Results.BadRequest(new { error = "token and keyAuth are required" });
+
+    acmeChallenges[body.Token] = body.KeyAuth;
+    return Results.Ok(new { stored = true, token = body.Token });
+});
+
+app.MapGet("/.well-known/acme-challenge/{acmeToken}", (string acmeToken) =>
+{
+    if (!acmeChallenges.TryRemove(acmeToken, out var keyAuth))
+        return Results.NotFound();
+    return Results.Text(keyAuth, "text/plain");
+});
+
 // ── ACME claim endpoint ────────────────────────────────────────────────────────
 // Teams POST their ACME-issued cert PEM here to record completion for scoring.
 
@@ -761,6 +787,8 @@ public partial class Program { }
 internal sealed record DicomWebToDimseClaimRequest(string SopInstanceUid);
 
 internal sealed record AcmeClaimRequest(string? Certificate);
+
+internal sealed record AcmeChallengeStoreRequest(string? Token, string? KeyAuth);
 
 internal sealed record ManualScoreRequest(
     string Token,

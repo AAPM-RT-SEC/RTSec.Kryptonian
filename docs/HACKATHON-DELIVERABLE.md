@@ -41,12 +41,12 @@ All subsequent API calls use `{token}` in the URL path. Your token is private �
 
 Your gateway must support all four CA backends. Each is a separate score column on the leaderboard.
 
-| Backend | What it emulates | EST template required |
+| Backend | What it emulates | Enrollment protocol |
 |---|---|---|
-| `selfsigned` | Generic self-signed CA | none |
-| `adcs` | Microsoft AD Certificate Services | `DicomDeviceAuthentication` or `DicomBridgeMtls` |
-| `ejbca` | EJBCA Enterprise PKI | `MedicalDeviceTLS` or `DicomWebBridgeMTLS` |
-| `acme` | ACME (step-ca) | point `DirectoryUrl` at harness |
+| `selfsigned` | Generic self-signed CA | EST — `simpleenroll` |
+| `adcs` | Microsoft AD Certificate Services | SCEP — `PKIOperation` |
+| `ejbca` | EJBCA Enterprise PKI | EJBCA REST — `pkcs10enroll` |
+| `acme` | ACME (step-ca) | ACME RFC 8555 — HTTP-01 challenge relay |
 
 ---
 
@@ -62,17 +62,22 @@ Each flow tests a different capability of your gateway. Flows are independent �
 
 **How it works:**
 
-1. Your gateway calls the harness EST endpoint to enroll a device:
-   ```
-   POST /teams/{token}/est/{backend}/simpleenroll
-   Content-Type: application/pkcs10
-   X-Device-Id: your-device-id
-   Body: <base64-DER CSR>
-   ```
-2. The harness issues a certificate with a special embedded OID (`1.3.6.1.4.1.99999.1`) proving it came through the EST path — not the raw `/issue` JSON API.
-3. Your gateway/device connects to the **DIMSE TLS proxy** at `kryptonian-dimse.eastus.cloudapp.azure.com:4243` using that certificate as the mTLS client credential.
-4. Perform a C-STORE of any DICOM file from the test set.
-5. The proxy validates the certificate against the harness CAs, identifies your team, and automatically updates the scoreboard with 🔒.
+1. Your gateway enrolls a device certificate using the protocol for the target backend:
+
+   | Backend | Endpoint | Protocol |
+   |---|---|---|
+   | `selfsigned` | `POST /teams/{token}/est/selfsigned/simpleenroll` | EST |
+   | `adcs` | `POST /teams/{token}/scep/adcs?operation=PKIOperation` | SCEP |
+   | `ejbca` | `POST /teams/{token}/ejbca/ejbca-rest-api/v1/certificate/pkcs10enroll` | EJBCA REST |
+   | `acme` | ACME RFC 8555 via `/teams/{token}/acme/directory` | ACME + HTTP-01 relay |
+
+   Each backend embeds a unique OID in the issued certificate proving it came through the gateway enrollment path (not the raw `/issue` JSON API).
+
+2. Your gateway/device connects to the **DIMSE TLS proxy** at `kryptonian-dimse.eastus.cloudapp.azure.com:4243` using that certificate as the mTLS client credential.
+3. Perform a C-STORE of any DICOM file from the test set.
+4. The proxy validates the certificate against the harness CAs, identifies your team, and automatically updates the scoreboard with 🔒.
+
+   **Exception — ACME backend:** ACME certificates are issued by step-ca's CA (not the harness's in-memory CA), so they cannot be validated by the DIMSE proxy. For the ACME backend, the score is earned by claiming the cert: `POST /teams/{token}/api/backends/acme/claim` with the cert PEM.
 
 **Trust the proxy server cert first:**
 ```bash
@@ -134,21 +139,29 @@ curl http://kryptonian-dimse.eastus.cloudapp.azure.com:8044/server-cert -o dimse
 For the **full score** and the live demo, judges want to see:
 
 1. **Device registration UI** — an admin registers a new device (generates keypair + CSR inside the gateway)
-2. **EST enrollment** — the gateway calls the harness `/est/{backend}/simpleenroll` on the device's behalf
-3. **Certificate-gated DIMSE** — the enrolled cert is used immediately to C-STORE to port 4243 (Flow 1)
+2. **Gateway enrollment** — the gateway calls the appropriate harness endpoint for each backend:
+   - `selfsigned`: EST `simpleenroll`
+   - `adcs`: SCEP `PKIOperation`
+   - `ejbca`: EJBCA REST `pkcs10enroll`
+   - `acme`: ACME RFC 8555 with HTTP-01 challenge relay (see ACME section in the API guide)
+3. **Certificate-gated DIMSE** — for `selfsigned`, `adcs`, and `ejbca`: the enrolled cert is used to C-STORE to port 4243 (Flow 1). For `acme`: claim the cert via `/api/backends/acme/claim`.
 4. **DIMSE→DICOMweb bridge** — the gateway triggers a C-MOVE and converts the result to STOW-RS (Flow 2)
 5. **DICOMweb→DIMSE bridge** — the gateway does a WADO-RS retrieve and converts to C-STORE (Flow 3)
 6. **Device removal UI** — admin removes a device; subsequent renewal is rejected by the gateway (the gateway must enforce this, not just the harness)
 
-**Repeat all of the above for all four CA backends** to claim a full sweep.
+**Repeat enrollment for all four CA backends** to claim a full sweep.
 
 ---
 
 ## Certificate Rules
 
 - Certificates from `POST /teams/{token}/api/backends/{backend}/issue` (the JSON API) **do not earn gateway credit**. They are for testing only.
-- Only certificates issued via `POST /teams/{token}/est/{backend}/simpleenroll` carry the EST OID extension and earn 🔒 credit on the leaderboard.
-- The OID `1.3.6.1.4.1.99999.1` is embedded by the harness in every EST-enrolled certificate. The proxy and STOW-RS endpoint both check for it.
+- Gateway-credit certificates must come through the per-backend enrollment protocol:
+  - `selfsigned` → EST `simpleenroll` → OID `1.3.6.1.4.1.99999.1`
+  - `adcs` → SCEP `PKIOperation` → OID `1.3.6.1.4.1.99999.2`
+  - `ejbca` → EJBCA REST `pkcs10enroll` → OID `1.3.6.1.4.1.99999.3`
+  - `acme` → ACME RFC 8555 → claim cert via `/api/backends/acme/claim`
+- The DIMSE proxy at port 4243 validates `selfsigned`, `adcs`, and `ejbca` certs against the harness CAs and awards 🔒. The ACME backend is scored by cert claim only.
 
 ---
 
@@ -157,9 +170,9 @@ For the **full score** and the live demo, judges want to see:
 | Achievement | Points | How |
 |---|---|---|
 | DIMSE mTLS C-STORE — selfsigned | 1 | Flow 1 via EST → port 4243 |
-| DIMSE mTLS C-STORE — adcs | 1 | Flow 1 via EST → port 4243 |
-| DIMSE mTLS C-STORE — ejbca | 1 | Flow 1 via EST → port 4243 |
-| DIMSE mTLS C-STORE — acme | 1 | Flow 1 via EST → port 4243 |
+| DIMSE mTLS C-STORE — adcs | 1 | Flow 1 via SCEP → port 4243 |
+| DIMSE mTLS C-STORE — ejbca | 1 | Flow 1 via EJBCA REST → port 4243 |
+| ACME backend complete — acme | 1 | ACME RFC 8555 → `/api/backends/acme/claim` |
 | C-MOVE → DICOMweb | 1 | Flow 2 |
 | DICOMweb → DIMSE | 1 | Flow 3 |
 | **Maximum** | **6** | |

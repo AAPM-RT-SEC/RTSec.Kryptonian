@@ -44,7 +44,7 @@ Use these strings wherever a URL contains `{backend}`:
 **EST backend:** `selfsigned` only.  
 **SCEP backend:** `adcs` — use the SCEP endpoint, not EST.  
 **EJBCA REST backend:** `ejbca` — use the EJBCA REST endpoint, not EST.  
-**ACME backend:** configure your gateway's `DirectoryUrl` to `/teams/{token}/acme/directory`.
+**ACME backend:** configure your gateway's `DirectoryUrl` to `/teams/{token}/acme/directory`. Order certs for `ca-harness.mangotree-b3d09362.eastus.azurecontainerapps.io` and use the HTTP-01 challenge relay (see ACME section below).
 
 ---
 
@@ -310,7 +310,9 @@ curl -s -X POST https://ca-harness.mangotree-b3d09362.eastus.azurecontainerapps.
 
 ### acme
 
-Point your gateway's ACME `DirectoryUrl` at the harness using your token:
+The ACME backend uses [step-ca](https://smallstep.com/docs/step-ca/) proxied through the harness. Because ACME challenge validation requires a publicly reachable HTTP endpoint, the harness acts as the challenge responder on your behalf. Your ACME order domain is the harness public hostname.
+
+**Step 1 — Configure your ACME client DirectoryUrl:**
 
 ```
 https://ca-harness.mangotree-b3d09362.eastus.azurecontainerapps.io/teams/{token}/acme/directory
@@ -318,13 +320,45 @@ https://ca-harness.mangotree-b3d09362.eastus.azurecontainerapps.io/teams/{token}
 
 Do **not** point directly at step-ca — the harness will not log your team's activity.
 
+**Step 2 — Order a certificate for the harness hostname:**
+
+Use `ca-harness.mangotree-b3d09362.eastus.azurecontainerapps.io` as the domain (CN/SAN) in your ACME order. This is the domain the harness can prove ownership of for HTTP-01 challenge validation.
+
+**Step 3 — Register the HTTP-01 challenge before validation:**
+
+Your ACME client will receive a challenge `token` and `keyAuthorization` from step-ca. Before calling step-ca to validate, POST them to the harness:
+
 ```bash
-# Check ACME activity
+curl -s -X POST \
+  https://ca-harness.mangotree-b3d09362.eastus.azurecontainerapps.io/teams/{token}/acme/challenge \
+  -H "Content-Type: application/json" \
+  -d '{"token": "<acme-challenge-token>", "keyAuth": "<key-authorization>"}'
+```
+
+The harness stores this and serves it at `GET /.well-known/acme-challenge/{acme-challenge-token}` when step-ca calls to validate.
+
+**Step 4 — Tell step-ca to validate** (via your ACME client). step-ca calls the harness, the challenge passes, and the cert is issued.
+
+**Step 5 — Claim the cert for scoring:**
+
+```bash
+curl -s -X POST \
+  https://ca-harness.mangotree-b3d09362.eastus.azurecontainerapps.io/teams/{token}/api/backends/acme/claim \
+  -H "Content-Type: application/json" \
+  -d '{"certificate": "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----"}'
+```
+
+This awards the ACME backend point on the leaderboard.
+
+```bash
+# Check ACME protocol activity
 curl https://ca-harness.mangotree-b3d09362.eastus.azurecontainerapps.io/teams/{token}/api/backends/acme/activity
 
-# Check issued certs (must have at least one for ACME score)
+# Check claimed certs (must have at least one for ACME score)
 curl https://ca-harness.mangotree-b3d09362.eastus.azurecontainerapps.io/teams/{token}/api/backends/acme/issued
 ```
+
+> **Why this approach?** ACME HTTP-01 validation requires the domain in your order to publicly resolve to a server you control. The harness hostname does resolve to the harness — so the harness acts as your challenge responder. Your ACME client handles the full RFC 8555 protocol flow (account, order, challenges, finalize, download); only the challenge response is delegated to the harness.
 
 ---
 
@@ -416,7 +450,11 @@ curl -X POST https://ca-harness.mangotree-b3d09362.eastus.azurecontainerapps.io/
 | `POST` | `/teams/{token}/ejbca/ejbca-rest-api/v1/certificate/pkcs10enroll` | **EJBCA REST enrollment** — `ejbca` |
 | `POST` | `/teams/{token}/dicom/backends/{backend}/stow` | Submit DICOM — Flow 2 scoring |
 | `POST` | `/teams/{token}/scoring/dicomweb-to-dimse` | Claim Flow 3 score |
+| `POST` | `/teams/{token}/acme/challenge` | Store HTTP-01 challenge for step-ca validation |
+| `GET` | `/.well-known/acme-challenge/{acmeToken}` | Serves stored HTTP-01 key authorization (called by step-ca) |
+| `POST` | `/teams/{token}/api/backends/acme/claim` | Claim ACME cert for scoring (submit cert PEM) |
 | `ANY` | `/teams/{token}/acme/**` | ACME protocol (proxied to step-ca) |
+| `ANY` | `/acme/acme/**` | Shared ACME protocol endpoint (no team token — used after directory fetch) |
 
 ---
 
