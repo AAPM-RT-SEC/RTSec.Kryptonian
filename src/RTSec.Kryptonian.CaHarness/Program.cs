@@ -710,7 +710,7 @@ app.MapPost("/teams/{token}/api/backends/acme/claim", async (HttpContext context
 // The proxy injects Host: <harness-hostname> so step-ca validates JWS url correctly:
 //   client signs url = "https://ca-harness.../acme/acme/new-account"
 //   proxy sets Host → step-ca sees  "https://ca-harness.../acme/acme/new-account" ✓
-app.MapMethods("/acme/{**rest}",
+app.MapMethods("/acme/acme/{**rest}",
     ["GET", "POST", "HEAD", "PUT", "DELETE"],
     async (HttpContext context) =>
     {
