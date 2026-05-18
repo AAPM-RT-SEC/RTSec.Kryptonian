@@ -461,6 +461,136 @@
       margin-bottom: 6px;
     }
 
+    /* ── REGISTER ── */
+    .register-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 32px;
+      max-width: 560px;
+    }
+
+    .register-card p {
+      color: var(--text-muted);
+      font-size: 14px;
+      margin-bottom: 20px;
+    }
+
+    .register-row {
+      display: flex;
+      gap: 10px;
+      align-items: stretch;
+    }
+
+    .register-input {
+      flex: 1;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 14px;
+      padding: 10px 14px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    .register-input:focus { border-color: var(--blue); }
+    .register-input::placeholder { color: var(--text-muted); }
+
+    .register-btn {
+      background: var(--orange);
+      border: none;
+      border-radius: 8px;
+      color: #fff;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+      padding: 10px 22px;
+      transition: opacity 0.15s;
+      white-space: nowrap;
+    }
+
+    .register-btn:hover { opacity: 0.88; }
+    .register-btn:disabled { opacity: 0.5; cursor: default; }
+
+    .token-result {
+      margin-top: 20px;
+      background: rgba(63,185,80,0.07);
+      border: 1px solid rgba(63,185,80,0.35);
+      border-radius: 10px;
+      padding: 20px 22px;
+    }
+
+    .token-result.hidden { display: none; }
+
+    .token-warning {
+      color: #e3b341;
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .token-label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+    }
+
+    .token-name {
+      color: var(--green);
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 12px;
+    }
+
+    .token-box {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 14px;
+    }
+
+    .token-value {
+      flex: 1;
+      font-family: var(--mono);
+      font-size: 13px;
+      color: var(--green);
+      word-break: break-all;
+      letter-spacing: 0.04em;
+    }
+
+    .copy-btn {
+      background: var(--bg-card2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      cursor: pointer;
+      font-size: 12px;
+      padding: 5px 12px;
+      transition: border-color 0.15s, color 0.15s;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    .copy-btn:hover { border-color: var(--blue); color: var(--blue); }
+    .copy-btn.copied { border-color: var(--green); color: var(--green); }
+
+    .register-error {
+      margin-top: 12px;
+      color: #f85149;
+      font-size: 13px;
+      display: none;
+    }
+
     /* ── FOOTER ── */
     footer {
       border-top: 1px solid var(--border);
@@ -822,11 +952,11 @@
 
     <div class="links-grid">
 
-      <a class="link-card" href="/api/help">
-        <div class="link-card-icon">&#x1F4CB;</div>
+      <a class="link-card" href="#register">
+        <div class="link-card-icon">&#x1F511;</div>
         <div class="link-card-text">
-          <span class="title">API Help &amp; Docs</span>
-          <span class="sub">Full endpoint reference, request/response examples</span>
+          <span class="title">Register Your Team</span>
+          <span class="sub">Get your private token to start scoring</span>
         </div>
       </a>
 
@@ -835,6 +965,14 @@
         <div class="link-card-text">
           <span class="title">Live Scoreboard</span>
           <span class="sub">Real-time team standings, updated by the proxy</span>
+        </div>
+      </a>
+
+      <a class="link-card" href="/api/help">
+        <div class="link-card-icon">&#x1F4CB;</div>
+        <div class="link-card-text">
+          <span class="title">API Help &amp; Docs</span>
+          <span class="sub">Full endpoint reference, request/response examples</span>
         </div>
       </a>
 
@@ -849,6 +987,54 @@
     </div>
   </div>
 </section>
+
+<!-- ═══════════════════════════════════════════════════
+     REGISTER
+════════════════════════════════════════════════════ -->
+<section id="register">
+  <div class="container">
+    <div class="section-decorator">
+      <span class="dicom-tag">(0010,0020)</span>
+      <span class="dicom-tag">[PATIENT-ID]</span>
+    </div>
+    <p class="section-label">Get Started</p>
+    <h2 class="section-title">Register Your Team</h2>
+
+    <div class="register-card">
+      <p>Enter your team name to receive a private token. All scoring endpoints use this token in the URL path. <strong style="color:var(--text)">The token is shown once and cannot be retrieved</strong> — save it immediately.</p>
+
+      <form id="register-form" onsubmit="registerTeam(event)">
+        <div class="register-row">
+          <input
+            id="team-name-input"
+            class="register-input"
+            type="text"
+            placeholder="e.g. Team Kryptonian"
+            maxlength="64"
+            required
+            autocomplete="off"
+            spellcheck="false"
+          />
+          <button id="register-btn" class="register-btn" type="submit">Register</button>
+        </div>
+        <div id="register-error" class="register-error"></div>
+      </form>
+
+      <div id="token-result" class="token-result hidden">
+        <div class="token-warning">&#x26A0;&#xFE0F; Save this token now — there is no way to look it up later.</div>
+        <div class="token-label">Team Name</div>
+        <div id="token-team-name" class="token-name"></div>
+        <div class="token-label">Your Token</div>
+        <div class="token-box">
+          <span id="token-value" class="token-value"></span>
+          <button id="copy-btn" class="copy-btn" type="button" onclick="copyToken()">Copy</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr class="divider" />
 
 <!-- ═══════════════════════════════════════════════════
      FOOTER
@@ -866,5 +1052,64 @@
   </div>
 </footer>
 
+<script>
+  async function registerTeam(e) {
+    e.preventDefault();
+    const input = document.getElementById('team-name-input');
+    const btn = document.getElementById('register-btn');
+    const errorEl = document.getElementById('register-error');
+    const resultEl = document.getElementById('token-result');
+
+    const teamName = input.value.trim();
+    if (!teamName) return;
+
+    btn.disabled = true;
+    btn.textContent = 'Registering…';
+    errorEl.style.display = 'none';
+    resultEl.classList.add('hidden');
+
+    try {
+      const res = await fetch('/api/teams/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ teamName })
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || `Server error ${res.status}`);
+      }
+
+      const data = await res.json();
+      document.getElementById('token-team-name').textContent = data.teamName;
+      document.getElementById('token-value').textContent = data.token;
+      resultEl.classList.remove('hidden');
+      document.getElementById('copy-btn').textContent = 'Copy';
+      document.getElementById('copy-btn').classList.remove('copied');
+
+      // Scroll result into view
+      resultEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    } catch (err) {
+      errorEl.textContent = err.message;
+      errorEl.style.display = 'block';
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Register';
+    }
+  }
+
+  function copyToken() {
+    const token = document.getElementById('token-value').textContent;
+    const btn = document.getElementById('copy-btn');
+    navigator.clipboard.writeText(token).then(() => {
+      btn.textContent = 'Copied!';
+      btn.classList.add('copied');
+      setTimeout(() => {
+        btn.textContent = 'Copy';
+        btn.classList.remove('copied');
+      }, 2000);
+    });
+  }
+</script>
 </body>
 </html>
