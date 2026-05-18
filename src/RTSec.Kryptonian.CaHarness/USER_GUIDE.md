@@ -50,13 +50,19 @@ Use these strings wherever a URL contains `{backend}`:
 
 ## Scoring overview
 
-Three flows score points on the leaderboard. **All three require your gateway to use a gateway enrollment protocol** — certificates from the `/issue` JSON API do not earn gateway credit. Each backend requires a different protocol: EST for `selfsigned`, SCEP for `adcs`, EJBCA REST for `ejbca`, and ACME for `acme`.
+Points come from three automated flows and one manual judged category. **All automated flows require your gateway to use the enrollment protocol for each backend** — certificates from the `/issue` JSON API do not earn gateway credit.
 
-| Flow | What it tests | Points |
+| Category | What it tests | Points |
 |---|---|---|
-| Flow 1 — DIMSE mTLS C-STORE | EST-enrolled cert → mTLS C-STORE to DIMSE proxy | 1 per CA backend (4 max) |
+| Flow 1 — DIMSE mTLS C-STORE | Gateway-enrolled cert → mTLS C-STORE to DIMSE proxy | 1 per CA backend (4 max) |
 | Flow 2 — C-MOVE → DICOMWeb | C-MOVE from Orthanc → your SCP → STOW-RS to harness | 1 |
 | Flow 3 — DICOMWeb → DIMSE | WADO-RS retrieve from Orthanc → C-STORE back to Orthanc | 1 |
+| UI Demo — Device registration | Gateway UI registers devices; unregistered devices are rejected | 1 |
+| UI Demo — Pending status | Registered devices start in a pending state requiring approval | 1 |
+| UI Demo — Device removal | Removing a device blocks certificate auto-renewal | 1 |
+| **Total** | | **9** |
+
+The three UI Demo points are awarded by judges during a live gateway demonstration. See [UI Demo scoring](#ui-demo-scoring) below.
 
 ---
 
@@ -402,8 +408,12 @@ curl -X POST https://ca-harness.mangotree-b3d09362.eastus.azurecontainerapps.io/
 | `POST` | `/teams/{token}/api/backends/{backend}/reset` | Reset CA state |
 | `POST` | `/teams/{token}/api/backends/adcs/approve/{requestId}` | Release pending ADCS request |
 | `GET` | `/teams/{token}/api/backends/acme/activity` | ACME operation log |
-| `POST` | `/teams/{token}/est/{backend}/simpleenroll` | **EST enrollment** (earns gateway credit) |
-| `POST` | `/teams/{token}/est/{backend}/simplereenroll` | **EST renewal** (earns gateway credit) |
+| `POST` | `/teams/{token}/est/selfsigned/simpleenroll` | **EST enrollment** — `selfsigned` only |
+| `POST` | `/teams/{token}/est/selfsigned/simplereenroll` | **EST renewal** — `selfsigned` only |
+| `GET` | `/teams/{token}/scep/adcs?operation=GetCACert` | SCEP: fetch ADCS CA certificate |
+| `GET` | `/teams/{token}/scep/adcs?operation=GetCACaps` | SCEP: fetch capabilities |
+| `POST` | `/teams/{token}/scep/adcs?operation=PKIOperation` | **SCEP enrollment** — `adcs` |
+| `POST` | `/teams/{token}/ejbca/ejbca-rest-api/v1/certificate/pkcs10enroll` | **EJBCA REST enrollment** — `ejbca` |
 | `POST` | `/teams/{token}/dicom/backends/{backend}/stow` | Submit DICOM — Flow 2 scoring |
 | `POST` | `/teams/{token}/scoring/dicomweb-to-dimse` | Claim Flow 3 score |
 | `ANY` | `/teams/{token}/acme/**` | ACME protocol (proxied to step-ca) |
@@ -420,3 +430,37 @@ curl -X POST https://ca-harness.mangotree-b3d09362.eastus.azurecontainerapps.io/
 | Proxy server cert | `kryptonian-dimse.eastus.cloudapp.azure.com` | `20.119.67.236` | `8044` | `GET /server-cert` — download and trust before connecting to port 4243. |
 
 > Both the hostname and IP resolve to the same host. Use the hostname where possible (TLS SNI); use the IP if your DICOM gateway requires a numeric address.
+
+---
+
+## UI Demo scoring
+
+Three points are awarded by judges during a live demonstration of your gateway's device management UI. These are **not automated** — a judge observes your UI and assigns 0 or 1 point per criterion.
+
+### Criterion 1 — Device registration (1 pt)
+
+Your gateway UI must have an explicit device registration step. When a device that has **not** been registered attempts to enroll a certificate, the gateway must reject the request before any CSR reaches the CA.
+
+**Full point awarded when:**
+- The UI has a visible "Register Device" workflow (form, import, etc.)
+- A device list view shows registered devices with identifier, status, and timestamp
+- An enrollment attempt from an unregistered device is visibly rejected (status badge, log entry, error response)
+- The CA backend receives no CSR for the rejected device
+
+### Criterion 2 — Pending registration status (1 pt)
+
+Devices should enter a **pending** state after registration, requiring an explicit approval step before certificate enrollment is permitted.
+
+**Full point awarded when:**
+- Newly registered devices show a `pending` (or equivalent) status in the UI
+- Enrollment from a pending device is rejected with a reason distinguishable from "unregistered" (e.g., "awaiting approval" vs "device not found")
+- An explicit approve action transitions the device to `active` and enrollment then succeeds
+
+### Criterion 3 — Device removal blocks renewal (1 pt)
+
+Removing a device from the registry must prevent that device from obtaining a new or renewed certificate through any CA backend.
+
+**Full point awarded when:**
+- The UI has a visible "Remove" (or deactivate/revoke trust) action on registered devices
+- After removal, an EST renewal attempt from that device is rejected at the gateway — no CSR reaches the CA
+- The gateway enforces this across all configured CA backends (selfsigned, ADCS, EJBCA, ACME)

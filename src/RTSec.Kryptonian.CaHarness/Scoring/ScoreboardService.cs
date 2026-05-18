@@ -17,6 +17,8 @@ public sealed class ScoreboardService
     private readonly ConcurrentDictionary<string, bool> _cmoveComplete = new(StringComparer.OrdinalIgnoreCase);
     // token → completed Flow 3 (DICOMWeb → DIMSE)
     private readonly ConcurrentDictionary<string, bool> _dicomWebToDimseComplete = new(StringComparer.OrdinalIgnoreCase);
+    // token → manual UI demo scores (set by admin)
+    private readonly ConcurrentDictionary<string, ManualScore> _manualScores = new(StringComparer.OrdinalIgnoreCase);
 
     public ScoreboardService(TeamBackendRegistry registry) => _registry = registry;
 
@@ -32,6 +34,9 @@ public sealed class ScoreboardService
         var backends = _dimseStoreTls.GetOrAdd(token, _ => new ConcurrentDictionary<string, bool>(StringComparer.OrdinalIgnoreCase));
         backends[backend] = true;
     }
+
+    public void SetManualScore(string token, bool deviceRegistration, bool pendingStatus, bool deviceRemoval) =>
+        _manualScores[token] = new ManualScore(deviceRegistration, pendingStatus, deviceRemoval);
 
     public void RecordCmoveStow(string token) => _cmoveComplete[token] = true;
 
@@ -81,14 +86,15 @@ public sealed class ScoreboardService
             var firstDicomOverall = transfers.Count > 0 ? transfers.Min(t => t.ReceivedUtc) : (DateTime?)null;
             var cmoveComplete = _cmoveComplete.ContainsKey(team.Token);
             var dicomWebToDimseComplete = _dicomWebToDimseComplete.ContainsKey(team.Token);
+            var manual = _manualScores.TryGetValue(team.Token, out var ms) ? ms : new ManualScore(false, false, false);
 
-            scores.Add(new TeamScore(team.TeamName, backends, backendsComplete, firstDicomOverall, 0, cmoveComplete, dicomWebToDimseComplete));
+            scores.Add(new TeamScore(team.TeamName, backends, backendsComplete, firstDicomOverall, 0, cmoveComplete, dicomWebToDimseComplete, manual));
         }
 
         scores.Sort((a, b) =>
         {
-            var scoreA = a.BackendsComplete + (a.CmoveComplete ? 1 : 0) + (a.DicomWebToDimseComplete ? 1 : 0);
-            var scoreB = b.BackendsComplete + (b.CmoveComplete ? 1 : 0) + (b.DicomWebToDimseComplete ? 1 : 0);
+            var scoreA = a.BackendsComplete + (a.CmoveComplete ? 1 : 0) + (a.DicomWebToDimseComplete ? 1 : 0) + a.Manual.Total;
+            var scoreB = b.BackendsComplete + (b.CmoveComplete ? 1 : 0) + (b.DicomWebToDimseComplete ? 1 : 0) + b.Manual.Total;
             var cmp = scoreB.CompareTo(scoreA);
             if (cmp != 0) return cmp;
             if (a.FirstDicomUtc.HasValue && b.FirstDicomUtc.HasValue)

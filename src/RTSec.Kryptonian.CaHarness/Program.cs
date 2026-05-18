@@ -138,8 +138,14 @@ app.MapGet("/scoreboard", () =>
         var flow3Cell = s.DicomWebToDimseComplete
             ? "<td style='text-align:center;padding:8px 12px'><span style='background:#238636;color:#fff;padding:2px 8px;border-radius:4px;font-size:12px'>✓ Done</span></td>"
             : "<td style='text-align:center;padding:8px 12px'><span style='background:#30363d;color:#fff;padding:2px 8px;border-radius:4px;font-size:12px'>Pending</span></td>";
-        var totalScore = s.BackendsComplete + (s.CmoveComplete ? 1 : 0) + (s.DicomWebToDimseComplete ? 1 : 0);
-        return $"<tr><td style='font-weight:bold;padding:8px 12px'>{rankBadge}</td><td style='padding:8px 12px'>{HtmlEncode(s.TeamName)}</td>{backendCells}{flow2Cell}{flow3Cell}<td style='text-align:center;padding:8px 12px;font-weight:bold;color:#f0f6fc'>{totalScore}/6</td><td style='padding:8px 12px;color:#8b949e'>{firstDicom}</td></tr>";
+        var uiPts = s.Manual.Total;
+        static string UiBadge(bool earned) => earned
+            ? "<span style='color:#3fb950'>✓</span>"
+            : "<span style='color:#30363d'>○</span>";
+        var uiCell = $"<td style='text-align:center;padding:8px 12px;font-size:13px'>{UiBadge(s.Manual.DeviceRegistration)}&thinsp;{UiBadge(s.Manual.PendingStatus)}&thinsp;{UiBadge(s.Manual.DeviceRemoval)}&nbsp;<span style='color:#8b949e;font-size:11px'>{uiPts}/3</span></td>";
+        var automatedScore = s.BackendsComplete + (s.CmoveComplete ? 1 : 0) + (s.DicomWebToDimseComplete ? 1 : 0);
+        var totalScore = automatedScore + uiPts;
+        return $"<tr><td style='font-weight:bold;padding:8px 12px'>{rankBadge}</td><td style='padding:8px 12px'>{HtmlEncode(s.TeamName)}</td>{backendCells}{flow2Cell}{flow3Cell}{uiCell}<td style='text-align:center;padding:8px 12px;font-weight:bold;color:#f0f6fc'>{totalScore}/9</td><td style='padding:8px 12px;color:#8b949e'>{firstDicom}</td></tr>";
     }));
 
     var html = $$"""
@@ -172,12 +178,13 @@ app.MapGet("/scoreboard", () =>
               <th style="text-align:center">ACME 🔒</th>
               <th style="text-align:center">Flow 2</th>
               <th style="text-align:center">Flow 3</th>
+              <th style="text-align:center">UI Demo</th>
               <th style="text-align:center">Score</th>
               <th>First DICOM</th>
             </tr></thead>
             <tbody>{{rows}}</tbody>
           </table>
-          <div style="margin-top:16px;color:#8b949e;font-size:12px">🔒 = DIMSE mTLS C-STORE via gateway cert (1 pt each, 4 max) &nbsp;·&nbsp; ⇌ = gateway-enrolled (EST/SCEP/REST/ACME) &nbsp;·&nbsp; Flow 2 = C-MOVE→DICOMWeb (1 pt) &nbsp;·&nbsp; Flow 3 = DICOMWeb→DIMSE (1 pt) &nbsp;·&nbsp; Max 6 pts</div>
+          <div style="margin-top:16px;color:#8b949e;font-size:12px">🔒 = DIMSE mTLS C-STORE via gateway cert (1 pt each, 4 max) &nbsp;·&nbsp; ⇌ = gateway-enrolled (EST/SCEP/REST/ACME) &nbsp;·&nbsp; Flow 2 = C-MOVE→DICOMWeb (1 pt) &nbsp;·&nbsp; Flow 3 = DICOMWeb→DIMSE (1 pt) &nbsp;·&nbsp; UI Demo = device reg / pending / removal (3 pts) &nbsp;·&nbsp; Max 9 pts</div>
           <div style="margin-top:12px;color:#8b949e;font-size:12px">
             📥 <a href="https://stkryptonianfiles.blob.core.windows.net/downloads/dicom-examples.zip" style="color:#58a6ff" download>Download DICOM test files (28 MB)</a> — 138 CT instances to use as your DICOM payload
           </div>
@@ -316,6 +323,33 @@ app.MapPost("/api/internal/dimse/cstore-event", async (HttpContext context) =>
 
     scoreboard.RecordDimseStoreTls(teamToken, backend);
     return Results.Ok(new { recorded = true });
+});
+
+// ── Manual UI demo scoring (admin only) ───────────────────────────────────────
+
+app.MapPost("/api/admin/manual-scores", async (HttpContext context) =>
+{
+    if (context.Request.Headers["X-Admin-Key"].FirstOrDefault() != internalApiKey)
+        return Results.StatusCode(403);
+
+    var body = await context.Request.ReadFromJsonAsync<ManualScoreRequest>();
+    if (body is null || string.IsNullOrWhiteSpace(body.Token))
+        return Results.BadRequest(new { error = "token is required" });
+
+    var team = registry.GetByToken(body.Token);
+    if (team is null)
+        return Results.NotFound(new { error = "Unknown team token" });
+
+    scoreboard.SetManualScore(body.Token, body.DeviceRegistration, body.PendingStatus, body.DeviceRemoval);
+
+    return Results.Ok(new
+    {
+        teamName = team.TeamName,
+        deviceRegistration = body.DeviceRegistration,
+        pendingStatus = body.PendingStatus,
+        deviceRemoval = body.DeviceRemoval,
+        manualTotal = (body.DeviceRegistration ? 1 : 0) + (body.PendingStatus ? 1 : 0) + (body.DeviceRemoval ? 1 : 0)
+    });
 });
 
 // ── EST enrollment endpoints ──────────────────────────────────────────────────
@@ -658,6 +692,12 @@ static string HtmlEncode(string s) =>
 public partial class Program { }
 
 internal sealed record DicomWebToDimseClaimRequest(string SopInstanceUid);
+
+internal sealed record ManualScoreRequest(
+    string Token,
+    bool DeviceRegistration,
+    bool PendingStatus,
+    bool DeviceRemoval);
 
 internal sealed record EjbcaEnrollRequest(
     [property: System.Text.Json.Serialization.JsonPropertyName("certificate_request")]

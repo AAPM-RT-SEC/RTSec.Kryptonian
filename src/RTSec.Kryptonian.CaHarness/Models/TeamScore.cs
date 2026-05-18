@@ -9,6 +9,14 @@ public sealed record BackendScore(
     DateTime? FirstDicomUtc,
     bool DimseStoreTlsComplete);
 
+public sealed record ManualScore(
+    bool DeviceRegistration,
+    bool PendingStatus,
+    bool DeviceRemoval)
+{
+    public int Total => (DeviceRegistration ? 1 : 0) + (PendingStatus ? 1 : 0) + (DeviceRemoval ? 1 : 0);
+}
+
 public sealed record TeamScore(
     string TeamName,
     IReadOnlyList<BackendScore> Backends,
@@ -16,4 +24,5 @@ public sealed record TeamScore(
     DateTime? FirstDicomUtc,
     int OverallRank,
     bool CmoveComplete,
-    bool DicomWebToDimseComplete);
+    bool DicomWebToDimseComplete,
+    ManualScore Manual);

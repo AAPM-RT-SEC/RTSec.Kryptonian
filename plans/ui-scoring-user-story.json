@@ -1,0 +1,161 @@
+{
+  "feature": "Manual UI Demo Scoring",
+  "summary": "Add a manual scoring category to the Kryptonian CA Harness so judges can evaluate each team's Certificate Enrollment Gateway UI on three medical-device trust-management capabilities: device registration with rejection of unregistered devices, a 'pending' (registered-but-not-approved) state, and device removal that prevents auto-renewal through any CA backend. The harness must accept judge-submitted scores, surface a manual subtotal on the scoreboard alongside the automated flow scores, and ship a written rubric teams can prepare against.",
+  "totalPoints": "TBD (proposed 30: 10 per capability) — pending organizer confirmation",
+  "scoringMethod": "hybrid",
+  "scoringMethodNotes": "Proposed default: live demo to organizer judges, scores entered via a harness-hosted judge panel (web UI) backed by a REST endpoint, with optional automated probe to verify removed devices cannot re-enroll. Final method pending organizer answers to openQuestions Q2/Q3/Q4.",
+  "assumptions": [
+    "Total budget assumed to be 30 points (10 per UI capability) until organizer confirms.",
+    "Judges are organizer-appointed; peer cross-scoring is out of scope unless requested.",
+    "Teams demo live to a judge; recorded video is an accepted fallback.",
+    "Harness will provide both a web judge panel and a REST API; CLI/YAML-only scoring is rejected as too brittle for a hackathon scoreboard.",
+    "The 'pending' state is implemented in each team's gateway. The harness does NOT mandate a device-state API for teams. Judges verify it visually.",
+    "'Cannot auto-renew through the CA' is interpreted as: after removal, a fresh EST re-enrollment attempt from that device MUST be rejected by the gateway before reaching the CA backend. The harness will offer an optional automated re-enrollment probe to corroborate the judge's observation."
+  ],
+  "userStories": [
+    {
+      "id": "US-1",
+      "title": "Judge records manual UI demo scores via a harness-hosted panel",
+      "asA": "judge",
+      "iWant": "to log into a judge panel on the CA harness, select a team, and submit a per-criterion score plus optional comments for the UI demo category",
+      "soThat": "manual scores are captured consistently, auditable, and merged into the official scoreboard without spreadsheet juggling",
+      "acceptanceCriteria": [
+        "GIVEN I am authenticated as a judge WHEN I open /judging on the harness THEN I see a list of all registered teams and their current manual-score status (not-scored | partial | complete).",
+        "GIVEN I open a team's scoring form THEN I see three rubric sections (deviceRegistration, pendingStatus, deviceRemoval) each with a numeric input bounded by that section's max points and a free-text comment field.",
+        "GIVEN I submit a score WHEN any section exceeds its max OR is negative THEN the harness rejects the submission with a 400 and a per-field error message.",
+        "GIVEN I submit a valid score THEN the harness persists it with judge id, team id, timestamp, and per-criterion values, and returns 201 with the stored record id.",
+        "GIVEN a score already exists for (judge, team) THEN re-submitting updates the existing record (idempotent upsert) and records a revision timestamp.",
+        "GIVEN multiple judges score the same team THEN the team's manual subtotal on the scoreboard is the mean of all judges' totals, rounded to one decimal."
+      ],
+      "points": 0
+    },
+    {
+      "id": "US-2",
+      "title": "Scoreboard displays manual UI score alongside automated flow scores",
+      "asA": "team participant or spectator",
+      "iWant": "the public scoreboard to show each team's manual UI score as a distinct column, with the combined total clearly labelled",
+      "soThat": "everyone can see how the UI demo contributes to ranking and teams have clear feedback on where they stand",
+      "acceptanceCriteria": [
+        "GIVEN the scoreboard page loads THEN each team row shows columns: Flow1, Flow2, Flow3, UI Demo (manual), Total.",
+        "GIVEN no judge has scored a team yet THEN the UI Demo column shows '—' and that team's Total excludes the manual category.",
+        "GIVEN at least one judge has scored a team THEN the UI Demo column shows the averaged score and the Total includes it.",
+        "GIVEN a judge updates a score THEN the scoreboard reflects the change within 30 seconds (poll or SSE).",
+        "GIVEN per-criterion judge comments exist THEN they are NOT shown on the public scoreboard (visible only in the judge panel)."
+      ],
+      "points": 0
+    },
+    {
+      "id": "US-3",
+      "title": "Team gateway UI demonstrates device registration with rejection of unregistered devices",
+      "asA": "team",
+      "iWant": "my gateway UI to expose a 'Register Device' workflow and visibly reject EST enrollment from any device not in the registry",
+      "soThat": "I score full points on the registration criterion and prove the gateway enforces medical-device trust policy before reaching a CA",
+      "acceptanceCriteria": [
+        "GIVEN a judge watches the demo WHEN the team triggers EST enrollment from an unregistered device THEN the gateway UI surfaces a clear rejection (status badge, log entry, or toast) and the CA backend receives no CSR.",
+        "GIVEN the team registers a device through the UI (form or import) THEN the device appears in a device list view with identifier, status, and registered-at timestamp.",
+        "GIVEN a judge requests evidence THEN the team can show the harness audit log entry confirming rejection of the unregistered enrollment attempt."
+      ],
+      "points": 10
+    },
+    {
+      "id": "US-4",
+      "title": "Team gateway UI demonstrates a 'pending' registration state",
+      "asA": "team",
+      "iWant": "my gateway UI to show devices as 'pending' after registration and require an explicit approval step before enrollment is allowed",
+      "soThat": "I model the real-world hospital workflow where IT registers but Biomed must approve, and I score the pending-status criterion",
+      "acceptanceCriteria": [
+        "GIVEN a device is newly registered THEN its status in the UI is 'pending' and EST enrollment from it is rejected with a distinct reason ('pending approval') different from the 'unregistered' rejection.",
+        "GIVEN a judge clicks 'Approve' (or equivalent) on a pending device THEN its status transitions to 'active' and enrollment is now permitted.",
+        "GIVEN a device is in 'pending' state THEN the UI shows who registered it, when, and who can approve it."
+      ],
+      "points": 10
+    },
+    {
+      "id": "US-5",
+      "title": "Team gateway UI demonstrates device removal that blocks auto-renewal",
+      "asA": "team",
+      "iWant": "my gateway UI to expose a 'Remove' (or revoke trust) action and have any subsequent enrollment or renewal from that device fail at the gateway, regardless of which CA backend is selected",
+      "soThat": "I score the removal criterion and prove trust removal is enforced upstream of the CA",
+      "acceptanceCriteria": [
+        "GIVEN an active device WHEN a team operator clicks 'Remove' in the UI THEN the device's status changes to 'removed' (or disappears from the active list per team design) and the action is audit-logged.",
+        "GIVEN a removed device WHEN it attempts EST renewal THEN the gateway rejects the request before issuing any CSR to the CA backend.",
+        "GIVEN the harness runs its optional auto-renewal probe against a removed device THEN the probe reports a rejection within the gateway's response and no new certificate is issued by any configured CA (self-signed, ACME/step-ca, ADCS emulator, EJBCA emulator).",
+        "GIVEN the judge requests proof THEN the team can show: (a) the audit log of the removal, (b) the rejected renewal attempt, and (c) absence of a corresponding issuance event in the CA harness logs."
+      ],
+      "points": 10
+    }
+  ],
+  "harnessChanges": [
+    {
+      "type": "model",
+      "description": "Add ManualScore entity: { id, teamId, judgeId, deviceRegistrationPoints, pendingStatusPoints, deviceRemovalPoints, comments{registration,pending,removal}, createdAt, updatedAt }. Persist in existing postgres.",
+      "priority": "must"
+    },
+    {
+      "type": "endpoint",
+      "description": "POST /api/judging/scores and PUT /api/judging/scores/{id} — accept judge-submitted rubric scores; auth via judge bearer token issued by organizers. Validates per-criterion max points.",
+      "priority": "must"
+    },
+    {
+      "type": "endpoint",
+      "description": "GET /api/judging/scores?teamId=... — list scores for a team (judges only, includes comments).",
+      "priority": "must"
+    },
+    {
+      "type": "endpoint",
+      "description": "GET /api/scoreboard — extend existing scoreboard payload to include manualScore (averaged across judges) and combinedTotal per team. Comments are stripped.",
+      "priority": "must"
+    },
+    {
+      "type": "ui",
+      "description": "Judge panel at /judging — auth-gated team list, scoring form with three rubric sections and comment fields, validation, and edit-existing flow.",
+      "priority": "must"
+    },
+    {
+      "type": "ui",
+      "description": "Scoreboard page — add 'UI Demo' column and updated combined total; show '—' when un-scored.",
+      "priority": "must"
+    },
+    {
+      "type": "endpoint",
+      "description": "POST /api/probes/auto-renew-blocked — optional automated probe that re-runs EST enrollment for a named (previously removed) device against the team's gateway and asserts rejection. Judges can trigger this from the panel to corroborate the removal criterion.",
+      "priority": "should"
+    },
+    {
+      "type": "model",
+      "description": "Judge identity & auth: add Judge entity and a short-lived bearer token scheme (or piggyback on existing harness admin auth) so submissions are attributable and revocable.",
+      "priority": "must"
+    },
+    {
+      "type": "ui",
+      "description": "Per-team feedback view (read-only) showing that team their averaged manual score and judge comments after scoring closes.",
+      "priority": "nice-to-have"
+    }
+  ],
+  "teamDemoRubric": {
+    "deviceRegistration": {
+      "points": 10,
+      "criteria": "Full points (10): UI has an obvious 'Register Device' workflow; a device list view shows id/status/timestamp; EST enrollment from an unregistered device is rejected by the gateway with a clear UI signal and no CSR reaches the CA. Partial (5-9): registration works but rejection is unclear, hidden in logs only, or inconsistent across CA backends. Zero (0): no registration UI, or unregistered devices can still enroll."
+    },
+    "pendingStatus": {
+      "points": 10,
+      "criteria": "Full points (10): newly registered devices land in 'pending' with a distinct UI badge; enrollment from pending devices is rejected with a 'pending approval' reason distinguishable from the 'unregistered' reason; an explicit approval action transitions to 'active' and is audit-logged. Partial (5-9): pending state exists but approval is implicit, or rejection reason is not distinguishable from unregistered. Zero (0): no pending state — devices go straight to active on registration."
+    },
+    "deviceRemoval": {
+      "points": 10,
+      "criteria": "Full points (10): UI 'Remove' action is one click from the device list and audit-logged; subsequent EST renewal from the removed device is rejected at the gateway across ALL configured CA backends; harness auto-renew probe (if run) confirms no certificate was issued. Partial (5-9): removal works but renewal is only blocked for some CA backends, or rejection happens at the CA rather than at the gateway. Zero (0): removed devices can still auto-renew."
+    }
+  },
+  "openQuestions": [
+    "Q1 (Point budget): Is the manual UI demo worth 30 points total (10 per criterion), or a different weight relative to the three automated flows?",
+    "Q2 (Demo format): Is this a live in-person demo at the Trento event, a recorded video submission, or a hybrid? Affects whether the judge panel needs a video-upload field.",
+    "Q3 (Judges): Are judges organizer-only, or do peer team representatives also score? If peers score, do they see other teams' comments?",
+    "Q4 (Tooling): Confirm the harness should ship a web judge panel + REST API (current assumption), versus API-only or YAML-in-repo.",
+    "Q5 (Pending semantics): Should the harness define a required device-state contract (pending/active/removed) that teams must expose via an API for cross-team comparability, or is the 'pending' state purely an internal team-implementation detail visible only through the UI?",
+    "Q6 (Auto-renew enforcement): Is the optional automated auto-renew probe desired? If yes, must teams expose a known-device endpoint the harness can target, and does failing the probe cap the deviceRemoval score?",
+    "Q7 (Score visibility): Should per-judge comments be visible to teams after the event for feedback, or kept private to organizers?",
+    "Q8 (Tie-breaking): If the manual score changes ranking, is the manual score added to the automated total, or used as a separate tie-breaker?"
+  ],
+  "approved_by": null,
+  "approved_at": null
+}
