@@ -1,0 +1,93 @@
+
+# Hackathon overlay — adds CA harness, step-ca, and simulated devices.
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.hackathon.yml --profile web up --build
+#
+# The ca-harness and step-ca services are internal only (no published ports in production).
+# Expose ports here for local developer access only.
+
+services:
+
+  ca-harness:
+    build:
+      context: .
+      dockerfile: src/RTSec.Kryptonian.CaHarness/Dockerfile
+    container_name: kryptonian-ca-harness
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      # ACME proxy — forwards /acme/** to step-ca and rewrites directory URLs back to the harness
+      ACME_UPSTREAM_URL: https://step-ca:9000
+      ACME_HARNESS_BASE_URL: http://ca-harness:8080
+      ORTHANC_URL: http://orthanc:8042
+    ports:
+      - "8090:8080"  # local access for manual testing; remove for production-like demo
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 15s
+      timeout: 5s
+      start_period: 5s
+      retries: 3
+    networks:
+      - kryptonian-network
+
+  step-ca:
+    image: smallstep/step-ca:latest
+    container_name: kryptonian-step-ca
+    volumes:
+      - step-ca-data:/home/step
+    environment:
+      DOCKER_STEPCA_INIT_NAME: Kryptonian Hackathon CA
+      DOCKER_STEPCA_INIT_DNS_NAMES: step-ca,localhost
+      DOCKER_STEPCA_INIT_ACME: "true"
+      DOCKER_STEPCA_INIT_PASSWORD: hackathon-step-ca-password
+    ports:
+      - "9000:9000"  # local access; remove for production-like demo
+    healthcheck:
+      test: ["CMD", "step", "ca", "health", "--ca-url", "https://localhost:9000", "--root", "/home/step/certs/root_ca.crt"]
+      interval: 30s
+      timeout: 10s
+      start_period: 15s
+      retries: 3
+    networks:
+      - kryptonian-network
+
+  # Simulated devices — lightweight containers for running enrollment scripts
+  device-a:
+    image: curlimages/curl:latest
+    container_name: kryptonian-device-a
+    entrypoint: ["sleep", "infinity"]
+    networks:
+      - kryptonian-network
+
+  device-b:
+    image: curlimages/curl:latest
+    container_name: kryptonian-device-b
+    entrypoint: ["sleep", "infinity"]
+    networks:
+      - kryptonian-network
+
+  orthanc:
+    image: orthancteam/orthanc:latest
+    container_name: kryptonian-orthanc
+    volumes:
+      - ./src/RTSec.Kryptonian.CaHarness/orthanc/orthanc.json:/etc/orthanc/orthanc.json:ro
+      - orthanc-data:/var/lib/orthanc/db
+    networks:
+      - kryptonian-network
+    # Internal only — no ports exposed to host
+
+  # Point the gateway API at the harness backends in this overlay
+  api:
+    depends_on:
+      ca-harness:
+        condition: service_healthy
+    environment:
+      # ADCS harness backend — add or update a CaBackend row via the admin API pointing at this URL
+      KRYPTONIAN__CA__HARNESS__BASEURL: http://ca-harness:8080
+
+volumes:
+  step-ca-data:
+    driver: local
+  orthanc-data:
+    driver: local

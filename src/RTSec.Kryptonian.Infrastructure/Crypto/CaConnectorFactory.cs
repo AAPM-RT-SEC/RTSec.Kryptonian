@@ -5,6 +5,7 @@ using RTSec.Kryptonian.Domain.Entities;
 using RTSec.Kryptonian.Domain.Enums;
 using RTSec.Kryptonian.Domain.Interfaces;
 using RTSec.Kryptonian.Infrastructure.Acme;
+using RTSec.Kryptonian.Infrastructure.Harness;
 
 namespace RTSec.Kryptonian.Infrastructure.Crypto;
 
@@ -57,9 +58,9 @@ public class CaConnectorFactory : ICaConnectorFactory, IDisposable
                 CaBackendType.SelfSigned => CreateSelfSignedConnector(backend),
                 CaBackendType.Acme => CreateAcmeConnector(backend),
 
-                // Planned - see README.md for roadmap
-                CaBackendType.Adcs => throw new NotSupportedException("Microsoft ADCS connector not yet implemented. See README.md for roadmap."),
-                CaBackendType.Ejbca => throw new NotSupportedException("EJBCA connector not yet implemented. See README.md for roadmap."),
+                // Harness connectors for hackathon/testing
+                CaBackendType.Adcs => CreateAdcsConnector(backend),
+                CaBackendType.Ejbca => CreateEjbcaConnector(backend),
                 CaBackendType.Cfssl => throw new NotSupportedException("CFSSL connector not yet implemented. See README.md for roadmap."),
                 CaBackendType.HashiCorpVault => throw new NotSupportedException("HashiCorp Vault connector not yet implemented. See README.md for roadmap."),
                 CaBackendType.Smallstep => throw new NotSupportedException("Smallstep connector not yet implemented. See README.md for roadmap."),
@@ -176,6 +177,43 @@ public class CaConnectorFactory : ICaConnectorFactory, IDisposable
                 backend.Id, challengeProvider.ChallengeType);
 
         return new AcmeCaConnector(logger, _unitOfWork, challengeProvider, _dataProtection, config);
+    }
+
+    private ICaConnector CreateAdcsConnector(CaBackend backend)
+    {
+        var logger = _loggerFactory.CreateLogger<AdcsCaConnector>();
+        var baseUrl = GetConfigValue(backend, "HarnessBaseUrl", "KRYPTONIAN__CA__HARNESS__BASEURL")
+            ?? backend.Url?.ToString()
+            ?? throw new InvalidOperationException(
+                "ADCS connector requires HarnessBaseUrl. Set via backend config or KRYPTONIAN__CA__HARNESS__BASEURL.");
+
+        var config = new AdcsHarnessConnectorConfig
+        {
+            HarnessBaseUrl = baseUrl,
+            TemplateName = GetConfigValue(backend, "TemplateName", "") ?? "DicomDeviceAuthentication",
+            ValidityDays = int.TryParse(GetConfigValue(backend, "ValidityDays", ""), out var vd) ? vd : 7
+        };
+
+        return new AdcsCaConnector(logger, new HttpClient(), config);
+    }
+
+    private ICaConnector CreateEjbcaConnector(CaBackend backend)
+    {
+        var logger = _loggerFactory.CreateLogger<EjbcaCaConnector>();
+        var baseUrl = GetConfigValue(backend, "HarnessBaseUrl", "KRYPTONIAN__CA__HARNESS__BASEURL")
+            ?? backend.Url?.ToString()
+            ?? throw new InvalidOperationException(
+                "EJBCA connector requires HarnessBaseUrl. Set via backend config or KRYPTONIAN__CA__HARNESS__BASEURL.");
+
+        var config = new EjbcaHarnessConnectorConfig
+        {
+            HarnessBaseUrl = baseUrl,
+            CertificateProfile = GetConfigValue(backend, "CertificateProfile", "") ?? "MedicalDeviceTLS",
+            EndEntityProfile = GetConfigValue(backend, "EndEntityProfile", "") ?? "DicomDevice",
+            ValidityDays = int.TryParse(GetConfigValue(backend, "ValidityDays", ""), out var vd) ? vd : 7
+        };
+
+        return new EjbcaCaConnector(logger, new HttpClient(), config);
     }
 
     private string? GetConfigValue(CaBackend backend, string configKey, string envKey)

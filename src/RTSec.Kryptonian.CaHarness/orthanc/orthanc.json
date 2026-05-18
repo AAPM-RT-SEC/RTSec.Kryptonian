@@ -1,0 +1,8 @@
+{
+  "Name": "Kryptonian Hackathon DICOM Store",
+  "DicomAet": "KRYPTONIAN",
+  "DicomPort": 4242,
+  "HttpPort": 8042,
+  "AuthenticationEnabled": false,
+  "StorageDirectory": "/var/lib/orthanc/db"
+}

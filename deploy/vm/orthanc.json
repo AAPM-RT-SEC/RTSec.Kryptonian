@@ -1,0 +1,20 @@
+{
+  "Name": "Kryptonian Hackathon DICOM Store",
+  "DicomAet": "KRYPTONIAN",
+  "DicomPort": 4242,
+  "HttpPort": 8042,
+  "AuthenticationEnabled": false,
+  "StorageDirectory": "/var/lib/orthanc/db",
+  "DicomWeb": {
+    "Enable": true,
+    "Root": "/dicom-web/",
+    "EnableWado": true,
+    "WadoRoot": "/wado/",
+    "StowMaxInstances": 0,
+    "StowMaxSize": 0
+  },
+  "RemoteAccessAllowed": true,
+  "Pkcs11": {
+    "Enable": false
+  }
+}
