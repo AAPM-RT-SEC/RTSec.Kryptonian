@@ -13,8 +13,5 @@
     "StowMaxInstances": 0,
     "StowMaxSize": 0
   },
-  "RemoteAccessAllowed": true,
-  "Pkcs11": {
-    "Enable": false
-  }
+  "RemoteAccessAllowed": true
 }
