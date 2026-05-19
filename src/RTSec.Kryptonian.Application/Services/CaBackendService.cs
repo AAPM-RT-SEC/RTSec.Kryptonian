@@ -1,6 +1,6 @@
-using AutoMapper;
 using Microsoft.Extensions.Logging;
 using RTSec.Kryptonian.Application.DTOs;
+using RTSec.Kryptonian.Application.Mapping;
 using RTSec.Kryptonian.Domain.Entities;
 using RTSec.Kryptonian.Domain.Enums;
 using RTSec.Kryptonian.Domain.Interfaces;
@@ -13,18 +13,15 @@ namespace RTSec.Kryptonian.Application.Services;
 public class CaBackendService : ICaBackendService
 {
     private readonly IUnitOfWork _unitOfWork;
-    private readonly IMapper _mapper;
     private readonly ILogger<CaBackendService> _logger;
     private readonly ICaConnectorFactory _connectorFactory;
 
     public CaBackendService(
         IUnitOfWork unitOfWork,
-        IMapper mapper,
         ILogger<CaBackendService> logger,
         ICaConnectorFactory connectorFactory)
     {
         _unitOfWork = unitOfWork;
-        _mapper = mapper;
         _logger = logger;
         _connectorFactory = connectorFactory;
     }
@@ -33,20 +30,20 @@ public class CaBackendService : ICaBackendService
     public async Task<IEnumerable<CaBackendDto>> GetAllAsync(CancellationToken ct = default)
     {
         var backends = await _unitOfWork.CaBackends.GetAllAsync(ct);
-        return _mapper.Map<IEnumerable<CaBackendDto>>(backends);
+        return backends.Select(DtoMapper.ToDto);
     }
 
     /// <inheritdoc />
     public async Task<CaBackendDto?> GetByIdAsync(Guid id, CancellationToken ct = default)
     {
         var backend = await _unitOfWork.CaBackends.GetByIdAsync(id, ct);
-        return backend == null ? null : _mapper.Map<CaBackendDto>(backend);
+        return backend == null ? null : DtoMapper.ToDto(backend);
     }
 
     public async Task<CaBackendDto?> GetActiveAsync(CancellationToken ct = default)
     {
         var backend = await _unitOfWork.CaBackends.GetActiveAsync(ct);
-        return backend == null ? null : _mapper.Map<CaBackendDto>(backend);
+        return backend == null ? null : DtoMapper.ToDto(backend);
     }
 
     /// <inheritdoc />
@@ -55,7 +52,7 @@ public class CaBackendService : ICaBackendService
         ArgumentNullException.ThrowIfNull(dto);
         _logger.LogInformation("Creating CA backend: {Name}, Type: {Type}", dto.Name, dto.Type);
 
-        var entity = _mapper.Map<CaBackend>(dto);
+        var entity = DtoMapper.ToEntity(dto);
         entity.Id = Guid.NewGuid();
         entity.CreatedAt = DateTime.UtcNow;
         entity.UpdatedAt = DateTime.UtcNow;
@@ -80,7 +77,7 @@ public class CaBackendService : ICaBackendService
 
         _logger.LogInformation("Created CA backend with ID: {Id}", entity.Id);
 
-        return _mapper.Map<CaBackendDto>(entity);
+        return DtoMapper.ToDto(entity);
     }
 
     /// <inheritdoc />
@@ -141,7 +138,7 @@ public class CaBackendService : ICaBackendService
 
         _logger.LogInformation("Updated CA backend: {Id}", id);
 
-        return _mapper.Map<CaBackendDto>(entity);
+        return DtoMapper.ToDto(entity);
     }
 
     /// <inheritdoc />
@@ -216,7 +213,7 @@ public class CaBackendService : ICaBackendService
             throw;
         }
 
-        return _mapper.Map<CaBackendDto>(entity);
+        return DtoMapper.ToDto(entity);
     }
 
     private async Task ActivateEntityAsync(CaBackend entity, CancellationToken ct)

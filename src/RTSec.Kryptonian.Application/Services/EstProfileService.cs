@@ -1,6 +1,6 @@
-using AutoMapper;
 using Microsoft.Extensions.Logging;
 using RTSec.Kryptonian.Application.DTOs;
+using RTSec.Kryptonian.Application.Mapping;
 using RTSec.Kryptonian.Domain.Entities;
 using RTSec.Kryptonian.Domain.Enums;
 using RTSec.Kryptonian.Domain.Interfaces;
@@ -13,16 +13,13 @@ namespace RTSec.Kryptonian.Application.Services;
 public class EstProfileService : IEstProfileService
 {
     private readonly IUnitOfWork _unitOfWork;
-    private readonly IMapper _mapper;
     private readonly ILogger<EstProfileService> _logger;
 
     public EstProfileService(
         IUnitOfWork unitOfWork,
-        IMapper mapper,
         ILogger<EstProfileService> logger)
     {
         _unitOfWork = unitOfWork;
-        _mapper = mapper;
         _logger = logger;
     }
 
@@ -30,14 +27,14 @@ public class EstProfileService : IEstProfileService
     public async Task<IEnumerable<EstProfileDto>> GetAllAsync(CancellationToken ct = default)
     {
         var profiles = await _unitOfWork.EstProfiles.GetAllAsync(ct);
-        return _mapper.Map<IEnumerable<EstProfileDto>>(profiles);
+        return profiles.Select(DtoMapper.ToDto);
     }
 
     /// <inheritdoc />
     public async Task<EstProfileDto?> GetByIdAsync(Guid id, CancellationToken ct = default)
     {
         var profile = await _unitOfWork.EstProfiles.GetByIdAsync(id, ct);
-        return profile == null ? null : _mapper.Map<EstProfileDto>(profile);
+        return profile == null ? null : DtoMapper.ToDto(profile);
     }
 
     /// <inheritdoc />
@@ -70,9 +67,8 @@ public class EstProfileService : IEstProfileService
             }
         }
 
-        var entity = _mapper.Map<EstProfile>(dto);
+        var entity = DtoMapper.ToEntity(dto, caBackendId);
         entity.Id = Guid.NewGuid();
-        entity.CaBackendId = caBackendId;  // Set the FK that mapping ignored
         entity.CreatedAt = DateTime.UtcNow;
         entity.UpdatedAt = DateTime.UtcNow;
 
@@ -81,7 +77,7 @@ public class EstProfileService : IEstProfileService
 
         _logger.LogInformation("Created EST profile with ID: {Id}", entity.Id);
 
-        return _mapper.Map<EstProfileDto>(entity);
+        return DtoMapper.ToDto(entity);
     }
 
     /// <inheritdoc />
@@ -199,7 +195,7 @@ public class EstProfileService : IEstProfileService
 
         _logger.LogInformation("Updated EST profile: {Id}", id);
 
-        return _mapper.Map<EstProfileDto>(entity);
+        return DtoMapper.ToDto(entity);
     }
 
     /// <inheritdoc />

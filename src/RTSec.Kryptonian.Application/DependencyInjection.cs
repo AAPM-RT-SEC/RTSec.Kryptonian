@@ -1,5 +1,4 @@
 using Microsoft.Extensions.DependencyInjection;
-using RTSec.Kryptonian.Application.Mapping;
 using RTSec.Kryptonian.Application.Services;
 using RTSec.Kryptonian.Domain.Interfaces;
 
@@ -15,15 +14,13 @@ public static class ApplicationServiceExtensions
     /// </summary>
     public static IServiceCollection AddApplicationServices(this IServiceCollection services)
     {
-        // Add AutoMapper with the mapping profile
-        services.AddAutoMapper(typeof(MappingProfile));
-
         // Register application services
         services.AddScoped<ICaBackendService, CaBackendService>();
         services.AddScoped<IEstProfileService, EstProfileService>();
         services.AddScoped<IEnrollmentEventService, EnrollmentEventService>();
         services.AddScoped<IEnrollmentOrchestrator, EnrollmentOrchestrator>();
         services.AddScoped<IDeviceService, DeviceService>();
+        services.AddScoped<IHackathonSettingsService, HackathonSettingsService>();
 
         return services;
     }

@@ -1,8 +1,8 @@
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
-using AutoMapper;
 using Microsoft.Extensions.Logging;
 using RTSec.Kryptonian.Application.DTOs;
+using RTSec.Kryptonian.Application.Mapping;
 using RTSec.Kryptonian.Domain.Entities;
 using RTSec.Kryptonian.Domain.Enums;
 using RTSec.Kryptonian.Domain.Interfaces;
@@ -14,33 +14,30 @@ public class DeviceService : IDeviceService
     private readonly IUnitOfWork _unitOfWork;
     private readonly IEnrollmentOrchestrator _orchestrator;
     private readonly IDataProtectionService _dataProtection;
-    private readonly IMapper _mapper;
     private readonly ILogger<DeviceService> _logger;
 
     public DeviceService(
         IUnitOfWork unitOfWork,
         IEnrollmentOrchestrator orchestrator,
         IDataProtectionService dataProtection,
-        IMapper mapper,
         ILogger<DeviceService> logger)
     {
         _unitOfWork = unitOfWork;
         _orchestrator = orchestrator;
         _dataProtection = dataProtection;
-        _mapper = mapper;
         _logger = logger;
     }
 
     public async Task<IEnumerable<DeviceDto>> GetAllAsync(CancellationToken ct = default)
     {
         var devices = await _unitOfWork.Devices.GetAllAsync(ct);
-        return _mapper.Map<IEnumerable<DeviceDto>>(devices);
+        return devices.Select(DtoMapper.ToDto);
     }
 
     public async Task<DeviceDto?> GetByIdAsync(Guid id, CancellationToken ct = default)
     {
         var device = await _unitOfWork.Devices.GetByIdAsync(id, ct);
-        return device == null ? null : _mapper.Map<DeviceDto>(device);
+        return device == null ? null : DtoMapper.ToDto(device);
     }
 
     public async Task<DeviceDto> CreateAsync(DeviceCreateDto dto, CancellationToken ct = default)
@@ -55,7 +52,7 @@ public class DeviceService : IDeviceService
             dto.SerialNumber,
             ct);
 
-        return _mapper.Map<DeviceDto>(device);
+        return DtoMapper.ToDto(device);
     }
 
     public async Task<DeviceApprovalRequestResponseDto> RequestApprovalAsync(DeviceApprovalRequestDto dto, CancellationToken ct = default)
@@ -95,7 +92,7 @@ public class DeviceService : IDeviceService
         _unitOfWork.Devices.Update(device);
         await _unitOfWork.SaveChangesAsync(ct);
 
-        return _mapper.Map<DeviceDto>(device);
+        return DtoMapper.ToDto(device);
     }
 
     public async Task<DeviceDto?> RemoveAsync(Guid id, CancellationToken ct = default)
@@ -111,13 +108,13 @@ public class DeviceService : IDeviceService
         _unitOfWork.Devices.Update(device);
         await _unitOfWork.SaveChangesAsync(ct);
 
-        return _mapper.Map<DeviceDto>(device);
+        return DtoMapper.ToDto(device);
     }
 
     public async Task<IEnumerable<CertificateDto>> GetCertificatesAsync(Guid id, CancellationToken ct = default)
     {
         var certificates = await _unitOfWork.Certificates.GetByDeviceRecordIdAsync(id, ct);
-        return _mapper.Map<IEnumerable<CertificateDto>>(certificates);
+        return certificates.Select(DtoMapper.ToDto);
     }
 
     public async Task<DemoEnrollResponseDto?> DemoEnrollAsync(Guid id, Guid profileId, CancellationToken ct = default)
@@ -164,9 +161,9 @@ public class DeviceService : IDeviceService
 
         return new DemoEnrollResponseDto
         {
-            Device = _mapper.Map<DeviceDto>(device),
-            Certificate = _mapper.Map<CertificateDto>(certificate),
-            IssuedByActiveBackend = _mapper.Map<CaBackendDto>(activeBackend)
+            Device = DtoMapper.ToDto(device),
+            Certificate = DtoMapper.ToDto(certificate),
+            IssuedByActiveBackend = DtoMapper.ToDto(activeBackend)
         };
     }
 

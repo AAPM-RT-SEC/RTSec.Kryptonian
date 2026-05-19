@@ -388,7 +388,8 @@ th {
 
 .form input,
 .form select,
-.form textarea {
+.form textarea,
+.settingsGrid input {
   border: 1px solid #cbd8dc;
   border-radius: 6px;
   padding: 8px 10px;
@@ -424,6 +425,36 @@ th {
   margin-top: 6px;
 }
 
+.settingsGrid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.settingsGrid label {
+  color: #435b61;
+  display: grid;
+  gap: 5px;
+}
+
+.settingsActions {
+  align-items: end;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.jsonPreview {
+  background: #102428;
+  border-radius: 8px;
+  color: #e8f2f4;
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 0.86rem;
+  margin: 0;
+  max-height: 420px;
+  overflow: auto;
+  padding: 14px;
+}
+
 @media (max-width: 960px) {
   .shell {
     grid-template-columns: 1fr;
@@ -435,7 +466,8 @@ th {
 
   nav,
   .metrics,
-  .backendGrid {
+  .backendGrid,
+  .settingsGrid {
     grid-template-columns: 1fr;
   }
 

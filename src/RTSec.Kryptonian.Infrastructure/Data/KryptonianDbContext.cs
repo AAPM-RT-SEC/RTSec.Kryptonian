@@ -16,6 +16,7 @@ public class KryptonianDbContext : DbContext
     public DbSet<Certificate> Certificates => Set<Certificate>();
     public DbSet<EnrollmentEvent> EnrollmentEvents => Set<EnrollmentEvent>();
     public DbSet<AcmeAccount> AcmeAccounts => Set<AcmeAccount>();
+    public DbSet<HackathonSettings> HackathonSettings => Set<HackathonSettings>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

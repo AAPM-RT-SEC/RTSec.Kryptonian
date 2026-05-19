@@ -1,9 +1,7 @@
-using AutoMapper;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Moq;
 using RTSec.Kryptonian.Application.DTOs;
-using RTSec.Kryptonian.Application.Mapping;
 using RTSec.Kryptonian.Application.Services;
 using RTSec.Kryptonian.Domain.Entities;
 using RTSec.Kryptonian.Domain.Enums;
@@ -19,7 +17,6 @@ public class CaBackendServiceTests
     private readonly Mock<IEstProfileRepository> _estProfileRepoMock;
     private readonly Mock<ICaConnectorFactory> _connectorFactoryMock;
     private readonly Mock<ILogger<CaBackendService>> _loggerMock;
-    private readonly IMapper _mapper;
     private readonly CaBackendService _sut;
 
     public CaBackendServiceTests()
@@ -33,12 +30,8 @@ public class CaBackendServiceTests
         _unitOfWorkMock.Setup(u => u.CaBackends).Returns(_caBackendRepoMock.Object);
         _unitOfWorkMock.Setup(u => u.EstProfiles).Returns(_estProfileRepoMock.Object);
 
-        var config = new MapperConfiguration(cfg => cfg.AddProfile<MappingProfile>());
-        _mapper = config.CreateMapper();
-
         _sut = new CaBackendService(
             _unitOfWorkMock.Object,
-            _mapper,
             _loggerMock.Object,
             _connectorFactoryMock.Object);
     }
@@ -130,7 +123,7 @@ public class CaBackendServiceTests
     }
 
     [Fact]
-    public async Task CreateAsyncWithInvalidTypeThrowsAutoMapperMappingException()
+    public async Task CreateAsyncWithInvalidTypeThrowsArgumentException()
     {
         // Arrange
         var dto = new CaBackendCreateDto
@@ -142,8 +135,8 @@ public class CaBackendServiceTests
         // Act
         var act = () => _sut.CreateAsync(dto);
 
-        // Assert - AutoMapper wraps the ArgumentException in AutoMapperMappingException
-        await act.Should().ThrowAsync<AutoMapper.AutoMapperMappingException>();
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*Unknown CA backend type*");
     }
 
     #endregion

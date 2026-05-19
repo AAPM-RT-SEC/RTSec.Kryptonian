@@ -85,6 +85,17 @@ public class CaConnectorFactory : ICaConnectorFactory, IDisposable
 
     private ICaConnector CreateSelfSignedConnector(CaBackend backend)
     {
+        var harnessBaseUrl = GetConfigValue(backend, "HarnessBaseUrl", "KRYPTONIAN__CA__HARNESS__BASEURL")
+            ?? backend.Url?.ToString();
+        if (!string.IsNullOrWhiteSpace(harnessBaseUrl))
+        {
+            var harnessLogger = _loggerFactory.CreateLogger<SelfSignedEstCaConnector>();
+            return new SelfSignedEstCaConnector(harnessLogger, new HttpClient(), new SelfSignedEstConnectorConfig
+            {
+                HarnessBaseUrl = harnessBaseUrl
+            });
+        }
+
         var logger = _loggerFactory.CreateLogger<SelfSignedCaConnector>();
 
         // Get certificate path from config or backend config
@@ -109,7 +120,7 @@ public class CaConnectorFactory : ICaConnectorFactory, IDisposable
             // and MachineKeySet on Windows for better key protection. Avoid Exportable flag
             // unless the downstream dependency truly requires it (BouncyCastle needs the private key).
             var keyStorageFlags = OperatingSystem.IsWindows()
-                ? X509KeyStorageFlags.MachineKeySet | X509KeyStorageFlags.PersistKeySet
+                ? X509KeyStorageFlags.MachineKeySet | X509KeyStorageFlags.PersistKeySet | X509KeyStorageFlags.Exportable
                 : X509KeyStorageFlags.EphemeralKeySet;
 
             // Note: We need to export the private key for BouncyCastle's signing operations.
@@ -162,7 +173,9 @@ public class CaConnectorFactory : ICaConnectorFactory, IDisposable
             Email = email,
             EabKeyId = eabKeyId,
             EabHmacKey = eabHmacKey,
-            PreferredChallengeType = preferredChallenge
+            PreferredChallengeType = preferredChallenge,
+            Http01ChallengeRelayUrl = GetConfigValue(backend, "Http01ChallengeRelayUrl", "KRYPTONIAN__ACME__HTTP01CHALLENGERELAYURL"),
+            HarnessClaimUrl = GetConfigValue(backend, "HarnessClaimUrl", "KRYPTONIAN__ACME__HARNESSCLAIMURL")
         };
 
         // Select challenge provider based on configuration
@@ -182,14 +195,15 @@ public class CaConnectorFactory : ICaConnectorFactory, IDisposable
     private ICaConnector CreateAdcsConnector(CaBackend backend)
     {
         var logger = _loggerFactory.CreateLogger<AdcsCaConnector>();
-        var baseUrl = GetConfigValue(backend, "HarnessBaseUrl", "KRYPTONIAN__CA__HARNESS__BASEURL")
+        var baseUrl = GetConfigValue(backend, "BaseUrl", "KRYPTONIAN__CA__ADCS__SCEPBASEURL")
+            ?? GetConfigValue(backend, "ScepBaseUrl", "KRYPTONIAN__CA__ADCS__SCEPBASEURL")
             ?? backend.Url?.ToString()
             ?? throw new InvalidOperationException(
-                "ADCS connector requires HarnessBaseUrl. Set via backend config or KRYPTONIAN__CA__HARNESS__BASEURL.");
+                "ADCS connector requires a SCEP base URL. Set backend URL, config BaseUrl/ScepBaseUrl, or KRYPTONIAN__CA__ADCS__SCEPBASEURL.");
 
-        var config = new AdcsHarnessConnectorConfig
+        var config = new AdcsScepConnectorConfig
         {
-            HarnessBaseUrl = baseUrl,
+            BaseUrl = baseUrl,
             TemplateName = GetConfigValue(backend, "TemplateName", "") ?? "DicomDeviceAuthentication",
             ValidityDays = int.TryParse(GetConfigValue(backend, "ValidityDays", ""), out var vd) ? vd : 7
         };
@@ -200,16 +214,18 @@ public class CaConnectorFactory : ICaConnectorFactory, IDisposable
     private ICaConnector CreateEjbcaConnector(CaBackend backend)
     {
         var logger = _loggerFactory.CreateLogger<EjbcaCaConnector>();
-        var baseUrl = GetConfigValue(backend, "HarnessBaseUrl", "KRYPTONIAN__CA__HARNESS__BASEURL")
+        var baseUrl = GetConfigValue(backend, "BaseUrl", "KRYPTONIAN__CA__EJBCA__RESTBASEURL")
+            ?? GetConfigValue(backend, "RestBaseUrl", "KRYPTONIAN__CA__EJBCA__RESTBASEURL")
             ?? backend.Url?.ToString()
             ?? throw new InvalidOperationException(
-                "EJBCA connector requires HarnessBaseUrl. Set via backend config or KRYPTONIAN__CA__HARNESS__BASEURL.");
+                "EJBCA connector requires a REST base URL. Set backend URL, config BaseUrl/RestBaseUrl, or KRYPTONIAN__CA__EJBCA__RESTBASEURL.");
 
-        var config = new EjbcaHarnessConnectorConfig
+        var config = new EjbcaRestConnectorConfig
         {
-            HarnessBaseUrl = baseUrl,
+            BaseUrl = baseUrl,
             CertificateProfile = GetConfigValue(backend, "CertificateProfile", "") ?? "MedicalDeviceTLS",
             EndEntityProfile = GetConfigValue(backend, "EndEntityProfile", "") ?? "DicomDevice",
+            IssuerDn = GetConfigValue(backend, "IssuerDn", "KRYPTONIAN__CA__EJBCA__ISSUERDN"),
             ValidityDays = int.TryParse(GetConfigValue(backend, "ValidityDays", ""), out var vd) ? vd : 7
         };
 

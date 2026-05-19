@@ -1,5 +1,5 @@
-using AutoMapper;
 using RTSec.Kryptonian.Application.DTOs;
+using RTSec.Kryptonian.Application.Mapping;
 using RTSec.Kryptonian.Domain.Interfaces;
 
 namespace RTSec.Kryptonian.Application.Services;
@@ -10,12 +10,10 @@ namespace RTSec.Kryptonian.Application.Services;
 public class EnrollmentEventService : IEnrollmentEventService
 {
     private readonly IUnitOfWork _unitOfWork;
-    private readonly IMapper _mapper;
 
-    public EnrollmentEventService(IUnitOfWork unitOfWork, IMapper mapper)
+    public EnrollmentEventService(IUnitOfWork unitOfWork)
     {
         _unitOfWork = unitOfWork;
-        _mapper = mapper;
     }
 
     /// <inheritdoc />
@@ -25,6 +23,6 @@ public class EnrollmentEventService : IEnrollmentEventService
             ? await _unitOfWork.EnrollmentEvents.GetByProfileIdAsync(profileId.Value, limit, ct)
             : await _unitOfWork.EnrollmentEvents.GetRecentAsync(limit, ct);
 
-        return _mapper.Map<IEnumerable<EnrollmentEventDto>>(events);
+        return events.Select(DtoMapper.ToDto);
     }
 }

@@ -1,4 +1,5 @@
 using System.Security.Cryptography.X509Certificates;
+using System.Net.Http.Json;
 using Certes;
 using Certes.Acme;
 using Certes.Acme.Resource;
@@ -23,6 +24,7 @@ public class AcmeCaConnector : ICaConnector
     private readonly IAcmeChallengeProvider _challengeProvider;
     private readonly AcmeConnectorConfig _config;
     private readonly IDataProtectionService _dataProtection;
+    private readonly HttpClient _httpClient;
 
     private AcmeContext? _acmeContext;
     private IAccountContext? _accountContext;
@@ -38,7 +40,8 @@ public class AcmeCaConnector : ICaConnector
         IUnitOfWork unitOfWork,
         IAcmeChallengeProvider challengeProvider,
         IDataProtectionService dataProtection,
-        AcmeConnectorConfig config)
+        AcmeConnectorConfig config,
+        HttpClient? httpClient = null)
     {
         ArgumentNullException.ThrowIfNull(config);
 
@@ -47,6 +50,7 @@ public class AcmeCaConnector : ICaConnector
         _challengeProvider = challengeProvider;
         _dataProtection = dataProtection;
         _config = config;
+        _httpClient = httpClient ?? new HttpClient();
 
         config.Validate();
 
@@ -234,6 +238,7 @@ emyPxgcYxn/eR44/KJ4EBs+lVDR3veyJm+kXQ99b21/+jh5Xos1AnX5iItreGCc=
 
             // Cache the issuer chain for subsequent /cacerts requests
             UpdateCachedCaChain(issuerCerts);
+            await ClaimAcmeCertificateAsync(certChain.Certificate.ToPem(), ct);
 
             _logger.LogInformation("Certificate issued via ACME: Serial={Serial}, Subject={Subject}",
                 issuedCert.SerialNumber, issuedCert.Subject);
@@ -393,6 +398,7 @@ emyPxgcYxn/eR44/KJ4EBs+lVDR3veyJm+kXQ99b21/+jh5Xos1AnX5iItreGCc=
 
         // Prepare the challenge
         await _challengeProvider.PrepareAsync(domain, selectedChallenge.Token, keyAuth, ct);
+        await RelayHttp01ChallengeAsync(selectedChallenge.Token, keyAuth, ct);
 
         try
         {
@@ -561,6 +567,111 @@ emyPxgcYxn/eR44/KJ4EBs+lVDR3veyJm+kXQ99b21/+jh5Xos1AnX5iItreGCc=
 
         return transientErrors.Any(e => errorType.Contains(e, StringComparison.OrdinalIgnoreCase));
     }
+
+    private async Task RelayHttp01ChallengeAsync(string token, string keyAuthorization, CancellationToken ct)
+    {
+        if (!string.Equals(_challengeProvider.ChallengeType, "http-01", StringComparison.OrdinalIgnoreCase))
+            return;
+
+        var relayUrl = ResolveHttp01ChallengeRelayUrl(_config);
+        if (relayUrl is null)
+            return;
+
+        using var response = await _httpClient.PostAsJsonAsync(relayUrl, new
+        {
+            token,
+            keyAuth = keyAuthorization
+        }, ct);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(ct);
+            throw new AcmeChallengeException(
+                "http-01",
+                "http-01",
+                $"HTTP-01 challenge relay failed with {(int)response.StatusCode}: {body}",
+                isTransient: true,
+                retryAfterSeconds: 30);
+        }
+
+        _logger.LogInformation("HTTP-01 challenge relayed to {RelayUrl}", relayUrl);
+    }
+
+    internal static Uri? ResolveHttp01ChallengeRelayUrl(AcmeConnectorConfig config)
+    {
+        if (!string.IsNullOrWhiteSpace(config.Http01ChallengeRelayUrl))
+            return new Uri(config.Http01ChallengeRelayUrl, UriKind.Absolute);
+
+        if (!Uri.TryCreate(config.DirectoryUrl, UriKind.Absolute, out var directoryUri))
+            return null;
+
+        const string acmeDirectorySuffix = "/acme/directory";
+        if (!directoryUri.AbsolutePath.EndsWith(acmeDirectorySuffix, StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        var teamPath = directoryUri.AbsolutePath[..^acmeDirectorySuffix.Length].TrimEnd('/');
+        if (string.IsNullOrWhiteSpace(teamPath))
+            return null;
+
+        var builder = new UriBuilder(directoryUri)
+        {
+            Path = $"{teamPath}/acme/challenge",
+            Query = string.Empty,
+            Fragment = string.Empty
+        };
+
+        return builder.Uri;
+    }
+
+    private async Task ClaimAcmeCertificateAsync(string certificatePem, CancellationToken ct)
+    {
+        var claimUrl = ResolveAcmeClaimUrl(_config);
+        if (claimUrl is null)
+            return;
+
+        using var response = await _httpClient.PostAsJsonAsync(claimUrl, new
+        {
+            certificate = certificatePem
+        }, ct);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(ct);
+            _logger.LogWarning(
+                "ACME certificate claim failed with {StatusCode}: {Body}",
+                (int)response.StatusCode,
+                body);
+            return;
+        }
+
+        _logger.LogInformation("ACME certificate claimed at {ClaimUrl}", claimUrl);
+    }
+
+    internal static Uri? ResolveAcmeClaimUrl(AcmeConnectorConfig config)
+    {
+        if (!string.IsNullOrWhiteSpace(config.HarnessClaimUrl))
+            return new Uri(config.HarnessClaimUrl, UriKind.Absolute);
+
+        if (!Uri.TryCreate(config.DirectoryUrl, UriKind.Absolute, out var directoryUri))
+            return null;
+
+        const string acmeDirectorySuffix = "/acme/directory";
+        if (!directoryUri.AbsolutePath.EndsWith(acmeDirectorySuffix, StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        var teamPath = directoryUri.AbsolutePath[..^acmeDirectorySuffix.Length].TrimEnd('/');
+        if (string.IsNullOrWhiteSpace(teamPath))
+            return null;
+
+        var builder = new UriBuilder(directoryUri)
+        {
+            Path = $"{teamPath}/api/backends/acme/claim",
+            Query = string.Empty,
+            Fragment = string.Empty
+        };
+
+        return builder.Uri;
+    }
 }
 
 /// <summary>
@@ -594,6 +705,20 @@ public class AcmeConnectorConfig
     public string PreferredChallengeType { get; set; } = "http-01";
 
     /// <summary>
+    /// Optional endpoint that accepts HTTP-01 token/keyAuth relay payloads.
+    /// If omitted and DirectoryUrl is a harness /teams/{token}/acme/directory URL,
+    /// the connector derives /teams/{token}/acme/challenge automatically.
+    /// </summary>
+    public string? Http01ChallengeRelayUrl { get; set; }
+
+    /// <summary>
+    /// Optional harness endpoint that records ACME-issued certificates for scoring.
+    /// If omitted and DirectoryUrl is a harness /teams/{token}/acme/directory URL,
+    /// the connector derives /teams/{token}/api/backends/acme/claim automatically.
+    /// </summary>
+    public string? HarnessClaimUrl { get; set; }
+
+    /// <summary>
     /// Validates the ACME connector configuration.
     /// </summary>
     public void Validate()
@@ -619,6 +744,18 @@ public class AcmeConnectorConfig
         if (string.IsNullOrWhiteSpace(EabKeyId) != string.IsNullOrWhiteSpace(EabHmacKey))
         {
             throw new InvalidOperationException("ACME External Account Binding requires both EabKeyId and EabHmacKey.");
+        }
+
+        if (!string.IsNullOrWhiteSpace(Http01ChallengeRelayUrl) &&
+            !Uri.TryCreate(Http01ChallengeRelayUrl, UriKind.Absolute, out _))
+        {
+            throw new InvalidOperationException("ACME Http01ChallengeRelayUrl must be an absolute URL.");
+        }
+
+        if (!string.IsNullOrWhiteSpace(HarnessClaimUrl) &&
+            !Uri.TryCreate(HarnessClaimUrl, UriKind.Absolute, out _))
+        {
+            throw new InvalidOperationException("ACME HarnessClaimUrl must be an absolute URL.");
         }
     }
 }

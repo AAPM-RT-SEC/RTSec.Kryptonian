@@ -51,6 +51,9 @@ internal sealed class EjbcaRestEnrollResponse
     [JsonPropertyName("certificate")]
     public string? Certificate { get; init; }
 
+    [JsonPropertyName("certificate_chain")]
+    public IReadOnlyList<string>? CertificateChain { get; init; }
+
     [JsonPropertyName("serial_number")]
     public string? SerialNumber { get; init; }
 }

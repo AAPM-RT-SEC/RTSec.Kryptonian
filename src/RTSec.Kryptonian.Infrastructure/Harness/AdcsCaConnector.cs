@@ -17,7 +17,7 @@ public sealed class AdcsCaConnector : ICaConnector
 {
     private readonly ILogger<AdcsCaConnector> _logger;
     private readonly HttpClient _http;
-    private readonly AdcsHarnessConnectorConfig _config;
+    private readonly AdcsScepConnectorConfig _config;
 
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
@@ -27,23 +27,18 @@ public sealed class AdcsCaConnector : ICaConnector
 
     public CaBackendType Type => CaBackendType.Adcs;
 
-    public AdcsCaConnector(ILogger<AdcsCaConnector> logger, HttpClient http, AdcsHarnessConnectorConfig config)
+    public AdcsCaConnector(ILogger<AdcsCaConnector> logger, HttpClient http, AdcsScepConnectorConfig config)
     {
         _logger = logger;
         _http = http;
         _config = config;
-        _http.BaseAddress = new Uri(config.HarnessBaseUrl.TrimEnd('/') + "/");
+        _http.BaseAddress = new Uri(config.BaseUrl.TrimEnd('/') + "/");
     }
 
     public async Task<X509Certificate2[]> GetCaCertificatesAsync(CancellationToken ct = default)
     {
-        var pems = await _http.GetFromJsonAsync<string[]>("api/backends/adcs/cacerts", JsonOpts, ct)
-            ?? Array.Empty<string>();
-
-        return pems
-            .Where(p => !string.IsNullOrWhiteSpace(p))
-            .Select(p => X509Certificate2.CreateFromPem(p))
-            .ToArray();
+        var caCert = await GetScepCaCertAsync(ct);
+        return new[] { new X509Certificate2(caCert.GetEncoded()) };
     }
 
     public async Task<CertificateIssuanceResult> IssueCertificateAsync(
@@ -89,24 +84,17 @@ public sealed class AdcsCaConnector : ICaConnector
 
     public async Task<bool> RevokeCertificateAsync(string serial, RevocationReason reason, CancellationToken ct = default)
     {
-        try
-        {
-            var resp = await _http.PostAsJsonAsync("api/backends/adcs/revoke",
-                new { serialNumber = serial, reason = reason.ToString() }, ct);
-            return resp.IsSuccessStatusCode;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "ADCS revoke failed for serial {Serial}", serial);
-            return false;
-        }
+        _logger.LogWarning(
+            "ADCS SCEP connector does not implement revocation. Revoke serial {Serial} in ADCS or expose a protocol-specific revocation integration.",
+            serial);
+        return await Task.FromResult(false);
     }
 
     public async Task<bool> TestConnectionAsync(CancellationToken ct = default)
     {
         try
         {
-            var resp = await _http.GetAsync("health", ct);
+            var resp = await _http.GetAsync("/health", ct);
             return resp.IsSuccessStatusCode;
         }
         catch

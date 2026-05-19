@@ -14,6 +14,7 @@ public interface IUnitOfWork : IDisposable
     ICertificateRepository Certificates { get; }
     IEnrollmentEventRepository EnrollmentEvents { get; }
     IAcmeAccountRepository AcmeAccounts { get; }
+    IHackathonSettingsRepository HackathonSettings { get; }
 
     /// <summary>
     /// Saves all pending changes to the database.
@@ -109,4 +110,9 @@ public interface IAcmeAccountRepository : IRepository<AcmeAccount>
     /// Gets an active ACME account for the specified directory URL and email.
     /// </summary>
     Task<AcmeAccount?> GetByDirectoryAndEmailAsync(Uri directoryUrl, string email, CancellationToken ct = default);
+}
+
+public interface IHackathonSettingsRepository : IRepository<HackathonSettings>
+{
+    Task<HackathonSettings?> GetSingletonAsync(CancellationToken ct = default);
 }

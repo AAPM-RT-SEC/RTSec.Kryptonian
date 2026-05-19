@@ -113,6 +113,30 @@ export interface EnrollmentEvent {
   issuedCertificateId?: string | null;
 }
 
+export interface HackathonSettings {
+  id: string;
+  harnessBaseUrl: string;
+  teamToken: string;
+  dimseHost: string;
+  dimseTlsPort: number;
+  orthancDimsePort: number;
+  dicomWebBaseUrl: string;
+  calledAeTitle: string;
+  bridgeAeTitle: string;
+  bridgeListenPort: number;
+  trustedProxyCertificateThumbprint?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type HackathonSettingsInput = Omit<HackathonSettings, 'id' | 'createdAt' | 'updatedAt'>;
+
+export interface HarnessScoreboardSnapshot {
+  fetchedAt: string;
+  url: string;
+  body: unknown;
+}
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -198,4 +222,10 @@ export const api = {
 
   getEnrollmentEvents: (limit = 50) =>
     request<EnrollmentEvent[]>(`/api/status/enrollments?limit=${encodeURIComponent(limit)}`),
+
+  getHackathonSettings: () => request<HackathonSettings>('/api/settings/hackathon'),
+  updateHackathonSettings: (input: HackathonSettingsInput) =>
+    request<HackathonSettings>('/api/settings/hackathon', { method: 'PUT', body: JSON.stringify(input) }),
+  getHarnessScoreboard: () =>
+    request<HarnessScoreboardSnapshot>('/api/settings/hackathon/scoreboard'),
 };

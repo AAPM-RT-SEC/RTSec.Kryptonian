@@ -8,7 +8,9 @@ import {
   Plus,
   RefreshCw,
   ServerCog,
+  Settings,
   ShieldCheck,
+  Trophy,
   Trash2,
   UserCheck,
 } from 'lucide-react';
@@ -23,9 +25,12 @@ import {
   EnrollmentEvent,
   EstProfile,
   EstProfileInput,
+  HackathonSettings,
+  HackathonSettingsInput,
+  HarnessScoreboardSnapshot,
 } from './api';
 
-type Page = 'dashboard' | 'cas' | 'devices' | 'profiles' | 'events';
+type Page = 'dashboard' | 'settings' | 'cas' | 'devices' | 'profiles' | 'events';
 
 interface Flash {
   kind: 'success' | 'error' | 'info';
@@ -37,6 +42,7 @@ interface Snapshot {
   devices: Device[];
   profiles: EstProfile[];
   events: EnrollmentEvent[];
+  settings: HackathonSettings | null;
   certificatesByDevice: Record<string, Certificate[]>;
 }
 
@@ -45,7 +51,21 @@ const emptySnapshot: Snapshot = {
   devices: [],
   profiles: [],
   events: [],
+  settings: null,
   certificatesByDevice: {},
+};
+
+const defaultSettings: HackathonSettingsInput = {
+  harnessBaseUrl: 'https://ca-harness.mangotree-b3d09362.eastus.azurecontainerapps.io',
+  teamToken: '',
+  dimseHost: 'kryptonian-dimse.eastus.cloudapp.azure.com',
+  dimseTlsPort: 4243,
+  orthancDimsePort: 4242,
+  dicomWebBaseUrl: 'http://kryptonian-dimse.eastus.cloudapp.azure.com:8042/dicom-web',
+  calledAeTitle: 'KRYPTONIAN',
+  bridgeAeTitle: 'KRYPTONIANBRIDGE',
+  bridgeListenPort: 11112,
+  trustedProxyCertificateThumbprint: null,
 };
 
 const backendTypes = ['selfsigned', 'adcs', 'ejbca', 'acme'];
@@ -64,14 +84,15 @@ const defaultBackendConfig: Record<string, Record<string, unknown>> = {
     KeyPath: '',
   },
   adcs: {
-    HarnessBaseUrl: '',
+    BaseUrl: '',
     TemplateName: 'DicomDeviceAuthentication',
     ValidityDays: 7,
   },
   ejbca: {
-    HarnessBaseUrl: '',
+    BaseUrl: '',
     CertificateProfile: 'MedicalDeviceTLS',
     EndEntityProfile: 'DicomDevice',
+    IssuerDn: '',
     ValidityDays: 7,
   },
   acme: {
@@ -92,11 +113,12 @@ export function App() {
   const refresh = async () => {
     setLoading(true);
     try {
-      const [backends, devices, profiles, events] = await Promise.all([
+      const [backends, devices, profiles, events, settings] = await Promise.all([
         api.getCaBackends(),
         api.getDevices(),
         api.getEstProfiles(),
         api.getEnrollmentEvents(100),
+        api.getHackathonSettings(),
       ]);
 
       const certificatePairs = await Promise.all(
@@ -108,6 +130,7 @@ export function App() {
         devices,
         profiles,
         events,
+        settings,
         certificatesByDevice: Object.fromEntries(certificatePairs),
       });
     } catch (error) {
@@ -147,6 +170,9 @@ export function App() {
           <NavButton icon={<MonitorCheck />} active={page === 'dashboard'} onClick={() => setPage('dashboard')}>
             Dashboard
           </NavButton>
+          <NavButton icon={<Settings />} active={page === 'settings'} onClick={() => setPage('settings')}>
+            Settings
+          </NavButton>
           <NavButton icon={<ServerCog />} active={page === 'cas'} onClick={() => setPage('cas')}>
             CA Backends
           </NavButton>
@@ -185,6 +211,9 @@ export function App() {
         ) : (
           <>
             {page === 'dashboard' && <Dashboard snapshot={snapshot} />}
+            {page === 'settings' && (
+              <SettingsPage settings={snapshot.settings} run={run} />
+            )}
             {page === 'cas' && <CaBackendsPage backends={snapshot.backends} run={run} />}
             {page === 'devices' && (
               <DevicesPage
@@ -200,6 +229,79 @@ export function App() {
           </>
         )}
       </main>
+    </div>
+  );
+}
+
+function SettingsPage({ settings, run }: { settings: HackathonSettings | null; run: Runner }) {
+  const [input, setInput] = useState<HackathonSettingsInput>({
+    ...defaultSettings,
+    ...(settings ?? {}),
+  });
+  const [scoreboard, setScoreboard] = useState<HarnessScoreboardSnapshot | null>(null);
+  const [scoreboardError, setScoreboardError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setInput({ ...defaultSettings, ...(settings ?? {}) });
+  }, [settings]);
+
+  const update = (key: keyof HackathonSettingsInput, value: string | number | null) => {
+    setInput((current) => ({ ...current, [key]: value }));
+  };
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    await run(() => api.updateHackathonSettings(input), 'Saved hackathon settings');
+  };
+
+  const fetchScoreboard = async () => {
+    setScoreboardError(null);
+    try {
+      setScoreboard(await api.getHarnessScoreboard());
+    } catch (error) {
+      setScoreboardError(describeError(error));
+    }
+  };
+
+  return (
+    <div className="stack">
+      <section className="panel">
+        <div className="panelHeader">
+          <div>
+            <h2>Hackathon Settings</h2>
+            <p>Gateway-wide values used by enrollment demos, bridge jobs, ACME claims, and scoreboard reads.</p>
+          </div>
+        </div>
+        <form className="settingsGrid" onSubmit={(event) => void submit(event)}>
+          <label>Harness URL<input value={input.harnessBaseUrl} onChange={(e) => update('harnessBaseUrl', e.target.value)} required /></label>
+          <label>Team Token<input value={input.teamToken} onChange={(e) => update('teamToken', e.target.value)} /></label>
+          <label>DIMSE Host<input value={input.dimseHost} onChange={(e) => update('dimseHost', e.target.value)} required /></label>
+          <label>DIMSE TLS Port<input type="number" min={1} max={65535} value={input.dimseTlsPort} onChange={(e) => update('dimseTlsPort', Number(e.target.value))} /></label>
+          <label>Orthanc DIMSE Port<input type="number" min={1} max={65535} value={input.orthancDimsePort} onChange={(e) => update('orthancDimsePort', Number(e.target.value))} /></label>
+          <label>DICOMweb URL<input value={input.dicomWebBaseUrl} onChange={(e) => update('dicomWebBaseUrl', e.target.value)} required /></label>
+          <label>Called AE Title<input value={input.calledAeTitle} onChange={(e) => update('calledAeTitle', e.target.value)} maxLength={16} required /></label>
+          <label>Bridge AE Title<input value={input.bridgeAeTitle} onChange={(e) => update('bridgeAeTitle', e.target.value)} maxLength={16} required /></label>
+          <label>Bridge Listen Port<input type="number" min={1} max={65535} value={input.bridgeListenPort} onChange={(e) => update('bridgeListenPort', Number(e.target.value))} /></label>
+          <label>Proxy Cert Thumbprint<input value={input.trustedProxyCertificateThumbprint ?? ''} onChange={(e) => update('trustedProxyCertificateThumbprint', e.target.value || null)} /></label>
+          <div className="settingsActions">
+            <button className="primary" type="submit">Save Settings</button>
+          </div>
+        </form>
+      </section>
+
+      <section className="panel">
+        <div className="panelHeader">
+          <div>
+            <h2>Scoreboard Snapshot</h2>
+            <p>Reads the configured harness scoreboard through the gateway.</p>
+          </div>
+          <button onClick={() => void fetchScoreboard()}><Trophy size={16} /> Fetch Scoreboard</button>
+        </div>
+        {scoreboardError && <p className="formError">{scoreboardError}</p>}
+        {scoreboard && (
+          <pre className="jsonPreview">{JSON.stringify(scoreboard.body, null, 2)}</pre>
+        )}
+      </section>
     </div>
   );
 }
@@ -625,7 +727,7 @@ function BackendConfigFields({
     return (
       <fieldset className="configFieldset">
         <legend>ADCS SCEP Settings</legend>
-        <label>Gateway Harness Base URL<input value={stringValue('HarnessBaseUrl')} onChange={(e) => updateConfig('HarnessBaseUrl', e.target.value)} placeholder="https://ca-harness.example" /></label>
+        <label>SCEP Base URL<input value={stringValue('BaseUrl')} onChange={(e) => updateConfig('BaseUrl', e.target.value)} placeholder="https://adcs.example/scep/mscep" /></label>
         <label>Template Name<input value={stringValue('TemplateName')} onChange={(e) => updateConfig('TemplateName', e.target.value)} /></label>
         <label>Validity Days<input type="number" min={1} value={numberValue('ValidityDays', 7)} onChange={(e) => updateConfig('ValidityDays', Number(e.target.value))} /></label>
       </fieldset>
@@ -636,9 +738,10 @@ function BackendConfigFields({
     return (
       <fieldset className="configFieldset">
         <legend>EJBCA REST Settings</legend>
-        <label>Gateway Harness Base URL<input value={stringValue('HarnessBaseUrl')} onChange={(e) => updateConfig('HarnessBaseUrl', e.target.value)} placeholder="https://ca-harness.example" /></label>
+        <label>REST Base URL<input value={stringValue('BaseUrl')} onChange={(e) => updateConfig('BaseUrl', e.target.value)} placeholder="https://ejbca.example" /></label>
         <label>Certificate Profile<input value={stringValue('CertificateProfile')} onChange={(e) => updateConfig('CertificateProfile', e.target.value)} /></label>
         <label>End Entity Profile<input value={stringValue('EndEntityProfile')} onChange={(e) => updateConfig('EndEntityProfile', e.target.value)} /></label>
+        <label>Issuer DN<input value={stringValue('IssuerDn')} onChange={(e) => updateConfig('IssuerDn', e.target.value)} placeholder="CN=ManagementCA,O=Hospital" /></label>
         <label>Validity Days<input type="number" min={1} value={numberValue('ValidityDays', 7)} onChange={(e) => updateConfig('ValidityDays', Number(e.target.value))} /></label>
       </fieldset>
     );

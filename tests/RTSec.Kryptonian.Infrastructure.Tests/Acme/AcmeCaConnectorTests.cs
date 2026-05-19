@@ -286,6 +286,58 @@ public class AcmeCaConnectorTests
         parsed.Issuers.Should().BeEmpty();
     }
 
+    [Fact]
+    public void ResolveHttp01ChallengeRelayUrlDerivesHarnessChallengeUrl()
+    {
+        // Arrange
+        var config = new AcmeConnectorConfig
+        {
+            DirectoryUrl = "https://ca-harness.example.test/teams/team-token/acme/directory",
+            Email = "test@example.com"
+        };
+
+        // Act
+        var relayUrl = AcmeCaConnector.ResolveHttp01ChallengeRelayUrl(config);
+
+        // Assert
+        relayUrl.Should().Be(new Uri("https://ca-harness.example.test/teams/team-token/acme/challenge"));
+    }
+
+    [Fact]
+    public void ResolveHttp01ChallengeRelayUrlPrefersExplicitRelayUrl()
+    {
+        // Arrange
+        var config = new AcmeConnectorConfig
+        {
+            DirectoryUrl = WellKnownServers.LetsEncryptStagingV2.ToString(),
+            Email = "test@example.com",
+            Http01ChallengeRelayUrl = "https://relay.example.test/acme/challenge"
+        };
+
+        // Act
+        var relayUrl = AcmeCaConnector.ResolveHttp01ChallengeRelayUrl(config);
+
+        // Assert
+        relayUrl.Should().Be(new Uri("https://relay.example.test/acme/challenge"));
+    }
+
+    [Fact]
+    public void ResolveAcmeClaimUrlDerivesHarnessClaimUrl()
+    {
+        // Arrange
+        var config = new AcmeConnectorConfig
+        {
+            DirectoryUrl = "https://ca-harness.example.test/teams/team-token/acme/directory",
+            Email = "test@example.com"
+        };
+
+        // Act
+        var claimUrl = AcmeCaConnector.ResolveAcmeClaimUrl(config);
+
+        // Assert
+        claimUrl.Should().Be(new Uri("https://ca-harness.example.test/teams/team-token/api/backends/acme/claim"));
+    }
+
     #endregion
 
     #region RevokeCertificate Tests

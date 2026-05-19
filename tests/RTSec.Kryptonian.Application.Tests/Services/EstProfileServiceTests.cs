@@ -1,9 +1,7 @@
-using AutoMapper;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Moq;
 using RTSec.Kryptonian.Application.DTOs;
-using RTSec.Kryptonian.Application.Mapping;
 using RTSec.Kryptonian.Application.Services;
 using RTSec.Kryptonian.Domain.Entities;
 using RTSec.Kryptonian.Domain.Enums;
@@ -18,7 +16,6 @@ public class EstProfileServiceTests
     private readonly Mock<ICaBackendRepository> _caBackendRepoMock;
     private readonly Mock<IEstProfileRepository> _estProfileRepoMock;
     private readonly Mock<ILogger<EstProfileService>> _loggerMock;
-    private readonly IMapper _mapper;
     private readonly EstProfileService _sut;
 
     public EstProfileServiceTests()
@@ -31,10 +28,7 @@ public class EstProfileServiceTests
         _unitOfWorkMock.Setup(u => u.CaBackends).Returns(_caBackendRepoMock.Object);
         _unitOfWorkMock.Setup(u => u.EstProfiles).Returns(_estProfileRepoMock.Object);
 
-        var config = new MapperConfiguration(cfg => cfg.AddProfile<MappingProfile>());
-        _mapper = config.CreateMapper();
-
-        _sut = new EstProfileService(_unitOfWorkMock.Object, _mapper, _loggerMock.Object);
+        _sut = new EstProfileService(_unitOfWorkMock.Object, _loggerMock.Object);
     }
 
     #region GetAllAsync Tests
