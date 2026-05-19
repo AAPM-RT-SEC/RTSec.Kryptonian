@@ -46,7 +46,8 @@ public class EnrollmentOrchestrator : IEnrollmentOrchestrator
             throw new InvalidOperationException($"EST profile is disabled: {profileId}");
         }
 
-        var backend = await _unitOfWork.CaBackends.GetByIdAsync(profile.CaBackendId, ct);
+        var backend = await _unitOfWork.CaBackends.GetActiveAsync(ct)
+            ?? await _unitOfWork.CaBackends.GetByIdAsync(profile.CaBackendId, ct);
         if (backend == null)
         {
             throw new InvalidOperationException($"CA backend not found: {profile.CaBackendId}");
@@ -99,21 +100,6 @@ public class EnrollmentOrchestrator : IEnrollmentOrchestrator
             return EnrollmentResult.Failed($"EST profile is disabled: {profileId}", 403);
         }
 
-        // Validate CA backend
-        var backend = await _unitOfWork.CaBackends.GetByIdAsync(profile.CaBackendId, ct);
-        if (backend == null)
-        {
-            _logger.LogError("CA backend not found for profile {ProfileId}: {BackendId}",
-                profileId, profile.CaBackendId);
-            return EnrollmentResult.Failed("CA backend configuration error", 500);
-        }
-
-        if (!backend.IsEnabled)
-        {
-            _logger.LogWarning("CA backend is disabled: {BackendId}", backend.Id);
-            return EnrollmentResult.Failed("CA backend is disabled", 503);
-        }
-
         // Parse and validate CSR
         ParsedCsr csr;
         try
@@ -124,6 +110,35 @@ public class EnrollmentOrchestrator : IEnrollmentOrchestrator
         {
             _logger.LogWarning(ex, "Failed to parse CSR");
             return EnrollmentResult.Failed($"Invalid CSR: {ex.Message}", 400);
+        }
+
+        var subjectCommonName = ExtractSubjectCommonName(csr.SubjectDn);
+        var device = string.IsNullOrWhiteSpace(subjectCommonName)
+            ? null
+            : await _unitOfWork.Devices.GetBySubjectCommonNameAsync(subjectCommonName, ct);
+
+        if (device == null)
+        {
+            return await RejectEnrollmentAsync(profileId, null, csr.SubjectDn, clientIp, "Unknown device subject common name", ct);
+        }
+
+        if (device.Status != DeviceStatus.Active)
+        {
+            return await RejectEnrollmentAsync(profileId, device, csr.SubjectDn, clientIp, $"Device is {device.Status.ToString().ToLowerInvariant()}", ct);
+        }
+
+        // Validate active CA backend. EST profiles keep legacy metadata, but device enrollment routes to the active backend.
+        var backend = await _unitOfWork.CaBackends.GetActiveAsync(ct);
+        if (backend == null)
+        {
+            _logger.LogError("No active CA backend configured for profile {ProfileId}", profileId);
+            return EnrollmentResult.Failed("No active CA backend configured", 503);
+        }
+
+        if (!backend.IsEnabled)
+        {
+            _logger.LogWarning("Active CA backend is disabled: {BackendId}", backend.Id);
+            return EnrollmentResult.Failed("Active CA backend is disabled", 503);
         }
 
         // Validate CSR signature
@@ -139,7 +154,9 @@ public class EnrollmentOrchestrator : IEnrollmentOrchestrator
             Id = Guid.NewGuid(),
             Timestamp = DateTime.UtcNow,
             ProfileId = profileId,
-            DeviceId = deviceId,
+            DeviceId = device.SubjectCommonName,
+            DeviceRecordId = device.Id,
+            CaBackendId = backend.Id,
             SubjectDn = csr.SubjectDn,
             RequestorIpAddress = clientIp,
             Status = EnrollmentStatus.Pending,
@@ -192,12 +209,19 @@ public class EnrollmentOrchestrator : IEnrollmentOrchestrator
                 CertificatePem = _pkcsService.ExportToPem(issuanceResult.Certificate),
                 Status = CertificateStatus.Valid,
                 EstProfileId = profileId,
-                DeviceId = deviceId,
+                DeviceId = device.SubjectCommonName,
+                DeviceRecordId = device.Id,
+                CaBackendId = backend.Id,
+                CaBackendType = backend.Type.ToString().ToLowerInvariant(),
+                CertificateDerBase64 = Convert.ToBase64String(issuanceResult.Certificate.RawData),
+                GatewayOid = ExtractGatewayOid(issuanceResult.Certificate),
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
             };
 
             _unitOfWork.Certificates.Add(certificate);
+            device.LastCertificateId = certificate.Id;
+            _unitOfWork.Devices.Update(device);
 
             // Update enrollment event
             enrollmentEvent.Status = EnrollmentStatus.Issued;
@@ -273,5 +297,69 @@ public class EnrollmentOrchestrator : IEnrollmentOrchestrator
 
         // Proceed with enrollment using the same logic
         return await EnrollAsync(profileId, csrBytes, deviceId, clientIp, ct);
+    }
+
+    private async Task<EnrollmentResult> RejectEnrollmentAsync(
+        Guid profileId,
+        Device? device,
+        string subjectDn,
+        string? clientIp,
+        string reason,
+        CancellationToken ct)
+    {
+        var enrollmentEvent = new EnrollmentEvent
+        {
+            Id = Guid.NewGuid(),
+            Timestamp = DateTime.UtcNow,
+            ProfileId = profileId,
+            DeviceId = device?.SubjectCommonName,
+            DeviceRecordId = device?.Id,
+            SubjectDn = subjectDn,
+            RequestorIpAddress = clientIp,
+            Status = EnrollmentStatus.Rejected,
+            ErrorMessage = reason,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+
+        _unitOfWork.EnrollmentEvents.Add(enrollmentEvent);
+        await _unitOfWork.SaveChangesAsync(ct);
+
+        _logger.LogWarning("Rejected enrollment for subject {SubjectDn}: {Reason}", subjectDn, reason);
+        return EnrollmentResult.Failed(reason, 403);
+    }
+
+    private static string? ExtractSubjectCommonName(string subjectDn)
+    {
+        if (string.IsNullOrWhiteSpace(subjectDn))
+        {
+            return null;
+        }
+
+        var parts = subjectDn.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        foreach (var part in parts)
+        {
+            if (part.StartsWith("CN=", StringComparison.OrdinalIgnoreCase))
+            {
+                return part[3..].Trim();
+            }
+        }
+
+        return null;
+    }
+
+    private static string? ExtractGatewayOid(X509Certificate2 certificate)
+    {
+        const string gatewayOidPrefix = "1.3.6.1.4.1.99999.";
+        foreach (var extension in certificate.Extensions)
+        {
+            var oid = extension.Oid?.Value;
+            if (!string.IsNullOrWhiteSpace(oid) && oid.StartsWith(gatewayOidPrefix, StringComparison.Ordinal))
+            {
+                return oid;
+            }
+        }
+
+        return null;
     }
 }

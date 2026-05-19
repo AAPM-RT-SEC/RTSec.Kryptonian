@@ -43,6 +43,12 @@ public class CaBackendService : ICaBackendService
         return backend == null ? null : _mapper.Map<CaBackendDto>(backend);
     }
 
+    public async Task<CaBackendDto?> GetActiveAsync(CancellationToken ct = default)
+    {
+        var backend = await _unitOfWork.CaBackends.GetActiveAsync(ct);
+        return backend == null ? null : _mapper.Map<CaBackendDto>(backend);
+    }
+
     /// <inheritdoc />
     public async Task<CaBackendDto> CreateAsync(CaBackendCreateDto dto, CancellationToken ct = default)
     {
@@ -53,6 +59,21 @@ public class CaBackendService : ICaBackendService
         entity.Id = Guid.NewGuid();
         entity.CreatedAt = DateTime.UtcNow;
         entity.UpdatedAt = DateTime.UtcNow;
+
+        if (entity.IsActive && !entity.IsEnabled)
+        {
+            throw new ArgumentException("Only enabled CA backends can be active.");
+        }
+
+        if (entity.IsActive)
+        {
+            var backends = await _unitOfWork.CaBackends.GetAllAsync(ct);
+            foreach (var backend in backends)
+            {
+                backend.IsActive = false;
+                _unitOfWork.CaBackends.Update(backend);
+            }
+        }
 
         _unitOfWork.CaBackends.Add(entity);
         await _unitOfWork.SaveChangesAsync(ct);
@@ -103,6 +124,15 @@ public class CaBackendService : ICaBackendService
 
         if (dto.IsEnabled.HasValue)
             entity.IsEnabled = dto.IsEnabled.Value;
+
+        if (dto.IsActive == true)
+        {
+            await ActivateEntityAsync(entity, ct);
+        }
+        else if (dto.IsActive == false)
+        {
+            entity.IsActive = false;
+        }
 
         entity.UpdatedAt = DateTime.UtcNow;
 
@@ -161,6 +191,47 @@ public class CaBackendService : ICaBackendService
         {
             _logger.LogError(ex, "Connection test failed for CA backend: {Id}", id);
             return false;
+        }
+    }
+
+    public async Task<CaBackendDto?> ActivateAsync(Guid id, CancellationToken ct = default)
+    {
+        var entity = await _unitOfWork.CaBackends.GetByIdAsync(id, ct);
+        if (entity == null)
+        {
+            _logger.LogWarning("CA backend not found for activation: {Id}", id);
+            return null;
+        }
+
+        await _unitOfWork.BeginTransactionAsync(ct);
+        try
+        {
+            await ActivateEntityAsync(entity, ct);
+            await _unitOfWork.SaveChangesAsync(ct);
+            await _unitOfWork.CommitTransactionAsync(ct);
+        }
+        catch
+        {
+            await _unitOfWork.RollbackTransactionAsync(ct);
+            throw;
+        }
+
+        return _mapper.Map<CaBackendDto>(entity);
+    }
+
+    private async Task ActivateEntityAsync(CaBackend entity, CancellationToken ct)
+    {
+        if (!entity.IsEnabled)
+        {
+            throw new ArgumentException("Only enabled CA backends can be activated.");
+        }
+
+        var backends = await _unitOfWork.CaBackends.GetAllAsync(ct);
+        foreach (var backend in backends)
+        {
+            backend.IsActive = backend.Id == entity.Id;
+            backend.UpdatedAt = DateTime.UtcNow;
+            _unitOfWork.CaBackends.Update(backend);
         }
     }
 

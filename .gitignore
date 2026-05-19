@@ -59,6 +59,7 @@ wwwroot/dist/
 wwwroot/lib/
 wwwroot/css/site.min.css.map
 node_modules/
+src/RTSec.Kryptonian.Ui/dist/
 
 # Misc
 launchSettings.json

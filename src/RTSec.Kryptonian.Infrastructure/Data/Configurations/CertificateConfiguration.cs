@@ -59,6 +59,26 @@ public class CertificateConfiguration : IEntityTypeConfiguration<Certificate>
             .HasColumnName("device_id")
             .HasMaxLength(255);
 
+        builder.Property(e => e.DeviceRecordId)
+            .HasColumnName("device_record_id");
+
+        builder.Property(e => e.CaBackendId)
+            .HasColumnName("ca_backend_id");
+
+        builder.Property(e => e.CaBackendType)
+            .HasColumnName("ca_backend_type")
+            .HasMaxLength(50);
+
+        builder.Property(e => e.CertificateDerBase64)
+            .HasColumnName("certificate_der_base64");
+
+        builder.Property(e => e.EncryptedPrivateKeyPem)
+            .HasColumnName("encrypted_private_key_pem");
+
+        builder.Property(e => e.GatewayOid)
+            .HasColumnName("gateway_oid")
+            .HasMaxLength(128);
+
         builder.Property(e => e.CreatedAt)
             .HasColumnName("created_at");
 
@@ -69,6 +89,16 @@ public class CertificateConfiguration : IEntityTypeConfiguration<Certificate>
             .WithMany(p => p.Certificates)
             .HasForeignKey(e => e.EstProfileId)
             .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasOne(e => e.Device)
+            .WithMany(d => d.Certificates)
+            .HasForeignKey(e => e.DeviceRecordId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        builder.HasOne(e => e.CaBackend)
+            .WithMany()
+            .HasForeignKey(e => e.CaBackendId)
+            .OnDelete(DeleteBehavior.SetNull);
 
         builder.HasIndex(e => e.SerialNumber)
             .IsUnique();
@@ -81,5 +111,9 @@ public class CertificateConfiguration : IEntityTypeConfiguration<Certificate>
         builder.HasIndex(e => e.Status);
 
         builder.HasIndex(e => e.DeviceId);
+
+        builder.HasIndex(e => e.DeviceRecordId);
+
+        builder.HasIndex(e => e.CaBackendId);
     }
 }

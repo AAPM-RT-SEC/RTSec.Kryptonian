@@ -34,6 +34,11 @@ public class CaBackend : BaseEntity
     /// </summary>
     public bool IsEnabled { get; set; } = true;
 
+    /// <summary>
+    /// Whether this backend is the active upstream CA for device-facing enrollment.
+    /// </summary>
+    public bool IsActive { get; set; }
+
     // Navigation properties
     public ICollection<EstProfile> EstProfiles { get; } = new List<EstProfile>();
 }

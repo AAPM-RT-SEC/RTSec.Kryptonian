@@ -48,7 +48,13 @@ public class EnrollmentEvent : BaseEntity
     /// </summary>
     public Guid? IssuedCertificateId { get; set; }
 
+    public Guid? CaBackendId { get; set; }
+
+    public Guid? DeviceRecordId { get; set; }
+
     // Navigation properties
     public EstProfile? Profile { get; set; }
     public Certificate? IssuedCertificate { get; set; }
+    public Device? Device { get; set; }
+    public CaBackend? CaBackend { get; set; }
 }

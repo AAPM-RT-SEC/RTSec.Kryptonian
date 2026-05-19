@@ -1,0 +1,176 @@
+@page "/devices"
+@inject IKryptonianApiClient ApiClient
+@inject ISnackbar Snackbar
+@implements IDisposable
+
+<PageTitle>Devices - Kryptonian Admin</PageTitle>
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-4">
+    <MudText Typo="Typo.h4">Devices</MudText>
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="@CreateDemoDevice">
+        Add Demo Device
+    </MudButton>
+</MudStack>
+
+@if (_loading)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+}
+else if (!_devices.Any())
+{
+    <MudAlert Severity="Severity.Info">No devices registered yet.</MudAlert>
+}
+else
+{
+    <MudTable Items="@_devices" Hover="true" Elevation="2">
+        <HeaderContent>
+            <MudTh>Name</MudTh>
+            <MudTh>Subject CN</MudTh>
+            <MudTh>Status</MudTh>
+            <MudTh>Last Certificate</MudTh>
+            <MudTh Style="width: 220px">Actions</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="Name">@context.DisplayName</MudTd>
+            <MudTd DataLabel="Subject CN"><code>@context.SubjectCommonName</code></MudTd>
+            <MudTd DataLabel="Status">
+                <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Status)">@context.Status</MudChip>
+            </MudTd>
+            <MudTd DataLabel="Last Certificate">@(context.LastCertificateId ?? "-")</MudTd>
+            <MudTd DataLabel="Actions">
+                <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Success" Disabled="@(context.Status == "active")" OnClick="@(() => Approve(context))">Approve</MudButton>
+                <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Primary" Disabled="@(context.Status != "active")" OnClick="@(() => DemoEnroll(context))">Enroll</MudButton>
+                <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error" Disabled="@(context.Status == "removed")" OnClick="@(() => Remove(context))">Remove</MudButton>
+            </MudTd>
+        </RowTemplate>
+    </MudTable>
+}
+
+@if (_certificates.Any())
+{
+    <MudText Typo="Typo.h5" Class="mt-6 mb-2">Latest Device Certificates</MudText>
+    <MudTable Items="@_certificates" Dense="true" Hover="true">
+        <HeaderContent>
+            <MudTh>Serial</MudTh>
+            <MudTh>Backend</MudTh>
+            <MudTh>Gateway OID</MudTh>
+            <MudTh>Expires</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.SerialNumber</MudTd>
+            <MudTd>@(context.CaBackendType ?? "-")</MudTd>
+            <MudTd>@(context.GatewayOid ?? "not observed")</MudTd>
+            <MudTd>@context.NotAfter.ToString("g")</MudTd>
+        </RowTemplate>
+    </MudTable>
+}
+
+@code {
+    private bool _loading = true;
+    private List<DeviceDto> _devices = new();
+    private List<CertificateDto> _certificates = new();
+
+    protected override void OnInitialized()
+    {
+        ApiClient.OnApiError += HandleApiError;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        try
+        {
+            var result = await ApiClient.GetDevicesAsync();
+            _devices = result.Success && result.Data != null ? result.Data.ToList() : new List<DeviceDto>();
+            _certificates.Clear();
+
+            foreach (var device in _devices)
+            {
+                var certs = await ApiClient.GetDeviceCertificatesAsync(device.Id);
+                if (certs.Success && certs.Data != null)
+                {
+                    _certificates.AddRange(certs.Data.Take(1));
+                }
+            }
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task CreateDemoDevice()
+    {
+        var suffix = DateTime.UtcNow.ToString("yyyyMMddHHmmss");
+        var result = await ApiClient.CreateDeviceAsync(new DeviceCreateDto
+        {
+            DisplayName = $"Demo Device {suffix}",
+            SubjectCommonName = $"kryptonian-demo-{suffix}",
+            Manufacturer = "RTSec",
+            Model = "MEDIATE Demo"
+        });
+
+        if (result.Success)
+        {
+            Snackbar.Add("Device registered", Severity.Success);
+            await LoadAsync();
+        }
+    }
+
+    private async Task Approve(DeviceDto device)
+    {
+        var result = await ApiClient.ApproveDeviceAsync(device.Id);
+        if (result.Success)
+        {
+            Snackbar.Add("Device approved", Severity.Success);
+            await LoadAsync();
+        }
+    }
+
+    private async Task Remove(DeviceDto device)
+    {
+        var result = await ApiClient.RemoveDeviceAsync(device.Id);
+        if (result.Success)
+        {
+            Snackbar.Add("Device removed", Severity.Success);
+            await LoadAsync();
+        }
+    }
+
+    private async Task DemoEnroll(DeviceDto device)
+    {
+        var result = await ApiClient.DemoEnrollDeviceAsync(device.Id);
+        if (result.Success && result.Data != null)
+        {
+            var oid = result.Data.Certificate.GatewayOid ?? "no gateway OID observed";
+            Snackbar.Add($"Enrolled through {result.Data.IssuedByActiveBackend.Name}; {oid}", Severity.Success);
+            await LoadAsync();
+        }
+    }
+
+    private void HandleApiError(object? sender, ApiErrorEventArgs e)
+    {
+        InvokeAsync(() =>
+        {
+            Snackbar.Add(e.Message, e.ErrorType == ApiErrorType.ServerError ? Severity.Error : Severity.Warning);
+            StateHasChanged();
+        });
+    }
+
+    private static Color GetStatusColor(string status) => status switch
+    {
+        "active" => Color.Success,
+        "removed" => Color.Error,
+        _ => Color.Warning
+    };
+
+    public void Dispose()
+    {
+        ApiClient.OnApiError -= HandleApiError;
+    }
+}

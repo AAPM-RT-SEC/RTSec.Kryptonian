@@ -10,6 +10,7 @@ public interface IUnitOfWork : IDisposable
 {
     ICaBackendRepository CaBackends { get; }
     IEstProfileRepository EstProfiles { get; }
+    IDeviceRepository Devices { get; }
     ICertificateRepository Certificates { get; }
     IEnrollmentEventRepository EnrollmentEvents { get; }
     IAcmeAccountRepository AcmeAccounts { get; }
@@ -54,6 +55,12 @@ public interface IRepository<T> where T : BaseEntity
 public interface ICaBackendRepository : IRepository<CaBackend>
 {
     Task<IEnumerable<CaBackend>> GetEnabledAsync(CancellationToken ct = default);
+    Task<CaBackend?> GetActiveAsync(CancellationToken ct = default);
+}
+
+public interface IDeviceRepository : IRepository<Device>
+{
+    Task<Device?> GetBySubjectCommonNameAsync(string subjectCommonName, CancellationToken ct = default);
 }
 
 /// <summary>
@@ -74,6 +81,8 @@ public interface ICertificateRepository : IRepository<Certificate>
     Task<Certificate?> GetBySerialNumberAsync(string serialNumber, CancellationToken ct = default);
     Task<Certificate?> GetByThumbprintAsync(string thumbprint, CancellationToken ct = default);
     Task<IEnumerable<Certificate>> GetByEstProfileIdAsync(Guid estProfileId, CancellationToken ct = default);
+    Task<IEnumerable<Certificate>> GetByDeviceRecordIdAsync(Guid deviceId, CancellationToken ct = default);
+    Task<Certificate?> GetMostRecentBridgeCertificateAsync(CancellationToken ct = default);
     Task<IEnumerable<Certificate>> GetExpiringAsync(DateTime before, CancellationToken ct = default);
 }
 

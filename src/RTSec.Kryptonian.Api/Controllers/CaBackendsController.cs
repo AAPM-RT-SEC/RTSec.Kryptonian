@@ -35,6 +35,15 @@ public class CaBackendsController : ControllerBase
         return Ok(backends);
     }
 
+    [HttpGet("active")]
+    [ProducesResponseType(typeof(CaBackendDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetActive(CancellationToken ct)
+    {
+        var backend = await _caBackendService.GetActiveAsync(ct);
+        return backend == null ? NotFound(new { error = "No active CA backend configured" }) : Ok(backend);
+    }
+
     /// <summary>
     /// Create a new CA backend configuration.
     /// </summary>
@@ -140,5 +149,26 @@ public class CaBackendsController : ControllerBase
 
         var success = await _caBackendService.TestConnectionAsync(guid, ct);
         return Ok(new { success });
+    }
+
+    [HttpPost("{id}/activate")]
+    [ProducesResponseType(typeof(CaBackendDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> Activate(string id, CancellationToken ct)
+    {
+        if (!Guid.TryParse(id, out var guid))
+            return NotFound();
+
+        try
+        {
+            var backend = await _caBackendService.ActivateAsync(guid, ct);
+            return backend == null ? NotFound() : Ok(backend);
+        }
+        catch (ArgumentException ex)
+        {
+            _logger.LogWarning(ex, "Invalid CA backend activation request");
+            return BadRequest(new { error = ex.Message });
+        }
     }
 }

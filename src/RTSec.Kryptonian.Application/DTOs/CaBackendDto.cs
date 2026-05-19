@@ -26,6 +26,9 @@ public class CaBackendDto
     [JsonPropertyName("isEnabled")]
     public bool IsEnabled { get; set; }
 
+    [JsonPropertyName("isActive")]
+    public bool IsActive { get; set; }
+
     [JsonPropertyName("createdAt")]
     public DateTime CreatedAt { get; set; }
 
@@ -52,6 +55,9 @@ public class CaBackendCreateDto
 
     [JsonPropertyName("isEnabled")]
     public bool IsEnabled { get; set; } = true;
+
+    [JsonPropertyName("isActive")]
+    public bool IsActive { get; set; }
 }
 
 /// <summary>
@@ -73,4 +79,7 @@ public class CaBackendUpdateDto
 
     [JsonPropertyName("isEnabled")]
     public bool? IsEnabled { get; set; }
+
+    [JsonPropertyName("isActive")]
+    public bool? IsActive { get; set; }
 }

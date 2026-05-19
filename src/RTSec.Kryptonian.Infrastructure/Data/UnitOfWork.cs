@@ -14,6 +14,7 @@ public class UnitOfWork : IUnitOfWork
 
     private ICaBackendRepository? _caBackends;
     private IEstProfileRepository? _estProfiles;
+    private IDeviceRepository? _devices;
     private ICertificateRepository? _certificates;
     private IEnrollmentEventRepository? _enrollmentEvents;
     private IAcmeAccountRepository? _acmeAccounts;
@@ -28,6 +29,9 @@ public class UnitOfWork : IUnitOfWork
 
     public IEstProfileRepository EstProfiles =>
         _estProfiles ??= new EstProfileRepository(_context);
+
+    public IDeviceRepository Devices =>
+        _devices ??= new DeviceRepository(_context);
 
     public ICertificateRepository Certificates =>
         _certificates ??= new CertificateRepository(_context);
@@ -45,6 +49,11 @@ public class UnitOfWork : IUnitOfWork
 
     public async Task BeginTransactionAsync(CancellationToken ct = default)
     {
+        if (_context.Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory")
+        {
+            return;
+        }
+
         _transaction = await _context.Database.BeginTransactionAsync(ct);
     }
 

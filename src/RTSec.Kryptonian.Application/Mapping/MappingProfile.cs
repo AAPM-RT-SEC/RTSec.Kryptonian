@@ -25,6 +25,25 @@ public class MappingProfile : Profile
             .ForMember(dest => dest.UpdatedAt, opt => opt.Ignore())
             .ForMember(dest => dest.EstProfiles, opt => opt.Ignore());
 
+        CreateMap<Device, DeviceDto>()
+            .ForMember(dest => dest.Id, opt => opt.MapFrom(src => src.Id.ToString()))
+            .ForMember(dest => dest.Status, opt => opt.MapFrom(src => src.Status.ToString().ToLowerInvariant()))
+            .ForMember(dest => dest.LastCertificateId, opt => opt.MapFrom(src => src.LastCertificateId.HasValue ? src.LastCertificateId.Value.ToString() : null));
+
+        CreateMap<DeviceCreateDto, Device>()
+            .ForMember(dest => dest.Id, opt => opt.Ignore())
+            .ForMember(dest => dest.Status, opt => opt.Ignore())
+            .ForMember(dest => dest.ApprovedAt, opt => opt.Ignore())
+            .ForMember(dest => dest.RemovedAt, opt => opt.Ignore())
+            .ForMember(dest => dest.LastCertificateId, opt => opt.Ignore())
+            .ForMember(dest => dest.Certificates, opt => opt.Ignore())
+            .ForMember(dest => dest.CreatedAt, opt => opt.Ignore())
+            .ForMember(dest => dest.UpdatedAt, opt => opt.Ignore());
+
+        CreateMap<Certificate, CertificateDto>()
+            .ForMember(dest => dest.Id, opt => opt.MapFrom(src => src.Id.ToString()))
+            .ForMember(dest => dest.CaBackendId, opt => opt.MapFrom(src => src.CaBackendId.HasValue ? src.CaBackendId.Value.ToString() : null));
+
         // EstProfile mappings
         CreateMap<EstProfile, EstProfileDto>()
             .ForMember(dest => dest.Id, opt => opt.MapFrom(src => src.Id.ToString()))

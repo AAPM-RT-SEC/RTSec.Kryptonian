@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using RTSec.Kryptonian.Domain.Entities;
 using RTSec.Kryptonian.Infrastructure.Data;
+using System.Text.Json;
 
 namespace RTSec.Kryptonian.Infrastructure.Data.Configurations;
 
@@ -34,11 +35,18 @@ public class CaBackendConfiguration : IEntityTypeConfiguration<CaBackend>
         builder.Property(e => e.Config)
             .HasColumnName("config")
             .HasColumnType("jsonb")
+            .HasConversion(
+                value => SerializeConfig(value),
+                value => DeserializeConfig(value))
             .Metadata.SetValueComparer(ValueComparers.DictionaryComparer);
 
         builder.Property(e => e.IsEnabled)
             .HasColumnName("is_enabled")
             .HasDefaultValue(true);
+
+        builder.Property(e => e.IsActive)
+            .HasColumnName("is_active")
+            .HasDefaultValue(false);
 
         builder.Property(e => e.CreatedAt)
             .HasColumnName("created_at");
@@ -48,5 +56,15 @@ public class CaBackendConfiguration : IEntityTypeConfiguration<CaBackend>
 
         builder.HasIndex(e => e.Name)
             .IsUnique();
+
+        builder.HasIndex(e => e.IsActive);
     }
+
+    private static string SerializeConfig(Dictionary<string, object> config)
+        => JsonSerializer.Serialize(config);
+
+    private static Dictionary<string, object> DeserializeConfig(string? json)
+        => string.IsNullOrWhiteSpace(json)
+            ? new Dictionary<string, object>()
+            : JsonSerializer.Deserialize<Dictionary<string, object>>(json) ?? new Dictionary<string, object>();
 }

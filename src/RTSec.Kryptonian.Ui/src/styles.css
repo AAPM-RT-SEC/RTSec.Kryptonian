@@ -1,0 +1,451 @@
+:root {
+  color-scheme: light;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #f4f7f8;
+  color: #172026;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button {
+  align-items: center;
+  border: 1px solid #c9d6da;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #172026;
+  cursor: pointer;
+  display: inline-flex;
+  gap: 6px;
+  min-height: 34px;
+  padding: 7px 10px;
+}
+
+button:hover:not(:disabled) {
+  border-color: #1c6b72;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+button.primary {
+  background: #0f6971;
+  border-color: #0f6971;
+  color: #ffffff;
+}
+
+button.danger {
+  color: #a12222;
+}
+
+code {
+  background: #edf2f4;
+  border: 1px solid #d9e3e6;
+  border-radius: 4px;
+  padding: 2px 5px;
+}
+
+.shell {
+  display: grid;
+  grid-template-columns: 248px 1fr;
+  min-height: 100vh;
+}
+
+.sidebar {
+  background: #14272b;
+  color: #ecf4f5;
+  padding: 22px 16px;
+}
+
+.brand {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  margin-bottom: 28px;
+}
+
+.brand strong,
+.brand span {
+  display: block;
+}
+
+.brand span {
+  color: #a9c3c8;
+  font-size: 0.82rem;
+}
+
+nav {
+  display: grid;
+  gap: 8px;
+}
+
+nav button {
+  background: transparent;
+  border-color: transparent;
+  color: #d4e5e8;
+  justify-content: flex-start;
+  width: 100%;
+}
+
+nav button.active,
+nav button:hover {
+  background: #204047;
+  border-color: #3b6870;
+  color: #ffffff;
+}
+
+main {
+  min-width: 0;
+  padding: 28px;
+}
+
+.topbar {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.topbar h1 {
+  font-size: 1.5rem;
+  margin: 0;
+}
+
+.eyebrow {
+  color: #597176;
+  font-size: 0.75rem;
+  letter-spacing: 0;
+  margin: 0 0 4px;
+  text-transform: uppercase;
+}
+
+.iconButton {
+  justify-content: center;
+  width: 38px;
+}
+
+.flash {
+  align-items: center;
+  border-radius: 6px;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  padding: 10px 12px;
+}
+
+.flash.success {
+  background: #e6f5ee;
+  color: #17633f;
+}
+
+.flash.error {
+  background: #fdecec;
+  color: #8c1f1f;
+}
+
+.flash.info {
+  background: #eaf3f8;
+  color: #1e5974;
+}
+
+.loading,
+.panel {
+  background: #ffffff;
+  border: 1px solid #dfe8ea;
+  border-radius: 8px;
+  padding: 18px;
+}
+
+.stack {
+  display: grid;
+  gap: 18px;
+}
+
+.metrics {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.metric {
+  background: #ffffff;
+  border: 1px solid #dfe8ea;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.metric span,
+.metric p {
+  color: #61787d;
+}
+
+.metric strong {
+  display: block;
+  font-size: 2rem;
+  margin: 4px 0;
+}
+
+.metric.warn strong {
+  color: #a86100;
+}
+
+.metric p,
+.panelHeader p,
+.backendTile p {
+  margin: 0;
+}
+
+.panelHeader {
+  align-items: center;
+  display: flex;
+  gap: 18px;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.panelHeader h2,
+.modalHeader h2,
+.subsection h3 {
+  margin: 0 0 4px;
+}
+
+.panelHeader p {
+  color: #607479;
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+th,
+td {
+  border-bottom: 1px solid #e4ecee;
+  padding: 10px;
+  text-align: left;
+  vertical-align: middle;
+}
+
+th {
+  color: #52686e;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.badge {
+  background: #eef3f4;
+  border-radius: 999px;
+  color: #425a60;
+  display: inline-flex;
+  font-size: 0.78rem;
+  padding: 3px 8px;
+}
+
+.badge.success,
+.ok {
+  color: #147245;
+}
+
+.badge.success {
+  background: #e1f3eb;
+}
+
+.badge.warn {
+  background: #fff4db;
+  color: #8d5b00;
+}
+
+.badge.danger {
+  background: #ffe8e8;
+  color: #9d2626;
+}
+
+.backendGrid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.backendTile {
+  border: 1px solid #dce7ea;
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+}
+
+.backendTile span {
+  color: #637a7f;
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 0.82rem;
+}
+
+.empty {
+  color: #667b81;
+  padding: 24px;
+  text-align: center;
+}
+
+.subsection {
+  margin-top: 26px;
+}
+
+.modalBackdrop {
+  align-items: center;
+  background: rgba(12, 24, 28, 0.48);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 20px;
+  position: fixed;
+  z-index: 10;
+}
+
+.modal {
+  background: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 20px 70px rgba(13, 31, 36, 0.32);
+  max-height: calc(100vh - 40px);
+  max-width: 680px;
+  overflow: auto;
+  padding: 18px;
+  width: 100%;
+}
+
+.modalHeader {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.form {
+  display: grid;
+  gap: 12px;
+}
+
+.form label {
+  color: #435b61;
+  display: grid;
+  gap: 5px;
+}
+
+.configFieldset {
+  border: 1px solid #dce7ea;
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+  margin: 4px 0;
+  padding: 14px;
+}
+
+.configFieldset legend {
+  color: #213a40;
+  font-weight: 700;
+  padding: 0 5px;
+}
+
+.configFieldset p {
+  color: #637a7f;
+  margin: 0;
+}
+
+.advancedConfig {
+  border: 1px solid #dce7ea;
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.advancedConfig summary {
+  color: #315a61;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.advancedConfig label {
+  margin-top: 10px;
+}
+
+.form input,
+.form select,
+.form textarea {
+  border: 1px solid #cbd8dc;
+  border-radius: 6px;
+  padding: 8px 10px;
+  width: 100%;
+}
+
+.form textarea {
+  font-family: "Cascadia Mono", Consolas, monospace;
+}
+
+.form .check {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.form .check input {
+  width: auto;
+}
+
+.formError {
+  background: #fdecec;
+  border-radius: 6px;
+  color: #8c1f1f;
+  margin: 0;
+  padding: 10px;
+}
+
+.modalActions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 6px;
+}
+
+@media (max-width: 960px) {
+  .shell {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    position: static;
+  }
+
+  nav,
+  .metrics,
+  .backendGrid {
+    grid-template-columns: 1fr;
+  }
+
+  main {
+    padding: 16px;
+  }
+
+  .panelHeader,
+  .topbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

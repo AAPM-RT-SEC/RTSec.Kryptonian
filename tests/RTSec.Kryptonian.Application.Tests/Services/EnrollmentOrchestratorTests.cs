@@ -20,6 +20,7 @@ public class EnrollmentOrchestratorTests : IDisposable
     private readonly Mock<ILogger<EnrollmentOrchestrator>> _loggerMock;
     private readonly Mock<IEstProfileRepository> _estProfileRepoMock;
     private readonly Mock<ICaBackendRepository> _caBackendRepoMock;
+    private readonly Mock<IDeviceRepository> _deviceRepoMock;
     private readonly Mock<IEnrollmentEventRepository> _enrollmentEventRepoMock;
     private readonly Mock<ICertificateRepository> _certificateRepoMock;
     private readonly Mock<ICaConnector> _connectorMock;
@@ -34,12 +35,14 @@ public class EnrollmentOrchestratorTests : IDisposable
         _loggerMock = new Mock<ILogger<EnrollmentOrchestrator>>();
         _estProfileRepoMock = new Mock<IEstProfileRepository>();
         _caBackendRepoMock = new Mock<ICaBackendRepository>();
+        _deviceRepoMock = new Mock<IDeviceRepository>();
         _enrollmentEventRepoMock = new Mock<IEnrollmentEventRepository>();
         _certificateRepoMock = new Mock<ICertificateRepository>();
         _connectorMock = new Mock<ICaConnector>();
 
         _unitOfWorkMock.Setup(u => u.EstProfiles).Returns(_estProfileRepoMock.Object);
         _unitOfWorkMock.Setup(u => u.CaBackends).Returns(_caBackendRepoMock.Object);
+        _unitOfWorkMock.Setup(u => u.Devices).Returns(_deviceRepoMock.Object);
         _unitOfWorkMock.Setup(u => u.EnrollmentEvents).Returns(_enrollmentEventRepoMock.Object);
         _unitOfWorkMock.Setup(u => u.Certificates).Returns(_certificateRepoMock.Object);
 
@@ -158,6 +161,7 @@ public class EnrollmentOrchestratorTests : IDisposable
         _caBackendRepoMock
             .Setup(r => r.GetByIdAsync(backendId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(backend);
+        SetupActiveDeviceAndBackend(backend);
 
         _pkcsServiceMock
             .Setup(p => p.ParsePkcs10(csrBytes))
@@ -198,7 +202,7 @@ public class EnrollmentOrchestratorTests : IDisposable
         // Verify enrollment event was created
         _enrollmentEventRepoMock.Verify(r => r.Add(It.Is<EnrollmentEvent>(
             e => e.ProfileId == profileId &&
-                 e.DeviceId == "device-1" &&
+                 e.DeviceId == "TestDevice" &&
                  e.RequestorIpAddress == "192.168.1.1")), Times.Once);
     }
 
@@ -256,6 +260,7 @@ public class EnrollmentOrchestratorTests : IDisposable
         _caBackendRepoMock
             .Setup(r => r.GetByIdAsync(backendId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(backend);
+        SetupActiveDeviceAndBackend(backend);
 
         _pkcsServiceMock
             .Setup(p => p.ParsePkcs10(csrBytes))
@@ -267,6 +272,106 @@ public class EnrollmentOrchestratorTests : IDisposable
         // Assert
         result.Success.Should().BeFalse();
         result.StatusCode.Should().Be(400);
+    }
+
+    [Fact]
+    public async Task EnrollAsyncWithUnknownDeviceRejectsBeforeConnectorDispatch()
+    {
+        // Arrange
+        var profileId = Guid.NewGuid();
+        var backendId = Guid.NewGuid();
+        var profile = CreateEstProfile(profileId, backendId);
+        var backend = CreateCaBackend(backendId);
+        var csrBytes = new byte[] { 1, 2, 3 };
+        var parsedCsr = new ParsedCsr { SubjectDn = "CN=UnknownDevice", RawData = csrBytes };
+
+        _estProfileRepoMock
+            .Setup(r => r.GetByIdAsync(profileId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(profile);
+
+        _caBackendRepoMock
+            .Setup(r => r.GetActiveAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(backend);
+
+        _pkcsServiceMock
+            .Setup(p => p.ParsePkcs10(csrBytes))
+            .Returns(parsedCsr);
+
+        _deviceRepoMock
+            .Setup(r => r.GetBySubjectCommonNameAsync("UnknownDevice", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Device?)null);
+
+        // Act
+        var result = await _sut.EnrollAsync(profileId, csrBytes, null, null);
+
+        // Assert
+        result.Success.Should().BeFalse();
+        result.StatusCode.Should().Be(403);
+        result.ErrorMessage.Should().Contain("Unknown device");
+        _connectorFactoryMock.Verify(f => f.CreateConnector(It.IsAny<CaBackend>()), Times.Never);
+        _enrollmentEventRepoMock.Verify(r => r.Add(It.Is<EnrollmentEvent>(
+            e => e.Status == EnrollmentStatus.Rejected &&
+                 e.ErrorMessage == "Unknown device subject common name")), Times.Once);
+    }
+
+    [Fact]
+    public async Task EnrollAsyncRoutesToActiveBackendInsteadOfProfileBackend()
+    {
+        // Arrange
+        var profileId = Guid.NewGuid();
+        var profileBackendId = Guid.NewGuid();
+        var activeBackendId = Guid.NewGuid();
+        var profile = CreateEstProfile(profileId, profileBackendId);
+        var activeBackend = CreateCaBackend(activeBackendId);
+        activeBackend.Name = "Active CA";
+        activeBackend.IsActive = true;
+        var csrBytes = CreateTestCsrBytes();
+        var parsedCsr = new ParsedCsr { SubjectDn = "CN=TestDevice", RawData = csrBytes };
+
+        _estProfileRepoMock
+            .Setup(r => r.GetByIdAsync(profileId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(profile);
+
+        SetupActiveDeviceAndBackend(activeBackend);
+
+        _pkcsServiceMock
+            .Setup(p => p.ParsePkcs10(csrBytes))
+            .Returns(parsedCsr);
+
+        _pkcsServiceMock
+            .Setup(p => p.ValidateCsrSignature(parsedCsr))
+            .Returns(true);
+
+        _connectorFactoryMock
+            .Setup(f => f.CreateConnector(activeBackend))
+            .Returns(_connectorMock.Object);
+
+        _connectorMock
+            .Setup(c => c.IssueCertificateAsync(parsedCsr, profile, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CertificateIssuanceResult.Successful(_testCert, new[] { _testCert }));
+
+        _pkcsServiceMock
+            .Setup(p => p.ExportToPem(_testCert))
+            .Returns("-----BEGIN CERTIFICATE-----\ntest\n-----END CERTIFICATE-----");
+
+        _pkcsServiceMock
+            .Setup(p => p.EncodeToPkcs7(It.IsAny<X509Certificate2[]>()))
+            .Returns([0x30]);
+
+        _pkcsServiceMock
+            .Setup(p => p.EncodeEstResponseBody(It.IsAny<byte[]>()))
+            .Returns([0x31]);
+
+        // Act
+        var result = await _sut.EnrollAsync(profileId, csrBytes, null, null);
+
+        // Assert
+        result.Success.Should().BeTrue();
+        _connectorFactoryMock.Verify(f => f.CreateConnector(activeBackend), Times.Once);
+        _caBackendRepoMock.Verify(r => r.GetByIdAsync(profileBackendId, It.IsAny<CancellationToken>()), Times.Never);
+        _certificateRepoMock.Verify(r => r.Add(It.Is<Certificate>(
+            c => c.CaBackendId == activeBackendId &&
+                 c.CaBackendType == "selfsigned")), Times.Once);
     }
 
     [Fact]
@@ -287,6 +392,7 @@ public class EnrollmentOrchestratorTests : IDisposable
         _caBackendRepoMock
             .Setup(r => r.GetByIdAsync(backendId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(backend);
+        SetupActiveDeviceAndBackend(backend);
 
         _pkcsServiceMock
             .Setup(p => p.ParsePkcs10(csrBytes))
@@ -323,6 +429,7 @@ public class EnrollmentOrchestratorTests : IDisposable
         _caBackendRepoMock
             .Setup(r => r.GetByIdAsync(backendId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(backend);
+        SetupActiveDeviceAndBackend(backend);
 
         _pkcsServiceMock
             .Setup(p => p.ParsePkcs10(csrBytes))
@@ -376,6 +483,7 @@ public class EnrollmentOrchestratorTests : IDisposable
         _caBackendRepoMock
             .Setup(r => r.GetByIdAsync(backendId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(backend);
+        SetupActiveDeviceAndBackend(backend);
 
         _certificateRepoMock
             .Setup(r => r.GetBySerialNumberAsync(_testCert.SerialNumber, It.IsAny<CancellationToken>()))
@@ -514,6 +622,27 @@ public class EnrollmentOrchestratorTests : IDisposable
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };
+    }
+
+    private void SetupActiveDeviceAndBackend(CaBackend backend)
+    {
+        backend.IsActive = true;
+
+        _caBackendRepoMock
+            .Setup(r => r.GetActiveAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(backend);
+
+        _deviceRepoMock
+            .Setup(r => r.GetBySubjectCommonNameAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Device
+            {
+                Id = Guid.NewGuid(),
+                DisplayName = "Test Device",
+                SubjectCommonName = "TestDevice",
+                Status = DeviceStatus.Active,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            });
     }
 
     private static X509Certificate2 CreateTestCertificate()

@@ -32,6 +32,24 @@ public class CertificateRepository : BaseRepository<Certificate>, ICertificateRe
             .ToListAsync(ct);
     }
 
+    public async Task<IEnumerable<Certificate>> GetByDeviceRecordIdAsync(Guid deviceId, CancellationToken ct = default)
+    {
+        return await _dbSet
+            .Where(c => c.DeviceRecordId == deviceId)
+            .OrderByDescending(c => c.CreatedAt)
+            .ToListAsync(ct);
+    }
+
+    public async Task<Certificate?> GetMostRecentBridgeCertificateAsync(CancellationToken ct = default)
+    {
+        return await _dbSet
+            .Where(c => c.Status == CertificateStatus.Valid)
+            .Where(c => c.CertificateDerBase64 != null)
+            .Where(c => c.CaBackendType == null || c.CaBackendType != "acme")
+            .OrderByDescending(c => c.CreatedAt)
+            .FirstOrDefaultAsync(ct);
+    }
+
     public async Task<IEnumerable<Certificate>> GetExpiringAsync(DateTime before, CancellationToken ct = default)
     {
         return await _dbSet

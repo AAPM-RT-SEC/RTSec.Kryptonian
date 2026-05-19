@@ -48,6 +48,12 @@ public class EnrollmentEventConfiguration : IEntityTypeConfiguration<EnrollmentE
         builder.Property(e => e.IssuedCertificateId)
             .HasColumnName("issued_certificate_id");
 
+        builder.Property(e => e.CaBackendId)
+            .HasColumnName("ca_backend_id");
+
+        builder.Property(e => e.DeviceRecordId)
+            .HasColumnName("device_record_id");
+
         builder.Property(e => e.CreatedAt)
             .HasColumnName("created_at");
 
@@ -64,6 +70,16 @@ public class EnrollmentEventConfiguration : IEntityTypeConfiguration<EnrollmentE
             .HasForeignKey(e => e.IssuedCertificateId)
             .OnDelete(DeleteBehavior.SetNull);
 
+        builder.HasOne(e => e.Device)
+            .WithMany()
+            .HasForeignKey(e => e.DeviceRecordId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        builder.HasOne(e => e.CaBackend)
+            .WithMany()
+            .HasForeignKey(e => e.CaBackendId)
+            .OnDelete(DeleteBehavior.SetNull);
+
         builder.HasIndex(e => e.Timestamp);
 
         builder.HasIndex(e => e.ProfileId);
@@ -71,5 +87,9 @@ public class EnrollmentEventConfiguration : IEntityTypeConfiguration<EnrollmentE
         builder.HasIndex(e => e.Status);
 
         builder.HasIndex(e => e.DeviceId);
+
+        builder.HasIndex(e => e.DeviceRecordId);
+
+        builder.HasIndex(e => e.CaBackendId);
     }
 }

@@ -1,6 +1,7 @@
 using AspNetCoreRateLimit;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.FileProviders;
 using Microsoft.OpenApi.Models;
 using RTSec.Kryptonian.Api.Authentication;
 using RTSec.Kryptonian.Api.Middleware;
@@ -44,6 +45,20 @@ try
     // Add services to the container
     builder.Services.AddControllers();
     builder.Services.AddEndpointsApiExplorer();
+    builder.Services.AddCors(options =>
+    {
+        options.AddPolicy("KryptonianUi", policy =>
+        {
+            var origins = builder.Configuration
+                .GetSection("Kryptonian:Ui:AllowedOrigins")
+                .Get<string[]>()
+                ?? new[] { "http://localhost:5173", "http://127.0.0.1:5173" };
+
+            policy.WithOrigins(origins)
+                .AllowAnyHeader()
+                .AllowAnyMethod();
+        });
+    });
     builder.Services.AddSwaggerGen(c =>
     {
         c.SwaggerDoc("v1", new() { Title = "RTSec.Kryptonian API", Version = "v1" });
@@ -177,12 +192,41 @@ try
         app.UseSwaggerUI();
     }
 
+    var uiDistPath = Path.GetFullPath(Path.Combine(
+        app.Environment.ContentRootPath,
+        "..",
+        "RTSec.Kryptonian.Ui",
+        "dist"));
+
+    if (Directory.Exists(uiDistPath))
+    {
+        var uiFileProvider = new PhysicalFileProvider(uiDistPath);
+        app.UseDefaultFiles(new DefaultFilesOptions { FileProvider = uiFileProvider });
+        app.UseStaticFiles(new StaticFileOptions { FileProvider = uiFileProvider });
+    }
+
     app.UseHttpsRedirection();
+    app.UseCors("KryptonianUi");
     app.UseAuthentication();
     app.UseAuthorization();
 
     app.MapControllers();
     app.MapHealthChecks("/api/status/health");
+    if (Directory.Exists(uiDistPath))
+    {
+        app.MapFallback(async context =>
+        {
+            if (context.Request.Path.StartsWithSegments("/api")
+                || context.Request.Path.StartsWithSegments("/.well-known"))
+            {
+                context.Response.StatusCode = StatusCodes.Status404NotFound;
+                return;
+            }
+
+            context.Response.ContentType = "text/html";
+            await context.Response.SendFileAsync(Path.Combine(uiDistPath, "index.html"));
+        });
+    }
 
     app.Run();
 }

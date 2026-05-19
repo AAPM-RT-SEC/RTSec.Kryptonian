@@ -17,6 +17,8 @@ public interface ICaBackendService
     /// </summary>
     Task<CaBackendDto?> GetByIdAsync(Guid id, CancellationToken ct = default);
 
+    Task<CaBackendDto?> GetActiveAsync(CancellationToken ct = default);
+
     /// <summary>
     /// Creates a new CA backend.
     /// </summary>
@@ -37,4 +39,6 @@ public interface ICaBackendService
     /// Tests connection to a CA backend.
     /// </summary>
     Task<bool> TestConnectionAsync(Guid id, CancellationToken ct = default);
+
+    Task<CaBackendDto?> ActivateAsync(Guid id, CancellationToken ct = default);
 }

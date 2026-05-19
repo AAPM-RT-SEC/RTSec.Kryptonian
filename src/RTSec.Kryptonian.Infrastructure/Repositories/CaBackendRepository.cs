@@ -17,4 +17,10 @@ public class CaBackendRepository : BaseRepository<CaBackend>, ICaBackendReposito
             .Where(c => c.IsEnabled)
             .ToListAsync(ct);
     }
+
+    public async Task<CaBackend?> GetActiveAsync(CancellationToken ct = default)
+    {
+        return await _dbSet
+            .FirstOrDefaultAsync(c => c.IsActive, ct);
+    }
 }

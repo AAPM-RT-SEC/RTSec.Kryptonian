@@ -12,6 +12,7 @@ public class KryptonianDbContext : DbContext
 
     public DbSet<CaBackend> CaBackends => Set<CaBackend>();
     public DbSet<EstProfile> EstProfiles => Set<EstProfile>();
+    public DbSet<Device> Devices => Set<Device>();
     public DbSet<Certificate> Certificates => Set<Certificate>();
     public DbSet<EnrollmentEvent> EnrollmentEvents => Set<EnrollmentEvent>();
     public DbSet<AcmeAccount> AcmeAccounts => Set<AcmeAccount>();

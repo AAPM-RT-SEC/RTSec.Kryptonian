@@ -68,6 +68,66 @@ public class KryptonianApiClient : IKryptonianApiClient
             ct);
     }
 
+    public async Task<ApiResult<CaBackendDto>> ActivateCaBackendAsync(string id, CancellationToken ct = default)
+    {
+        return await ExecuteWithResponseAsync<CaBackendDto>(
+            () => _http.PostAsync($"/api/cas/{id}/activate", null, ct),
+            $"Failed to activate CA backend {id}",
+            ct);
+    }
+
+    #endregion
+
+    #region Devices
+
+    public async Task<ApiResult<IEnumerable<DeviceDto>>> GetDevicesAsync(CancellationToken ct = default)
+    {
+        return await ExecuteAsync<IEnumerable<DeviceDto>>(
+            () => _http.GetFromJsonAsync<IEnumerable<DeviceDto>>("/api/devices", ct),
+            "Failed to get devices",
+            ct);
+    }
+
+    public async Task<ApiResult<DeviceDto>> CreateDeviceAsync(DeviceCreateDto dto, CancellationToken ct = default)
+    {
+        return await ExecuteWithResponseAsync<DeviceDto>(
+            () => _http.PostAsJsonAsync("/api/devices", dto, ct),
+            "Failed to create device",
+            ct);
+    }
+
+    public async Task<ApiResult<DeviceDto>> ApproveDeviceAsync(string id, CancellationToken ct = default)
+    {
+        return await ExecuteWithResponseAsync<DeviceDto>(
+            () => _http.PostAsync($"/api/devices/{id}/approve", null, ct),
+            $"Failed to approve device {id}",
+            ct);
+    }
+
+    public async Task<ApiResult<DeviceDto>> RemoveDeviceAsync(string id, CancellationToken ct = default)
+    {
+        return await ExecuteWithResponseAsync<DeviceDto>(
+            () => _http.PostAsync($"/api/devices/{id}/remove", null, ct),
+            $"Failed to remove device {id}",
+            ct);
+    }
+
+    public async Task<ApiResult<IEnumerable<CertificateDto>>> GetDeviceCertificatesAsync(string id, CancellationToken ct = default)
+    {
+        return await ExecuteAsync<IEnumerable<CertificateDto>>(
+            () => _http.GetFromJsonAsync<IEnumerable<CertificateDto>>($"/api/devices/{id}/certificates", ct),
+            $"Failed to get certificates for device {id}",
+            ct);
+    }
+
+    public async Task<ApiResult<DemoEnrollResponseDto>> DemoEnrollDeviceAsync(string id, CancellationToken ct = default)
+    {
+        return await ExecuteWithResponseAsync<DemoEnrollResponseDto>(
+            () => _http.PostAsync($"/api/devices/{id}/demo-enroll", null, ct),
+            $"Failed to demo enroll device {id}",
+            ct);
+    }
+
     #endregion
 
     #region EST Profiles

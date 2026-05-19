@@ -23,6 +23,7 @@ public static class ApplicationServiceExtensions
         services.AddScoped<IEstProfileService, EstProfileService>();
         services.AddScoped<IEnrollmentEventService, EnrollmentEventService>();
         services.AddScoped<IEnrollmentOrchestrator, EnrollmentOrchestrator>();
+        services.AddScoped<IDeviceService, DeviceService>();
 
         return services;
     }

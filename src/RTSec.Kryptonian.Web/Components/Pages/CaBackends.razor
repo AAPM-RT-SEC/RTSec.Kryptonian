@@ -3,7 +3,6 @@
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
 @implements IDisposable
-@rendermode InteractiveServer
 
 <PageTitle>CA Backends - Kryptonian Admin</PageTitle>
 
@@ -32,8 +31,9 @@ else
             <MudTh>Type</MudTh>
             <MudTh>URL</MudTh>
             <MudTh>Status</MudTh>
+            <MudTh>Active</MudTh>
             <MudTh>Created</MudTh>
-            <MudTh Style="width: 120px">Actions</MudTh>
+            <MudTh Style="width: 180px">Actions</MudTh>
         </HeaderContent>
         <RowTemplate>
             <MudTd DataLabel="Name">@context.Name</MudTd>
@@ -51,8 +51,19 @@ else
                     <MudChip T="string" Size="Size.Small" Color="Color.Default">Disabled</MudChip>
                 }
             </MudTd>
+            <MudTd DataLabel="Active">
+                @if (context.IsActive)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Success" Icon="@Icons.Material.Filled.CheckCircle">Active</MudChip>
+                }
+                else
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Default">Inactive</MudChip>
+                }
+            </MudTd>
             <MudTd DataLabel="Created">@context.CreatedAt.ToString("d")</MudTd>
             <MudTd DataLabel="Actions">
+                <MudIconButton Icon="@Icons.Material.Filled.ToggleOn" Size="Size.Small" Color="Color.Success" Disabled="@context.IsActive" OnClick="@(() => ActivateBackend(context))" />
                 <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" OnClick="@(() => OpenEditDialog(context))" />
                 <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="@(() => ConfirmDelete(context))" />
             </MudTd>
@@ -161,6 +172,16 @@ else
                 Snackbar.Add("CA backend deleted successfully", Severity.Success);
             }
             // Error is already shown via OnApiError handler
+        }
+    }
+
+    private async Task ActivateBackend(CaBackendDto backend)
+    {
+        var result = await ApiClient.ActivateCaBackendAsync(backend.Id);
+        if (result.Success)
+        {
+            await LoadBackendsAsync();
+            Snackbar.Add($"Activated {backend.Name}", Severity.Success);
         }
     }
 

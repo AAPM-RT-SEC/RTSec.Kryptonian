@@ -57,6 +57,20 @@ public class Certificate : BaseEntity
     /// </summary>
     public string? DeviceId { get; set; }
 
+    public Guid? DeviceRecordId { get; set; }
+
+    public Guid? CaBackendId { get; set; }
+
+    public string? CaBackendType { get; set; }
+
+    public string? CertificateDerBase64 { get; set; }
+
+    public string? EncryptedPrivateKeyPem { get; set; }
+
+    public string? GatewayOid { get; set; }
+
     // Navigation properties
     public EstProfile? EstProfile { get; set; }
+    public Device? Device { get; set; }
+    public CaBackend? CaBackend { get; set; }
 }

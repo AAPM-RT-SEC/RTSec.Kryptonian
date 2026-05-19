@@ -18,6 +18,15 @@ public interface IKryptonianApiClient
     Task<ApiResult<CaBackendDto>> CreateCaBackendAsync(CaBackendCreateDto dto, CancellationToken ct = default);
     Task<ApiResult<CaBackendDto>> UpdateCaBackendAsync(string id, CaBackendUpdateDto dto, CancellationToken ct = default);
     Task<ApiResult<bool>> DeleteCaBackendAsync(string id, CancellationToken ct = default);
+    Task<ApiResult<CaBackendDto>> ActivateCaBackendAsync(string id, CancellationToken ct = default);
+
+    // Devices
+    Task<ApiResult<IEnumerable<DeviceDto>>> GetDevicesAsync(CancellationToken ct = default);
+    Task<ApiResult<DeviceDto>> CreateDeviceAsync(DeviceCreateDto dto, CancellationToken ct = default);
+    Task<ApiResult<DeviceDto>> ApproveDeviceAsync(string id, CancellationToken ct = default);
+    Task<ApiResult<DeviceDto>> RemoveDeviceAsync(string id, CancellationToken ct = default);
+    Task<ApiResult<IEnumerable<CertificateDto>>> GetDeviceCertificatesAsync(string id, CancellationToken ct = default);
+    Task<ApiResult<DemoEnrollResponseDto>> DemoEnrollDeviceAsync(string id, CancellationToken ct = default);
 
     // EST Profiles
     Task<ApiResult<IEnumerable<EstProfileDto>>> GetEstProfilesAsync(CancellationToken ct = default);
