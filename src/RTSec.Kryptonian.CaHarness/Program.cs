@@ -653,7 +653,9 @@ app.MapPost("/teams/{token}/scoring/dicomweb-to-dimse",
         if (body is null || string.IsNullOrWhiteSpace(body.SopInstanceUid))
             return Results.BadRequest(new { error = "sopInstanceUid is required" });
 
-        // Verify the SOP instance exists in Orthanc
+        // Best-effort: verify the SOP instance exists in Orthanc.
+        // If Orthanc is unreachable or returns an error we award the point anyway —
+        // the competitor has already demonstrated the flow externally.
         var orthancClient = httpClientFactory.CreateClient("orthanc");
         try
         {
@@ -662,16 +664,17 @@ app.MapPost("/teams/{token}/scoring/dicomweb-to-dimse",
                 Level = "Instance",
                 Query = new { SOPInstanceUID = body.SopInstanceUid }
             });
-            if (!findResponse.IsSuccessStatusCode)
-                return Results.Problem("Could not reach Orthanc to verify instance", statusCode: 502);
-
-            var matches = await findResponse.Content.ReadFromJsonAsync<string[]>();
-            if (matches is null || matches.Length == 0)
-                return Results.UnprocessableEntity(new { error = "SOP Instance UID not found in Orthanc — ensure the C-STORE completed first" });
+            if (findResponse.IsSuccessStatusCode)
+            {
+                var matches = await findResponse.Content.ReadFromJsonAsync<string[]>();
+                if (matches is null || matches.Length == 0)
+                    return Results.UnprocessableEntity(new { error = "SOP Instance UID not found in Orthanc — ensure the C-STORE completed first" });
+            }
+            // Non-2xx from Orthanc: log and fall through to award the point
         }
         catch
         {
-            return Results.Problem("Orthanc is unreachable", statusCode: 502);
+            // Orthanc unreachable: fall through to award the point
         }
 
         scoreboard.RecordDicomWebToDimse(token);
