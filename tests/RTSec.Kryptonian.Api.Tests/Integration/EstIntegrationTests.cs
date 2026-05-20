@@ -166,7 +166,7 @@ public class EstIntegrationTests
             .ReturnsAsync(csrBytes);
 
         _orchestratorMock
-            .Setup(o => o.EnrollAsync(profileId, csrBytes, It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .Setup(o => o.EnrollAsync(profileId, csrBytes, It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>(), It.IsAny<string?>()))
             .ReturnsAsync(EnrollmentResult.Successful(pkcs7Response, Guid.NewGuid()));
 
         // Act
@@ -175,6 +175,47 @@ public class EstIntegrationTests
         // Assert
         var fileResult = result.Should().BeOfType<FileContentResult>().Subject;
         fileResult.ContentType.Should().Be(Pkcs7MimeType);
+    }
+
+    [Fact]
+    public async Task SimpleEnrollForwardsActivationCodeHeader()
+    {
+        // Arrange
+        var profileId = Guid.NewGuid();
+        var testProfile = CreateTestProfile(profileId, requireClientCert: false);
+        var csrBytes = CreateTestCsrBytes();
+        var pkcs7Response = new byte[] { 0x30, 0x82, 0x01, 0x00 };
+
+        _sut.HttpContext.Request.Headers["X-Activation-Code"] = "ACTIVATE123";
+        _sut.HttpContext.Request.Body = new MemoryStream(Encoding.ASCII.GetBytes(Convert.ToBase64String(csrBytes)));
+
+        _estProfileRepoMock
+            .Setup(r => r.GetByPathAndHostnameAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(testProfile);
+
+        _estProfileRepoMock
+            .Setup(r => r.GetByIdAsync(profileId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(testProfile);
+
+        _pkcsServiceMock
+            .Setup(p => p.DecodeEstRequestBodyAsync(It.IsAny<Stream>(), It.IsAny<string?>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(csrBytes);
+
+        _orchestratorMock
+            .Setup(o => o.EnrollAsync(profileId, csrBytes, It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>(), "ACTIVATE123"))
+            .ReturnsAsync(EnrollmentResult.Successful(pkcs7Response, Guid.NewGuid()));
+
+        // Act
+        await _sut.SimpleEnroll(null, CancellationToken.None);
+
+        // Assert
+        _orchestratorMock.Verify(o => o.EnrollAsync(
+            profileId,
+            csrBytes,
+            It.IsAny<string?>(),
+            It.IsAny<string?>(),
+            It.IsAny<CancellationToken>(),
+            "ACTIVATE123"), Times.Once);
     }
 
     [Fact]
@@ -311,7 +352,7 @@ public class EstIntegrationTests
             .ReturnsAsync(csrBytes);
 
         _orchestratorMock
-            .Setup(o => o.EnrollAsync(profileId, csrBytes, It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .Setup(o => o.EnrollAsync(profileId, csrBytes, It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>(), It.IsAny<string?>()))
             .ReturnsAsync(EnrollmentResult.Failed("CA backend unavailable", 503));
 
         // Act
@@ -346,7 +387,7 @@ public class EstIntegrationTests
             .ReturnsAsync(csrBytes);
 
         _orchestratorMock
-            .Setup(o => o.EnrollAsync(profileId, csrBytes, It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .Setup(o => o.EnrollAsync(profileId, csrBytes, It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>(), It.IsAny<string?>()))
             .ReturnsAsync(EnrollmentResult.Pending(60, Guid.NewGuid()));
 
         // Act
@@ -397,3 +438,4 @@ public class EstIntegrationTests
 
     #endregion
 }
+

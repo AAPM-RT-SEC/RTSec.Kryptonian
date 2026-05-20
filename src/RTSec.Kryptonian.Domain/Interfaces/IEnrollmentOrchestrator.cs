@@ -21,7 +21,8 @@ public interface IEnrollmentOrchestrator
         byte[] csrBytes,
         string? deviceId,
         string? clientIp,
-        CancellationToken ct = default);
+        CancellationToken ct = default,
+        string? activationCode = null);
 
     /// <summary>
     /// Re-enrolls a device (renewal) using existing certificate for auth.

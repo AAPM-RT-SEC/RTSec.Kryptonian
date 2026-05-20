@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using Microsoft.Extensions.Logging;
 using RTSec.Kryptonian.Domain.Entities;
@@ -81,7 +82,8 @@ public class EnrollmentOrchestrator : IEnrollmentOrchestrator
         byte[] csrBytes,
         string? deviceId,
         string? clientIp,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        string? activationCode = null)
     {
         _logger.LogInformation("Starting enrollment for profile {ProfileId}, device {DeviceId}",
             profileId, deviceId ?? "unknown");
@@ -122,7 +124,18 @@ public class EnrollmentOrchestrator : IEnrollmentOrchestrator
             return await RejectEnrollmentAsync(profileId, null, csr.SubjectDn, clientIp, "Unknown device subject common name", ct);
         }
 
-        if (device.Status != DeviceStatus.Active)
+        var activationEnrollment = false;
+        if (device.Status == DeviceStatus.Pending)
+        {
+            var activationError = ValidateActivationCode(device, activationCode);
+            if (activationError != null)
+            {
+                return await RejectEnrollmentAsync(profileId, device, csr.SubjectDn, clientIp, activationError, ct);
+            }
+
+            activationEnrollment = true;
+        }
+        else if (device.Status != DeviceStatus.Active)
         {
             return await RejectEnrollmentAsync(profileId, device, csr.SubjectDn, clientIp, $"Device is {device.Status.ToString().ToLowerInvariant()}", ct);
         }
@@ -221,6 +234,13 @@ public class EnrollmentOrchestrator : IEnrollmentOrchestrator
 
             _unitOfWork.Certificates.Add(certificate);
             device.LastCertificateId = certificate.Id;
+            if (activationEnrollment)
+            {
+                device.Status = DeviceStatus.Active;
+                device.ApprovedAt = DateTime.UtcNow;
+                device.ActivationCodeUsedAt = DateTime.UtcNow;
+                device.ActivationCodeHash = null;
+            }
             _unitOfWork.Devices.Update(device);
 
             // Update enrollment event
@@ -252,6 +272,45 @@ public class EnrollmentOrchestrator : IEnrollmentOrchestrator
             _logger.LogError(ex, "Enrollment failed for profile {ProfileId}", profileId);
             return EnrollmentResult.Failed($"Enrollment failed: {ex.Message}", 500);
         }
+    }
+
+    private static string? ValidateActivationCode(Device device, string? activationCode)
+    {
+        if (string.IsNullOrWhiteSpace(activationCode))
+        {
+            return "Device is pending and requires an activation code";
+        }
+
+        if (string.IsNullOrWhiteSpace(device.SerialNumber))
+        {
+            return "Device has no serial number bound to activation";
+        }
+
+        if (string.IsNullOrWhiteSpace(device.ActivationCodeHash))
+        {
+            return "No activation code has been generated for this device";
+        }
+
+        if (device.ActivationCodeUsedAt != null)
+        {
+            return "Activation code has already been used";
+        }
+
+        if (device.ActivationCodeExpiresAt == null || device.ActivationCodeExpiresAt <= DateTime.UtcNow)
+        {
+            return "Activation code has expired";
+        }
+
+        var expectedHash = DeviceService.HashActivationCode(
+            activationCode,
+            device.SubjectCommonName,
+            device.SerialNumber);
+
+        return CryptographicOperations.FixedTimeEquals(
+            Convert.FromHexString(expectedHash),
+            Convert.FromHexString(device.ActivationCodeHash))
+            ? null
+            : "Invalid activation code";
     }
 
     /// <inheritdoc />

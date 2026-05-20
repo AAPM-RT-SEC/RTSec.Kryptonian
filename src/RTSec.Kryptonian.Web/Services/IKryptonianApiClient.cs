@@ -23,6 +23,7 @@ public interface IKryptonianApiClient
     // Devices
     Task<ApiResult<IEnumerable<DeviceDto>>> GetDevicesAsync(CancellationToken ct = default);
     Task<ApiResult<DeviceDto>> CreateDeviceAsync(DeviceCreateDto dto, CancellationToken ct = default);
+    Task<ApiResult<DeviceActivationCodeDto>> GenerateActivationCodeAsync(string id, int? validForMinutes = null, CancellationToken ct = default);
     Task<ApiResult<DeviceDto>> ApproveDeviceAsync(string id, CancellationToken ct = default);
     Task<ApiResult<DeviceDto>> RemoveDeviceAsync(string id, CancellationToken ct = default);
     Task<ApiResult<IEnumerable<CertificateDto>>> GetDeviceCertificatesAsync(string id, CancellationToken ct = default);

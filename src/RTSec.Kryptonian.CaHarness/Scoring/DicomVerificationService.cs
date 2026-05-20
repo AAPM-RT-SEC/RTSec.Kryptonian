@@ -38,11 +38,18 @@ public sealed class DicomVerificationService
 
         using var chain = new X509Chain();
         chain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
-        chain.ChainPolicy.VerificationFlags = X509VerificationFlags.AllowUnknownCertificateAuthority;
         chain.ChainPolicy.CustomTrustStore.Add(caCert);
         chain.ChainPolicy.TrustMode = X509ChainTrustMode.CustomRootTrust;
+        // No AllowUnknownCertificateAuthority — multiple teams' CAs share the same
+        // Subject DN, and the flag would let any cert chain to any team's CA.
 
         if (!chain.Build(cert))
+            return null;
+
+        // Defense in depth: require the chain root to be exactly this team's CA.
+        // Prevents accidental matches if a future change weakens chain.Build's checks.
+        var root = chain.ChainElements[^1].Certificate;
+        if (!root.RawData.AsSpan().SequenceEqual(caCert.RawData))
             return null;
 
         var serial = cert.SerialNumber ?? "";

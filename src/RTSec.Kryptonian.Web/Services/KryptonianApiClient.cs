@@ -96,6 +96,20 @@ public class KryptonianApiClient : IKryptonianApiClient
             ct);
     }
 
+    public async Task<ApiResult<DeviceActivationCodeDto>> GenerateActivationCodeAsync(
+        string id,
+        int? validForMinutes = null,
+        CancellationToken ct = default)
+    {
+        return await ExecuteWithResponseAsync<DeviceActivationCodeDto>(
+            () => _http.PostAsJsonAsync($"/api/devices/{id}/activation-code", new DeviceActivationCodeCreateDto
+            {
+                ValidForMinutes = validForMinutes
+            }, ct),
+            $"Failed to generate activation code for device {id}",
+            ct);
+    }
+
     public async Task<ApiResult<DeviceDto>> ApproveDeviceAsync(string id, CancellationToken ct = default)
     {
         return await ExecuteWithResponseAsync<DeviceDto>(

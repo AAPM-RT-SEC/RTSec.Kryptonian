@@ -43,6 +43,16 @@ public class DeviceConfiguration : IEntityTypeConfiguration<Device>
             .HasConversion<string>()
             .HasMaxLength(50);
 
+        builder.Property(e => e.ActivationCodeHash)
+            .HasColumnName("activation_code_hash")
+            .HasMaxLength(64);
+
+        builder.Property(e => e.ActivationCodeExpiresAt)
+            .HasColumnName("activation_code_expires_at");
+
+        builder.Property(e => e.ActivationCodeUsedAt)
+            .HasColumnName("activation_code_used_at");
+
         builder.Property(e => e.ApprovedAt)
             .HasColumnName("approved_at");
 

@@ -25,6 +25,15 @@ public class DeviceDto
     [JsonPropertyName("status")]
     public string Status { get; set; } = string.Empty;
 
+    [JsonPropertyName("hasActivationCode")]
+    public bool HasActivationCode { get; set; }
+
+    [JsonPropertyName("activationCodeExpiresAt")]
+    public DateTime? ActivationCodeExpiresAt { get; set; }
+
+    [JsonPropertyName("activationCodeUsedAt")]
+    public DateTime? ActivationCodeUsedAt { get; set; }
+
     [JsonPropertyName("approvedAt")]
     public DateTime? ApprovedAt { get; set; }
 
@@ -90,6 +99,33 @@ public class DeviceApprovalRequestResponseDto
 
     [JsonPropertyName("message")]
     public string Message { get; set; } = string.Empty;
+}
+
+public class DeviceActivationCodeCreateDto
+{
+    [JsonPropertyName("validForMinutes")]
+    public int? ValidForMinutes { get; set; }
+}
+
+public class DeviceActivationCodeDto
+{
+    [JsonPropertyName("deviceId")]
+    public string DeviceId { get; set; } = string.Empty;
+
+    [JsonPropertyName("subjectCommonName")]
+    public string SubjectCommonName { get; set; } = string.Empty;
+
+    [JsonPropertyName("serialNumber")]
+    public string SerialNumber { get; set; } = string.Empty;
+
+    [JsonPropertyName("activationCode")]
+    public string ActivationCode { get; set; } = string.Empty;
+
+    [JsonPropertyName("qrPayload")]
+    public string QrPayload { get; set; } = string.Empty;
+
+    [JsonPropertyName("expiresAt")]
+    public DateTime ExpiresAt { get; set; }
 }
 
 public class CertificateDto

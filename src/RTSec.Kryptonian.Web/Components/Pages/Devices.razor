@@ -27,8 +27,9 @@ else
             <MudTh>Name</MudTh>
             <MudTh>Subject CN</MudTh>
             <MudTh>Status</MudTh>
+            <MudTh>Activation</MudTh>
             <MudTh>Last Certificate</MudTh>
-            <MudTh Style="width: 220px">Actions</MudTh>
+            <MudTh Style="width: 320px">Actions</MudTh>
         </HeaderContent>
         <RowTemplate>
             <MudTd DataLabel="Name">@context.DisplayName</MudTd>
@@ -36,8 +37,10 @@ else
             <MudTd DataLabel="Status">
                 <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Status)">@context.Status</MudChip>
             </MudTd>
+            <MudTd DataLabel="Activation">@GetActivationStatus(context)</MudTd>
             <MudTd DataLabel="Last Certificate">@(context.LastCertificateId ?? "-")</MudTd>
             <MudTd DataLabel="Actions">
+                <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Secondary" Disabled="@(context.Status != "pending")" OnClick="@(() => GenerateActivation(context))">Activation Code</MudButton>
                 <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Success" Disabled="@(context.Status == "active")" OnClick="@(() => Approve(context))">Approve</MudButton>
                 <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Primary" Disabled="@(context.Status != "active")" OnClick="@(() => DemoEnroll(context))">Enroll</MudButton>
                 <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error" Disabled="@(context.Status == "removed")" OnClick="@(() => Remove(context))">Remove</MudButton>
@@ -112,7 +115,8 @@ else
             DisplayName = $"Demo Device {suffix}",
             SubjectCommonName = $"kryptonian-demo-{suffix}",
             Manufacturer = "RTSec",
-            Model = "MEDIATE Demo"
+            Model = "MEDIATE Demo",
+            SerialNumber = $"DEMO-{suffix}"
         });
 
         if (result.Success)
@@ -128,6 +132,19 @@ else
         if (result.Success)
         {
             Snackbar.Add("Device approved", Severity.Success);
+            await LoadAsync();
+        }
+    }
+
+    private async Task GenerateActivation(DeviceDto device)
+    {
+        var result = await ApiClient.GenerateActivationCodeAsync(device.Id);
+        if (result.Success && result.Data != null)
+        {
+            Snackbar.Add($"Activation code: {result.Data.ActivationCode}", Severity.Info, options =>
+            {
+                options.VisibleStateDuration = 20000;
+            });
             await LoadAsync();
         }
     }
@@ -168,6 +185,23 @@ else
         "removed" => Color.Error,
         _ => Color.Warning
     };
+
+    private static string GetActivationStatus(DeviceDto device)
+    {
+        if (device.ActivationCodeUsedAt != null)
+        {
+            return "used";
+        }
+
+        if (!device.HasActivationCode)
+        {
+            return "-";
+        }
+
+        return device.ActivationCodeExpiresAt == null
+            ? "generated"
+            : $"expires {device.ActivationCodeExpiresAt.Value.ToLocalTime():g}";
+    }
 
     public void Dispose()
     {

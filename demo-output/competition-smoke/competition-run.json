@@ -1,0 +1,80 @@
+{
+  "teamName": "Kryptonian Competition 20260519-222351",
+  "token": "395ff0dc-e1d0-4fc7-aa2f-728c422b776f",
+  "harnessBase": "https://ca-harness.mangotree-b3d09362.eastus.azurecontainerapps.io",
+  "apiBase": "http://localhost:5000",
+  "scoreboard": {
+    "teamName": "Kryptonian Competition 20260519-222351",
+    "backends": [
+      {
+        "backend": "selfsigned",
+        "status": "dicom_complete",
+        "certsIssued": 1,
+        "resets": 0,
+        "usedGateway": true,
+        "firstDicomUtc": "2026-05-19T22:24:04.6977505Z",
+        "dimseStoreTlsComplete": true
+      },
+      {
+        "backend": "adcs",
+        "status": "enrolled",
+        "certsIssued": 1,
+        "resets": 0,
+        "usedGateway": false,
+        "firstDicomUtc": null,
+        "dimseStoreTlsComplete": true
+      },
+      {
+        "backend": "ejbca",
+        "status": "enrolled",
+        "certsIssued": 1,
+        "resets": 0,
+        "usedGateway": false,
+        "firstDicomUtc": null,
+        "dimseStoreTlsComplete": true
+      },
+      {
+        "backend": "acme",
+        "status": "dicom_complete",
+        "certsIssued": 1,
+        "resets": 0,
+        "usedGateway": false,
+        "firstDicomUtc": null,
+        "dimseStoreTlsComplete": false
+      }
+    ],
+    "backendsComplete": 4,
+    "firstDicomUtc": "2026-05-19T22:24:04.6977505Z",
+    "overallRank": 1,
+    "cmoveComplete": true,
+    "dicomWebToDimseComplete": true,
+    "manual": {
+      "deviceRegistration": false,
+      "pendingStatus": false,
+      "deviceRemoval": false,
+      "total": 0
+    }
+  },
+  "issued": {
+    "selfsigned": {
+      "subject": "CN=kryptonian-selfsigned-222356",
+      "serial": "7DBFE0DF2A7C00BC93BD63815244D585",
+      "thumbprint": "358D639FCB61072F28077EA53D009D71E9B587CB"
+    },
+    "adcs": {
+      "subject": "CN=kryptonian-adcs-222357",
+      "serial": "365F67D0EF8FDD4F2457AF6442795C6D",
+      "thumbprint": "B34352A1E7197632394858464DD2A7AF7784F482"
+    },
+    "ejbca": {
+      "subject": "CN=kryptonian-ejbca-222358",
+      "serial": "5B286C02E3DBEB985943670EB2259557",
+      "thumbprint": "3E027FD1A499EA404ED2C0ADB05CA89DD70EBE14"
+    },
+    "acme": {
+      "subject": "CN=ca-harness.mangotree-b3d09362.eastus.azurecontainerapps.io",
+      "serial": "07DCBCB3767BA4DDF6134B5ADA2BF13B",
+      "thumbprint": "FB1C57F5C67658B5B5B376165CB55F076E7261AE"
+    }
+  }
+}

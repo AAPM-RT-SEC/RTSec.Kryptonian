@@ -37,6 +37,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RTSec.Kryptonian.Bridge.Tes
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RTSec.Kryptonian.DeviceClient", "src\RTSec.Kryptonian.DeviceClient\RTSec.Kryptonian.DeviceClient.csproj", "{CCBBFBD5-A61D-40BE-972A-70D8295DC332}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RTSec.Kryptonian.EnrollmentDemo", "src\RTSec.Kryptonian.EnrollmentDemo\RTSec.Kryptonian.EnrollmentDemo.csproj", "{752C6BFC-4E7A-43C3-B6A0-EFC0A581EE0C}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -227,6 +229,18 @@ Global
 		{CCBBFBD5-A61D-40BE-972A-70D8295DC332}.Release|x64.Build.0 = Release|Any CPU
 		{CCBBFBD5-A61D-40BE-972A-70D8295DC332}.Release|x86.ActiveCfg = Release|Any CPU
 		{CCBBFBD5-A61D-40BE-972A-70D8295DC332}.Release|x86.Build.0 = Release|Any CPU
+		{752C6BFC-4E7A-43C3-B6A0-EFC0A581EE0C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{752C6BFC-4E7A-43C3-B6A0-EFC0A581EE0C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{752C6BFC-4E7A-43C3-B6A0-EFC0A581EE0C}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{752C6BFC-4E7A-43C3-B6A0-EFC0A581EE0C}.Debug|x64.Build.0 = Debug|Any CPU
+		{752C6BFC-4E7A-43C3-B6A0-EFC0A581EE0C}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{752C6BFC-4E7A-43C3-B6A0-EFC0A581EE0C}.Debug|x86.Build.0 = Debug|Any CPU
+		{752C6BFC-4E7A-43C3-B6A0-EFC0A581EE0C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{752C6BFC-4E7A-43C3-B6A0-EFC0A581EE0C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{752C6BFC-4E7A-43C3-B6A0-EFC0A581EE0C}.Release|x64.ActiveCfg = Release|Any CPU
+		{752C6BFC-4E7A-43C3-B6A0-EFC0A581EE0C}.Release|x64.Build.0 = Release|Any CPU
+		{752C6BFC-4E7A-43C3-B6A0-EFC0A581EE0C}.Release|x86.ActiveCfg = Release|Any CPU
+		{752C6BFC-4E7A-43C3-B6A0-EFC0A581EE0C}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -247,5 +261,6 @@ Global
 		{C7BE000B-2CB0-409E-BF92-FBB86DFEA1DB} = {0FC2DCFB-B735-4722-BE6C-AB51EA942471}
 		{2F9EB557-D9BD-45CB-A1EE-FAA005842340} = {ED96308E-DEF4-4EAC-9912-C5FA1CE88F81}
 		{CCBBFBD5-A61D-40BE-972A-70D8295DC332} = {0FC2DCFB-B735-4722-BE6C-AB51EA942471}
+		{752C6BFC-4E7A-43C3-B6A0-EFC0A581EE0C} = {0FC2DCFB-B735-4722-BE6C-AB51EA942471}
 	EndGlobalSection
 EndGlobal

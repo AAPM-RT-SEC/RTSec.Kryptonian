@@ -760,16 +760,19 @@
       <!-- Flow 1 -->
       <div class="flow-card green">
         <span class="flow-icon">&#x1F512;</span>
-        <div class="flow-title">Flow 1 — DIMSE mTLS C-STORE</div>
-        <div class="flow-badge">&times;4 backends &nbsp;·&nbsp; 4 pts max</div>
+        <div class="flow-title">Flow 1 — DIMSE mTLS C-STORE (+ ACME claim)</div>
+        <div class="flow-badge">3 DIMSE + 1 ACME &nbsp;·&nbsp; 4 pts max</div>
         <p class="flow-body">
           Enroll a device through your gateway using the protocol required by each backend:
           <strong>EST</strong> for <code style="font-family:var(--mono);font-size:11px;color:#79c0ff">selfsigned</code>,
           <strong>SCEP</strong> for <code style="font-family:var(--mono);font-size:11px;color:#79c0ff">adcs</code>,
           <strong>EJBCA REST</strong> for <code style="font-family:var(--mono);font-size:11px;color:#79c0ff">ejbca</code>, and
           <strong>ACME</strong> for <code style="font-family:var(--mono);font-size:11px;color:#79c0ff">acme</code>.
-          Present the issued certificate as mTLS client credential to the DIMSE TLS proxy on
-          port&nbsp;4243. C-STORE a DICOM file. Scored independently per backend.
+          For the first three, present the issued certificate as mTLS client credential to the DIMSE TLS proxy on
+          port&nbsp;4243 and C-STORE a DICOM file (one point per backend).
+          <strong>ACME is different</strong> — the proxy will not accept the ACME cert; instead, claim it at
+          <code style="font-family:var(--mono);font-size:11px;color:#79c0ff">/teams/{token}/api/backends/acme/claim</code>
+          to earn the fourth point.
         </p>
         <div class="code-snippet">selfsigned → EST /est/selfsigned/simpleenroll
 adcs &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;→ SCEP /scep/adcs?operation=PKIOperation

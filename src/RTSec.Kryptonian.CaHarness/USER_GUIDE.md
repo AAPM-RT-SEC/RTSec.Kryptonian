@@ -48,19 +48,36 @@ Use these strings wherever a URL contains `{backend}`:
 
 ---
 
+## Certificate identity / DN rules
+
+**The harness identifies your team by the leaf certificate itself, not by reading the DN text.** A few things to keep in mind so your gateway doesn't fight the harness:
+
+- **Device CSR Subject DN is yours to choose.** For `selfsigned`, `adcs`, and `ejbca` use any normal device identity — e.g. `CN=my-device,O=Hospital,C=US`. There is nothing to copy from the CA.
+- **For ACME, the order CN/SAN must be `ca-harness.mangotree-b3d09362.eastus.azurecontainerapps.io`** (the only hostname the harness can prove ownership of for HTTP-01). Any other name will fail validation.
+- **Treat the CA issuer DN as opaque.** Each team / backend gets a fresh CA on startup with a random tag in the CN (e.g. `CN=SelfSigned Harness CA 982FB134,…`). Do **not** hard-code strings like `CN=SelfSigned Harness CA` anywhere in your gateway — issuer text will not match across teams or deploys.
+- **Validate chains by trust anchor, not by name match.** If your gateway validates server / CA certificates locally, trust the CA cert fetched from your own `/teams/{token}/api/backends/{backend}/cacerts` — never assume two teams' CAs share a Subject.
+- **Flow 1 (DIMSE) needs the issued leaf cert plus its private key** — present them as your client certificate during mTLS to port 4243. Including the CA in the chain is fine; the leaf is what identifies you.
+- **Flow 2 (`X-Device-Certificate` header) needs base64 DER of the issued leaf cert** — not PEM (newlines are invalid in HTTP headers) and not the CA. Use the `certificateDerBase64` field from `/issue` or the `certificate` field from the EJBCA REST response.
+- **ACME is not scored through the DIMSE proxy.** Do not point your ACME-issued cert at port 4243 — it will be rejected. Use [`/teams/{token}/api/backends/acme/claim`](#acme) instead.
+
+---
+
 ## Scoring overview
 
 Points come from three automated flows and one manual judged category. **All automated flows require your gateway to use the enrollment protocol for each backend** — certificates from the `/issue` JSON API do not earn gateway credit.
 
 | Category | What it tests | Points |
 |---|---|---|
-| Flow 1 — DIMSE mTLS C-STORE | Gateway-enrolled cert → mTLS C-STORE to DIMSE proxy | 1 per CA backend (4 max) |
+| Flow 1 (DIMSE) — `selfsigned`, `adcs`, `ejbca` | Gateway-enrolled cert → mTLS C-STORE to DIMSE proxy on port 4243 | 1 per backend (3 max) |
+| Flow 1 (ACME) — `acme` | ACME-issued cert → POST to `/api/backends/acme/claim` | 1 |
 | Flow 2 — C-MOVE → DICOMWeb | C-MOVE from Orthanc → your SCP → STOW-RS to harness | 1 |
 | Flow 3 — DICOMWeb → DIMSE | WADO-RS retrieve from Orthanc → C-STORE back to Orthanc | 1 |
 | UI Demo — Device registration | Gateway UI registers devices; unregistered devices are rejected | 1 |
 | UI Demo — Pending status | Registered devices start in a pending state requiring approval | 1 |
 | UI Demo — Device removal | Removing a device blocks certificate auto-renewal | 1 |
 | **Total** | | **9** |
+
+> **ACME is not scored by DIMSE mTLS.** The DIMSE proxy on port 4243 only accepts certificates from the three CA backends (`selfsigned`, `adcs`, `ejbca`). The ACME-issued cert earns its point by being claimed at `/teams/{token}/api/backends/acme/claim` — see [acme](#acme) below.
 
 The three UI Demo points are awarded by judges during a live gateway demonstration. See [UI Demo scoring](#ui-demo-scoring) below.
 
@@ -197,7 +214,7 @@ Configure your DICOM client/library to:
 
 Perform a C-STORE of any file from the test DICOM set. The proxy identifies your team from the certificate, records the event, and 🔒 appears on the leaderboard for that backend.
 
-**Repeat for each CA backend** to earn all four 🔒 badges.
+**Repeat for `selfsigned`, `adcs`, and `ejbca`** to earn three 🔒 badges. **Do not try this with the ACME cert** — the proxy will reject it. ACME's fourth point is earned by claiming the cert at `/teams/{token}/api/backends/acme/claim` (see [acme](#acme)).
 
 ---
 

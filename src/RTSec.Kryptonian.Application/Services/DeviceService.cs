@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
+using System.Text;
 using Microsoft.Extensions.Logging;
 using RTSec.Kryptonian.Application.DTOs;
 using RTSec.Kryptonian.Application.Mapping;
@@ -11,6 +12,9 @@ namespace RTSec.Kryptonian.Application.Services;
 
 public class DeviceService : IDeviceService
 {
+    private const int DefaultActivationCodeMinutes = 15;
+    private const int MaxActivationCodeMinutes = 24 * 60;
+
     private readonly IUnitOfWork _unitOfWork;
     private readonly IEnrollmentOrchestrator _orchestrator;
     private readonly IDataProtectionService _dataProtection;
@@ -75,6 +79,58 @@ public class DeviceService : IDeviceService
             Status = device.Status.ToString().ToLowerInvariant(),
             SubjectCommonName = device.SubjectCommonName,
             Message = "Approval request received. An administrator must approve this device before EST enrollment is allowed."
+        };
+    }
+
+    public async Task<DeviceActivationCodeDto?> GenerateActivationCodeAsync(
+        Guid id,
+        DeviceActivationCodeCreateDto dto,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(dto);
+
+        var device = await _unitOfWork.Devices.GetByIdAsync(id, ct);
+        if (device == null)
+        {
+            return null;
+        }
+
+        if (device.Status != DeviceStatus.Pending)
+        {
+            throw new InvalidOperationException("Activation codes can only be generated for pending devices.");
+        }
+
+        if (string.IsNullOrWhiteSpace(device.SerialNumber))
+        {
+            throw new InvalidOperationException("Device serial number is required before generating an activation code.");
+        }
+
+        var validForMinutes = dto.ValidForMinutes ?? DefaultActivationCodeMinutes;
+        if (validForMinutes <= 0 || validForMinutes > MaxActivationCodeMinutes)
+        {
+            throw new ArgumentException($"Activation code lifetime must be between 1 and {MaxActivationCodeMinutes} minutes.");
+        }
+
+        var activationCode = GenerateActivationCode();
+        var expiresAt = DateTime.UtcNow.AddMinutes(validForMinutes);
+
+        device.ActivationCodeHash = HashActivationCode(activationCode, device.SubjectCommonName, device.SerialNumber);
+        device.ActivationCodeExpiresAt = expiresAt;
+        device.ActivationCodeUsedAt = null;
+
+        _unitOfWork.Devices.Update(device);
+        await _unitOfWork.SaveChangesAsync(ct);
+
+        _logger.LogInformation("Activation code generated for device {DeviceId}", device.Id);
+
+        return new DeviceActivationCodeDto
+        {
+            DeviceId = device.Id.ToString(),
+            SubjectCommonName = device.SubjectCommonName,
+            SerialNumber = device.SerialNumber,
+            ActivationCode = activationCode,
+            QrPayload = $"kryptonian-activation:{device.SubjectCommonName}:{device.SerialNumber}:{activationCode}",
+            ExpiresAt = expiresAt
         };
     }
 
@@ -177,6 +233,25 @@ public class DeviceService : IDeviceService
             RSASignaturePadding.Pkcs1);
 
         return (request.CreateSigningRequest(), rsa.ExportPkcs8PrivateKeyPem());
+    }
+
+    private static string GenerateActivationCode()
+    {
+        Span<byte> bytes = stackalloc byte[10];
+        RandomNumberGenerator.Fill(bytes);
+        return Convert.ToHexString(bytes);
+    }
+
+    public static string HashActivationCode(string activationCode, string subjectCommonName, string serialNumber)
+    {
+        var material = $"{NormalizeBindingValue(subjectCommonName)}|{NormalizeBindingValue(serialNumber)}|{activationCode.Trim()}";
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(material));
+        return Convert.ToHexString(hash);
+    }
+
+    private static string NormalizeBindingValue(string value)
+    {
+        return value.Trim().ToUpperInvariant();
     }
 
     private async Task<Device> CreatePendingDeviceAsync(

@@ -186,7 +186,7 @@ app.MapGet("/scoreboard", () =>
             </tr></thead>
             <tbody>{{rows}}</tbody>
           </table>
-          <div style="margin-top:16px;color:#8b949e;font-size:12px">🔒 = DIMSE mTLS C-STORE via gateway cert (1 pt each, 4 max) &nbsp;·&nbsp; ⇌ = gateway-enrolled (EST/SCEP/REST/ACME) &nbsp;·&nbsp; Flow 2 = C-MOVE→DICOMWeb (1 pt) &nbsp;·&nbsp; Flow 3 = DICOMWeb→DIMSE (1 pt) &nbsp;·&nbsp; UI Demo = device reg / pending / removal (3 pts) &nbsp;·&nbsp; Max 9 pts</div>
+          <div style="margin-top:16px;color:#8b949e;font-size:12px">🔒 = DIMSE mTLS C-STORE via gateway cert — selfsigned/adcs/ejbca only (1 pt each, 3 max) &nbsp;·&nbsp; ACME ✓ = ACME cert claimed (1 pt) &nbsp;·&nbsp; ⇌ = gateway-enrolled (EST/SCEP/REST/ACME) &nbsp;·&nbsp; Flow 2 = C-MOVE→DICOMWeb (1 pt) &nbsp;·&nbsp; Flow 3 = DICOMWeb→DIMSE (1 pt) &nbsp;·&nbsp; UI Demo = device reg / pending / removal (3 pts) &nbsp;·&nbsp; Max 9 pts</div>
           <div style="margin-top:12px;color:#8b949e;font-size:12px">
             📥 <a href="https://stkryptonianfiles.blob.core.windows.net/downloads/dicom-examples.zip" style="color:#58a6ff" download>Download DICOM test files (28 MB)</a> — 138 CT instances to use as your DICOM payload
           </div>

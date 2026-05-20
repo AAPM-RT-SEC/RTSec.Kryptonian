@@ -19,6 +19,12 @@ public class Device : BaseEntity
 
     public DeviceStatus Status { get; set; } = DeviceStatus.Pending;
 
+    public string? ActivationCodeHash { get; set; }
+
+    public DateTime? ActivationCodeExpiresAt { get; set; }
+
+    public DateTime? ActivationCodeUsedAt { get; set; }
+
     public DateTime? ApprovedAt { get; set; }
 
     public DateTime? RemovedAt { get; set; }

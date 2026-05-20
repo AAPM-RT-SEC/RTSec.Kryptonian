@@ -147,9 +147,16 @@ public class EstController : ControllerBase
 
             // Get device ID from client cert (header fallback is informational only, logged but not trusted)
             var deviceId = GetDeviceIdentifier(profile);
+            var activationCode = Request.Headers["X-Activation-Code"].ToString();
             var clientIp = GetClientIp();
 
-            var result = await _orchestrator.EnrollAsync(profileId.Value, csrBytes, deviceId, clientIp, ct);
+            var result = await _orchestrator.EnrollAsync(
+                profileId.Value,
+                csrBytes,
+                deviceId,
+                clientIp,
+                ct,
+                string.IsNullOrWhiteSpace(activationCode) ? null : activationCode);
 
             return HandleEnrollmentResult(result);
         }

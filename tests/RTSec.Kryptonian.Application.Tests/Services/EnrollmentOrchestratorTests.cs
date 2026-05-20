@@ -315,6 +315,100 @@ public class EnrollmentOrchestratorTests : IDisposable
     }
 
     [Fact]
+    public async Task EnrollAsyncWithPendingDeviceRequiresActivationCode()
+    {
+        // Arrange
+        var profileId = Guid.NewGuid();
+        var backend = CreateCaBackend(Guid.NewGuid());
+        var profile = CreateEstProfile(profileId, backend.Id);
+        var csrBytes = new byte[] { 1, 2, 3 };
+        var parsedCsr = new ParsedCsr { SubjectDn = "CN=PendingDevice", RawData = csrBytes };
+
+        _estProfileRepoMock
+            .Setup(r => r.GetByIdAsync(profileId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(profile);
+
+        _pkcsServiceMock
+            .Setup(p => p.ParsePkcs10(csrBytes))
+            .Returns(parsedCsr);
+
+        _deviceRepoMock
+            .Setup(r => r.GetBySubjectCommonNameAsync("PendingDevice", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CreatePendingDevice("PendingDevice", "PEND-001", "ACTIVATE123"));
+
+        // Act
+        var result = await _sut.EnrollAsync(profileId, csrBytes, null, null);
+
+        // Assert
+        result.Success.Should().BeFalse();
+        result.StatusCode.Should().Be(403);
+        result.ErrorMessage.Should().Contain("activation code");
+        _connectorFactoryMock.Verify(f => f.CreateConnector(It.IsAny<CaBackend>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task EnrollAsyncWithPendingDeviceAndActivationCodeIssuesCertificateAndConsumesCode()
+    {
+        // Arrange
+        var profileId = Guid.NewGuid();
+        var backend = CreateCaBackend(Guid.NewGuid());
+        var profile = CreateEstProfile(profileId, backend.Id);
+        var csrBytes = CreateTestCsrBytes();
+        var parsedCsr = new ParsedCsr { SubjectDn = "CN=PendingDevice", RawData = csrBytes };
+        var device = CreatePendingDevice("PendingDevice", "PEND-001", "ACTIVATE123");
+
+        _estProfileRepoMock
+            .Setup(r => r.GetByIdAsync(profileId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(profile);
+
+        _caBackendRepoMock
+            .Setup(r => r.GetActiveAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(backend);
+
+        _deviceRepoMock
+            .Setup(r => r.GetBySubjectCommonNameAsync("PendingDevice", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(device);
+
+        _pkcsServiceMock
+            .Setup(p => p.ParsePkcs10(csrBytes))
+            .Returns(parsedCsr);
+
+        _pkcsServiceMock
+            .Setup(p => p.ValidateCsrSignature(parsedCsr))
+            .Returns(true);
+
+        _connectorFactoryMock
+            .Setup(f => f.CreateConnector(backend))
+            .Returns(_connectorMock.Object);
+
+        _connectorMock
+            .Setup(c => c.IssueCertificateAsync(parsedCsr, profile, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CertificateIssuanceResult.Successful(_testCert, new[] { _testCert }));
+
+        _pkcsServiceMock
+            .Setup(p => p.ExportToPem(_testCert))
+            .Returns("-----BEGIN CERTIFICATE-----\ntest\n-----END CERTIFICATE-----");
+
+        _pkcsServiceMock
+            .Setup(p => p.EncodeToPkcs7(It.IsAny<X509Certificate2[]>()))
+            .Returns([0x30]);
+
+        _pkcsServiceMock
+            .Setup(p => p.EncodeEstResponseBody(It.IsAny<byte[]>()))
+            .Returns([0x31]);
+
+        // Act
+        var result = await _sut.EnrollAsync(profileId, csrBytes, null, null, activationCode: "ACTIVATE123");
+
+        // Assert
+        result.Success.Should().BeTrue();
+        device.Status.Should().Be(DeviceStatus.Active);
+        device.ActivationCodeUsedAt.Should().NotBeNull();
+        device.ActivationCodeHash.Should().BeNull();
+        device.ApprovedAt.Should().NotBeNull();
+    }
+
+    [Fact]
     public async Task EnrollAsyncRoutesToActiveBackendInsteadOfProfileBackend()
     {
         // Arrange
@@ -643,6 +737,22 @@ public class EnrollmentOrchestratorTests : IDisposable
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
             });
+    }
+
+    private static Device CreatePendingDevice(string commonName, string serialNumber, string activationCode)
+    {
+        return new Device
+        {
+            Id = Guid.NewGuid(),
+            DisplayName = "Pending Device",
+            SubjectCommonName = commonName,
+            SerialNumber = serialNumber,
+            Status = DeviceStatus.Pending,
+            ActivationCodeHash = DeviceService.HashActivationCode(activationCode, commonName, serialNumber),
+            ActivationCodeExpiresAt = DateTime.UtcNow.AddMinutes(10),
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
     }
 
     private static X509Certificate2 CreateTestCertificate()

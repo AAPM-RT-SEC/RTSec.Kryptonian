@@ -50,6 +50,10 @@ public sealed class InMemoryCaEngine
     private sealed record CaState(AsymmetricCipherKeyPair KeyPair, X509Certificate Cert);
 
     private readonly string _displayName;
+    // Short random tag mixed into the CA Subject DN so different team CAs never
+    // share an Issuer DN. Without this, X509Chain can match a leaf cert to the
+    // wrong team's CA because all selfsigned/adcs/ejbca CAs use the same CN.
+    private readonly string _instanceTag;
     private volatile CaState _ca;
     private readonly ConcurrentDictionary<string, IssuedCertRecord> _issued = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, bool> _revoked = new(StringComparer.OrdinalIgnoreCase);
@@ -57,10 +61,11 @@ public sealed class InMemoryCaEngine
     public InMemoryCaEngine(string displayName)
     {
         _displayName = displayName;
+        _instanceTag = Convert.ToHexString(RandomNumberGenerator.GetBytes(4)).ToUpperInvariant();
         _ca = BuildCa();
     }
 
-    public string IssuerName => $"CN={_displayName} Harness CA";
+    public string IssuerName => $"CN={_displayName} Harness CA {_instanceTag}";
 
     public void Reset()
     {
@@ -182,7 +187,7 @@ public sealed class InMemoryCaEngine
             2048, 112));
         var keyPair = keyGen.GenerateKeyPair();
 
-        var dn = new X509Name($"CN={_displayName} Harness CA,O=Kryptonian Hackathon,C=US");
+        var dn = new X509Name($"CN={_displayName} Harness CA {_instanceTag},O=Kryptonian Hackathon,C=US");
 
         var serialBytes = new byte[16];
         RandomNumberGenerator.Fill(serialBytes);

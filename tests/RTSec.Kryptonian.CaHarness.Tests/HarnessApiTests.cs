@@ -693,6 +693,51 @@ public sealed class HarnessApiTests : IClassFixture<WebApplicationFactory<Progra
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
+    // ---------- DIMSE proxy callbacks (verify-cert / cstore-event) ----------
+
+    [Fact]
+    public async Task DimseVerifyCert_RoutesToIssuingTeam_NotEarliestAlphabetically()
+    {
+        // Regression: previously verify-cert chained any cert against the first team's CA
+        // (because all teams shared CN=SelfSigned Harness CA and AllowUnknownCertificateAuthority
+        // was set), so DIMSE C-STORE events were always credited to the wrong team.
+        var teamA = await RegisterTeamAsync("AAA-first-alphabetically");
+        var teamB = await RegisterTeamAsync("ZZZ-later-team");
+
+        var issueReq = new IssueRequest { CsrBase64Der = MakeCsrBase64("CN=device-b"), ValidityDays = 7 };
+        var issueResp = await _client.PostAsJsonAsync($"/teams/{teamB}/api/backends/selfsigned/issue", issueReq, JsonOpts);
+        issueResp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var issued = await issueResp.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
+        var certPem = issued.GetProperty("certificatePem").GetString()!;
+        var certDer = X509Certificate2.CreateFromPem(certPem).RawData;
+
+        using var verifyReq = new HttpRequestMessage(HttpMethod.Post, "/api/internal/dimse/verify-cert");
+        verifyReq.Headers.Add("X-Internal-Key", "changeme");
+        verifyReq.Content = JsonContent.Create(new { certBase64Der = Convert.ToBase64String(certDer) });
+        using var verifyResp = await _client.SendAsync(verifyReq);
+        verifyResp.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var body = await verifyResp.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
+        body.GetProperty("teamToken").GetString().Should().Be(teamB);
+        body.GetProperty("backend").GetString().Should().Be("selfsigned");
+        _ = teamA;
+    }
+
+    [Fact]
+    public async Task DimseVerifyCert_UnsignedCert_Returns404()
+    {
+        await RegisterTeamAsync("decoy");
+        using var key = RSA.Create(2048);
+        var req = new CertificateRequest("CN=stranger", key, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        using var foreignCert = req.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(7));
+
+        using var verifyReq = new HttpRequestMessage(HttpMethod.Post, "/api/internal/dimse/verify-cert");
+        verifyReq.Headers.Add("X-Internal-Key", "changeme");
+        verifyReq.Content = JsonContent.Create(new { certBase64Der = Convert.ToBase64String(foreignCert.RawData) });
+        using var verifyResp = await _client.SendAsync(verifyReq);
+        verifyResp.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
     // ---------- helpers ----------
 
     private async Task<string> RegisterTeamAsync(string teamName)
