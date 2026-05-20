@@ -206,7 +206,29 @@ try
         app.UseStaticFiles(new StaticFileOptions { FileProvider = uiFileProvider });
     }
 
-    app.UseHttpsRedirection();
+    var allowPlainHttpEst = app.Configuration.GetValue<bool>("Kryptonian:Est:AllowPlainHttp", false);
+    app.Use(async (context, next) =>
+    {
+        if (!context.Request.IsHttps
+            && context.Request.Path.StartsWithSegments("/.well-known/est", StringComparison.OrdinalIgnoreCase)
+            && !allowPlainHttpEst)
+        {
+            context.Response.StatusCode = StatusCodes.Status426UpgradeRequired;
+            context.Response.ContentType = "application/json";
+            await context.Response.WriteAsJsonAsync(new
+            {
+                error = "EST endpoints require HTTPS. Use https://localhost:8443/.well-known/est for local development."
+            });
+            return;
+        }
+
+        await next();
+    });
+
+    if (app.Configuration.GetValue<bool>("Kryptonian:Tls:RedirectHttpToHttps", !app.Environment.IsDevelopment()))
+    {
+        app.UseHttpsRedirection();
+    }
     app.UseCors("KryptonianUi");
     app.UseAuthentication();
     app.UseAuthorization();

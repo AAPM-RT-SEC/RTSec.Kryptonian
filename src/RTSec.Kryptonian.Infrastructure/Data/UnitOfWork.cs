@@ -18,7 +18,7 @@ public class UnitOfWork : IUnitOfWork
     private ICertificateRepository? _certificates;
     private IEnrollmentEventRepository? _enrollmentEvents;
     private IAcmeAccountRepository? _acmeAccounts;
-    private IHackathonSettingsRepository? _hackathonSettings;
+    private IGatewaySettingsRepository? _gatewaySettings;
 
     public UnitOfWork(KryptonianDbContext context)
     {
@@ -43,8 +43,8 @@ public class UnitOfWork : IUnitOfWork
     public IAcmeAccountRepository AcmeAccounts =>
         _acmeAccounts ??= new AcmeAccountRepository(_context);
 
-    public IHackathonSettingsRepository HackathonSettings =>
-        _hackathonSettings ??= new HackathonSettingsRepository(_context);
+    public IGatewaySettingsRepository GatewaySettings =>
+        _gatewaySettings ??= new GatewaySettingsRepository(_context);
 
     public async Task<int> SaveChangesAsync(CancellationToken ct = default)
     {

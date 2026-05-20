@@ -14,7 +14,7 @@ public interface IUnitOfWork : IDisposable
     ICertificateRepository Certificates { get; }
     IEnrollmentEventRepository EnrollmentEvents { get; }
     IAcmeAccountRepository AcmeAccounts { get; }
-    IHackathonSettingsRepository HackathonSettings { get; }
+    IGatewaySettingsRepository GatewaySettings { get; }
 
     /// <summary>
     /// Saves all pending changes to the database.
@@ -112,7 +112,7 @@ public interface IAcmeAccountRepository : IRepository<AcmeAccount>
     Task<AcmeAccount?> GetByDirectoryAndEmailAsync(Uri directoryUrl, string email, CancellationToken ct = default);
 }
 
-public interface IHackathonSettingsRepository : IRepository<HackathonSettings>
+public interface IGatewaySettingsRepository : IRepository<GatewaySettings>
 {
-    Task<HackathonSettings?> GetSingletonAsync(CancellationToken ct = default);
+    Task<GatewaySettings?> GetSingletonAsync(CancellationToken ct = default);
 }

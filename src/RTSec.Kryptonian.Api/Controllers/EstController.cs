@@ -65,7 +65,7 @@ public class EstController : ControllerBase
             if (profileId == null)
             {
                 _logger.LogWarning("No EST profile found for label: {Label}", label ?? "(default)");
-                return NotFound(new { error = "EST profile not found" });
+                return EstError(StatusCodes.Status404NotFound, "EST profile not found");
             }
 
             var pkcs7 = await _orchestrator.GetCaCertsAsync(profileId.Value, ct);
@@ -77,12 +77,12 @@ public class EstController : ControllerBase
         catch (InvalidOperationException ex)
         {
             _logger.LogWarning(ex, "Failed to get CA certs for profile {Label}", label);
-            return NotFound(new { error = ex.Message });
+            return EstError(StatusCodes.Status404NotFound, ex.Message);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error getting CA certificates");
-            return StatusCode(500, new { error = "Internal server error" });
+            return EstError(StatusCodes.Status500InternalServerError, "Internal server error");
         }
     }
 
@@ -113,7 +113,7 @@ public class EstController : ControllerBase
             if (profileId == null)
             {
                 _logger.LogWarning("No EST profile found for label: {Label}", label ?? "(default)");
-                return NotFound(new { error = "EST profile not found" });
+                return EstError(StatusCodes.Status404NotFound, "EST profile not found");
             }
 
             // Validate profile requires client cert (if configured)
@@ -124,7 +124,7 @@ public class EstController : ControllerBase
                 if (clientCert == null)
                 {
                     _logger.LogWarning("Client certificate required but not provided for profile {ProfileId}", profileId);
-                    return Unauthorized(new { error = "Client certificate required" });
+                    return EstError(StatusCodes.Status401Unauthorized, "Client certificate required");
                 }
 
                 // Validate client certificate chain if configured
@@ -133,7 +133,7 @@ public class EstController : ControllerBase
                 {
                     _logger.LogWarning("Client certificate validation failed for profile {ProfileId}: {Reason}",
                         profileId, validationResult.Reason);
-                    return StatusCode(403, new { error = validationResult.Reason });
+                    return EstError(StatusCodes.Status403Forbidden, validationResult.Reason ?? "Client certificate validation failed");
                 }
             }
 
@@ -148,6 +148,9 @@ public class EstController : ControllerBase
             // Get device ID from client cert (header fallback is informational only, logged but not trusted)
             var deviceId = GetDeviceIdentifier(profile);
             var activationCode = Request.Headers["X-Activation-Code"].ToString();
+            var activationManufacturer = Request.Headers["X-Device-Manufacturer"].ToString();
+            var activationModel = Request.Headers["X-Device-Model"].ToString();
+            var activationSerialNumber = Request.Headers["X-Device-Serial-Number"].ToString();
             var clientIp = GetClientIp();
 
             var result = await _orchestrator.EnrollAsync(
@@ -156,24 +159,27 @@ public class EstController : ControllerBase
                 deviceId,
                 clientIp,
                 ct,
-                string.IsNullOrWhiteSpace(activationCode) ? null : activationCode);
+                string.IsNullOrWhiteSpace(activationCode) ? null : activationCode,
+                string.IsNullOrWhiteSpace(activationManufacturer) ? null : activationManufacturer,
+                string.IsNullOrWhiteSpace(activationModel) ? null : activationModel,
+                string.IsNullOrWhiteSpace(activationSerialNumber) ? null : activationSerialNumber);
 
             return HandleEnrollmentResult(result);
         }
         catch (InvalidOperationException ex) when (ex.Message.Contains("maximum allowed size"))
         {
             _logger.LogWarning("CSR request too large");
-            return StatusCode(413, new { error = "Request body too large" });
+            return EstError(StatusCodes.Status413PayloadTooLarge, "Request body too large");
         }
         catch (ArgumentException ex)
         {
             _logger.LogWarning(ex, "Invalid CSR request");
-            return BadRequest(new { error = ex.Message });
+            return EstError(StatusCodes.Status400BadRequest, ex.Message);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error processing enrollment request");
-            return StatusCode(500, new { error = "Internal server error" });
+            return EstError(StatusCodes.Status500InternalServerError, "Internal server error");
         }
     }
 
@@ -204,7 +210,7 @@ public class EstController : ControllerBase
             if (profileId == null)
             {
                 _logger.LogWarning("No EST profile found for label: {Label}", label ?? "(default)");
-                return NotFound(new { error = "EST profile not found" });
+                return EstError(StatusCodes.Status404NotFound, "EST profile not found");
             }
 
             // Re-enrollment always requires a client certificate
@@ -212,7 +218,7 @@ public class EstController : ControllerBase
             if (clientCert == null)
             {
                 _logger.LogWarning("Client certificate required for re-enrollment");
-                return Unauthorized(new { error = "Client certificate required for re-enrollment" });
+                return EstError(StatusCodes.Status401Unauthorized, "Client certificate required for re-enrollment");
             }
 
             // Validate client certificate chain if profile requires it
@@ -224,7 +230,7 @@ public class EstController : ControllerBase
                 {
                     _logger.LogWarning("Client certificate validation failed for re-enrollment on profile {ProfileId}: {Reason}",
                         profileId, validationResult.Reason);
-                    return StatusCode(403, new { error = validationResult.Reason });
+                    return EstError(StatusCodes.Status403Forbidden, validationResult.Reason ?? "Client certificate validation failed");
                 }
             }
 
@@ -245,17 +251,17 @@ public class EstController : ControllerBase
         catch (InvalidOperationException ex) when (ex.Message.Contains("maximum allowed size"))
         {
             _logger.LogWarning("CSR request too large");
-            return StatusCode(413, new { error = "Request body too large" });
+            return EstError(StatusCodes.Status413PayloadTooLarge, "Request body too large");
         }
         catch (ArgumentException ex)
         {
             _logger.LogWarning(ex, "Invalid re-enrollment CSR request");
-            return BadRequest(new { error = ex.Message });
+            return EstError(StatusCodes.Status400BadRequest, ex.Message);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error processing re-enrollment request");
-            return StatusCode(500, new { error = "Internal server error" });
+            return EstError(StatusCodes.Status500InternalServerError, "Internal server error");
         }
     }
 
@@ -408,11 +414,30 @@ public class EstController : ControllerBase
             {
                 Response.Headers["Retry-After"] = result.RetryAfterSeconds.Value.ToString();
             }
-            return StatusCode(202, new { error = "Enrollment pending", retryAfter = result.RetryAfterSeconds });
+            return EstError(StatusCodes.Status202Accepted, "Enrollment pending", result.RetryAfterSeconds);
         }
 
         // Return error with appropriate status code
-        return StatusCode(result.StatusCode, new { error = result.ErrorMessage });
+        return EstError(result.StatusCode, result.ErrorMessage ?? "Enrollment failed");
+    }
+
+    private static ObjectResult EstError(int statusCode, string error, int? retryAfter = null)
+    {
+        object body = retryAfter == null
+            ? new { error }
+            : new { error, retryAfter };
+
+        ObjectResult result = statusCode switch
+        {
+            StatusCodes.Status400BadRequest => new BadRequestObjectResult(body),
+            StatusCodes.Status401Unauthorized => new UnauthorizedObjectResult(body),
+            StatusCodes.Status404NotFound => new NotFoundObjectResult(body),
+            _ => new ObjectResult(body) { StatusCode = statusCode }
+        };
+
+        result.ContentTypes.Clear();
+        result.ContentTypes.Add("application/json");
+        return result;
     }
 
     /// <summary>

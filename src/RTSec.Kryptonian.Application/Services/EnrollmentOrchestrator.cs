@@ -83,7 +83,10 @@ public class EnrollmentOrchestrator : IEnrollmentOrchestrator
         string? deviceId,
         string? clientIp,
         CancellationToken ct = default,
-        string? activationCode = null)
+        string? activationCode = null,
+        string? activationManufacturer = null,
+        string? activationModel = null,
+        string? activationSerialNumber = null)
     {
         _logger.LogInformation("Starting enrollment for profile {ProfileId}, device {DeviceId}",
             profileId, deviceId ?? "unknown");
@@ -121,19 +124,32 @@ public class EnrollmentOrchestrator : IEnrollmentOrchestrator
 
         if (device == null)
         {
-            return await RejectEnrollmentAsync(profileId, null, csr.SubjectDn, clientIp, "Unknown device subject common name", ct);
+            device = await FindPendingDeviceByActivationCodeAsync(activationCode, ct);
+            if (device == null)
+            {
+                return await RejectEnrollmentAsync(profileId, null, csr.SubjectDn, clientIp, "Unknown device subject common name", ct);
+            }
         }
 
         var activationEnrollment = false;
         if (device.Status == DeviceStatus.Pending)
         {
-            var activationError = ValidateActivationCode(device, activationCode);
+            var activationError = await ValidateActivationRequestAsync(
+                device,
+                activationCode,
+                subjectCommonName,
+                activationSerialNumber,
+                ct);
             if (activationError != null)
             {
                 return await RejectEnrollmentAsync(profileId, device, csr.SubjectDn, clientIp, activationError, ct);
             }
 
             activationEnrollment = true;
+            device.SubjectCommonName = subjectCommonName!.Trim();
+            device.Manufacturer = NormalizeOptional(activationManufacturer);
+            device.Model = NormalizeOptional(activationModel);
+            device.SerialNumber = NormalizeOptional(activationSerialNumber)!;
         }
         else if (device.Status != DeviceStatus.Active)
         {
@@ -240,6 +256,7 @@ public class EnrollmentOrchestrator : IEnrollmentOrchestrator
                 device.ApprovedAt = DateTime.UtcNow;
                 device.ActivationCodeUsedAt = DateTime.UtcNow;
                 device.ActivationCodeHash = null;
+                device.ActivationCodeExpiresAt = null;
             }
             _unitOfWork.Devices.Update(device);
 
@@ -274,16 +291,60 @@ public class EnrollmentOrchestrator : IEnrollmentOrchestrator
         }
     }
 
-    private static string? ValidateActivationCode(Device device, string? activationCode)
+    private async Task<Device?> FindPendingDeviceByActivationCodeAsync(string? activationCode, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(activationCode))
+        {
+            return null;
+        }
+
+        var devices = await _unitOfWork.Devices.GetAllAsync(ct);
+        foreach (var candidate in devices.Where(d => d.Status == DeviceStatus.Pending))
+        {
+            if (string.IsNullOrWhiteSpace(candidate.ActivationCodeHash) || candidate.ActivationCodeUsedAt != null)
+            {
+                continue;
+            }
+
+            var expectedHash = DeviceService.HashActivationCode(activationCode, candidate.Id);
+            if (CryptographicOperations.FixedTimeEquals(
+                Convert.FromHexString(expectedHash),
+                Convert.FromHexString(candidate.ActivationCodeHash)))
+            {
+                return candidate;
+            }
+        }
+
+        return null;
+    }
+
+    private async Task<string?> ValidateActivationRequestAsync(
+        Device device,
+        string? activationCode,
+        string? subjectCommonName,
+        string? serialNumber,
+        CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(activationCode))
         {
             return "Device is pending and requires an activation code";
         }
 
-        if (string.IsNullOrWhiteSpace(device.SerialNumber))
+        if (string.IsNullOrWhiteSpace(subjectCommonName))
         {
-            return "Device has no serial number bound to activation";
+            return "Activation requires a CSR subject common name";
+        }
+
+        var normalizedCn = subjectCommonName.Trim();
+        var existing = await _unitOfWork.Devices.GetBySubjectCommonNameAsync(normalizedCn, ct);
+        if (existing != null && existing.Id != device.Id)
+        {
+            return $"A device with subject common name '{normalizedCn}' already exists";
+        }
+
+        if (string.IsNullOrWhiteSpace(serialNumber))
+        {
+            return "Activation requires a device serial number";
         }
 
         if (string.IsNullOrWhiteSpace(device.ActivationCodeHash))
@@ -301,10 +362,7 @@ public class EnrollmentOrchestrator : IEnrollmentOrchestrator
             return "Activation code has expired";
         }
 
-        var expectedHash = DeviceService.HashActivationCode(
-            activationCode,
-            device.SubjectCommonName,
-            device.SerialNumber);
+        var expectedHash = DeviceService.HashActivationCode(activationCode, device.Id);
 
         return CryptographicOperations.FixedTimeEquals(
             Convert.FromHexString(expectedHash),
@@ -312,6 +370,9 @@ public class EnrollmentOrchestrator : IEnrollmentOrchestrator
             ? null
             : "Invalid activation code";
     }
+
+    private static string? NormalizeOptional(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     /// <inheritdoc />
     public async Task<EnrollmentResult> ReenrollAsync(

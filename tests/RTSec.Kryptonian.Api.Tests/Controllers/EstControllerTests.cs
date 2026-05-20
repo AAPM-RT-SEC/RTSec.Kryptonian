@@ -183,7 +183,7 @@ public class EstControllerTests
             .ReturnsAsync(csrBytes);
 
         _orchestratorMock
-            .Setup(o => o.EnrollAsync(profileId, csrBytes, It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>(), It.IsAny<string?>()))
+            .Setup(o => o.EnrollAsync(profileId, csrBytes, It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>()))
             .ReturnsAsync(EnrollmentResult.Successful(pkcs7Response, Guid.NewGuid()));
 
         // Act
@@ -262,7 +262,7 @@ public class EstControllerTests
             .ReturnsAsync(csrBytes);
 
         _orchestratorMock
-            .Setup(o => o.EnrollAsync(profileId, csrBytes, It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>(), It.IsAny<string?>()))
+            .Setup(o => o.EnrollAsync(profileId, csrBytes, It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>()))
             .ReturnsAsync(EnrollmentResult.Failed("CA backend unavailable", 503));
 
         // Act
@@ -324,7 +324,7 @@ public class EstControllerTests
             .ReturnsAsync(csrBytes);
 
         _orchestratorMock
-            .Setup(o => o.EnrollAsync(profileId, csrBytes, It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>(), It.IsAny<string?>()))
+            .Setup(o => o.EnrollAsync(profileId, csrBytes, It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>()))
             .ReturnsAsync(EnrollmentResult.Pending(60, Guid.NewGuid()));
 
         // Act

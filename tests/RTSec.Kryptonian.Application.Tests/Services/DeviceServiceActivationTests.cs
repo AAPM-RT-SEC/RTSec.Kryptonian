@@ -30,8 +30,7 @@ public class DeviceServiceActivationTests
         {
             Id = Guid.NewGuid(),
             DisplayName = "Scanner",
-            SubjectCommonName = "scanner-001",
-            SerialNumber = "SCAN-001",
+            SubjectCommonName = "pending-device",
             Status = DeviceStatus.Pending
         };
 
@@ -48,8 +47,8 @@ public class DeviceServiceActivationTests
 
         result.Should().NotBeNull();
         result!.ActivationCode.Should().HaveLength(20);
-        result.SubjectCommonName.Should().Be("scanner-001");
-        result.SerialNumber.Should().Be("SCAN-001");
+        result.SubjectCommonName.Should().Be("pending-device");
+        result.SerialNumber.Should().BeEmpty();
         result.ExpiresAt.Should().BeAfter(DateTime.UtcNow);
 
         device.ActivationCodeHash.Should().NotBeNullOrWhiteSpace();
@@ -61,13 +60,13 @@ public class DeviceServiceActivationTests
     }
 
     [Fact]
-    public async Task GenerateActivationCodeAsyncWithoutSerialRejectsBinding()
+    public async Task GenerateActivationCodeAsyncRejectsInvalidLifetime()
     {
         var device = new Device
         {
             Id = Guid.NewGuid(),
             DisplayName = "Scanner",
-            SubjectCommonName = "scanner-001",
+            SubjectCommonName = "pending-device",
             Status = DeviceStatus.Pending
         };
 
@@ -77,10 +76,13 @@ public class DeviceServiceActivationTests
 
         var sut = CreateSut();
 
-        var act = () => sut.GenerateActivationCodeAsync(device.Id, new DeviceActivationCodeCreateDto());
+        var act = () => sut.GenerateActivationCodeAsync(device.Id, new DeviceActivationCodeCreateDto
+        {
+            ValidForMinutes = 0
+        });
 
-        await act.Should().ThrowAsync<InvalidOperationException>()
-            .WithMessage("*serial number*");
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*lifetime*");
     }
 
     private DeviceService CreateSut()

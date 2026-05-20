@@ -1,26 +1,27 @@
 # Kryptonian Device Client
 
-Small console application that behaves like a medical device requesting approval from a MEDIATE gateway.
+Small console application that behaves like a medical device activating through the Kryptonian gateway.
 
-The client posts device identity metadata to:
+The administrator first registers the device alias in the Devices tab and gives the generated activation code to the device. The client then sends a CSR to the device-facing EST endpoint over HTTPS:
 
 ```http
-POST /api/device-requests
+POST /.well-known/est/simpleenroll
 ```
 
-The gateway creates a pending device record. An administrator must approve that device before EST enrollment is allowed.
+The activation code is sent as the one-time shared secret for the first certificate. After the first certificate is issued, the gateway consumes the activation code and marks the device active.
 
 ## Run
 
 ```powershell
-dotnet run --project src/RTSec.Kryptonian.DeviceClient -- --gateway http://localhost:5000 --name "Scanner 7" --cn scanner-7 --serial SCAN-7
+dotnet run --project src/RTSec.Kryptonian.DeviceClient -- --gateway https://localhost:8443 --name "Scanner 7" --cn scanner-7 --serial SCAN-7 --activation-code ABCD-EFGH
 ```
 
 Options:
 
-- `--gateway`: Gateway base URL. Defaults to `KRYPTONIAN_GATEWAY_URL` or `http://localhost:5000`.
+- `--gateway`: Gateway EST base URL. Defaults to `KRYPTONIAN_GATEWAY_URL` or `https://localhost:8443`.
 - `--name`: Device display name.
-- `--cn`: Subject common name the device will later use in its EST CSR.
+- `--cn`: Subject common name in the EST CSR.
 - `--manufacturer`: Device manufacturer.
 - `--model`: Device model.
 - `--serial`: Device serial number.
+- `--activation-code`: One-time activation code generated from the Devices tab. You can also set `KRYPTONIAN_ACTIVATION_CODE`.

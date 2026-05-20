@@ -2,7 +2,6 @@ import { FormEvent, useEffect, useMemo, useState } from 'react';
 import {
   Activity,
   CheckCircle2,
-  FileText,
   KeyRound,
   MonitorCheck,
   Plus,
@@ -10,7 +9,6 @@ import {
   ServerCog,
   Settings,
   ShieldCheck,
-  Trophy,
   Trash2,
   UserCheck,
 } from 'lucide-react';
@@ -21,13 +19,13 @@ import {
   CaBackendInput,
   Certificate,
   Device,
+  DeviceActivationCode,
   DeviceInput,
   EnrollmentEvent,
   EstProfile,
   EstProfileInput,
-  HackathonSettings,
-  HackathonSettingsInput,
-  HarnessScoreboardSnapshot,
+  GatewaySettings,
+  GatewaySettingsInput,
 } from './api';
 
 type Page = 'dashboard' | 'settings' | 'cas' | 'devices' | 'profiles' | 'events';
@@ -42,7 +40,7 @@ interface Snapshot {
   devices: Device[];
   profiles: EstProfile[];
   events: EnrollmentEvent[];
-  settings: HackathonSettings | null;
+  settings: GatewaySettings | null;
   certificatesByDevice: Record<string, Certificate[]>;
 }
 
@@ -53,19 +51,6 @@ const emptySnapshot: Snapshot = {
   events: [],
   settings: null,
   certificatesByDevice: {},
-};
-
-const defaultSettings: HackathonSettingsInput = {
-  harnessBaseUrl: 'https://ca-harness.mangotree-b3d09362.eastus.azurecontainerapps.io',
-  teamToken: '',
-  dimseHost: 'kryptonian-dimse.eastus.cloudapp.azure.com',
-  dimseTlsPort: 4243,
-  orthancDimsePort: 4242,
-  dicomWebBaseUrl: 'http://kryptonian-dimse.eastus.cloudapp.azure.com:8042/dicom-web',
-  calledAeTitle: 'KRYPTONIAN',
-  bridgeAeTitle: 'KRYPTONIANBRIDGE',
-  bridgeListenPort: 11112,
-  trustedProxyCertificateThumbprint: null,
 };
 
 const backendTypes = ['selfsigned', 'adcs', 'ejbca', 'acme'];
@@ -118,7 +103,7 @@ export function App() {
         api.getDevices(),
         api.getEstProfiles(),
         api.getEnrollmentEvents(100),
-        api.getHackathonSettings(),
+        api.getGatewaySettings(),
       ]);
 
       const certificatePairs = await Promise.all(
@@ -144,13 +129,21 @@ export function App() {
     void refresh();
   }, []);
 
-  const run = async (operation: () => Promise<unknown>, success: string) => {
+  const run = async <T,>(
+    operation: () => Promise<T>,
+    success: string,
+    options: { refresh?: boolean } = {},
+  ): Promise<T | undefined> => {
     try {
-      await operation();
+      const result = await operation();
       setFlash({ kind: 'success', message: success });
-      await refresh();
+      if (options.refresh !== false) {
+        await refresh();
+      }
+      return result;
     } catch (error) {
       setFlash({ kind: 'error', message: describeError(error) });
+      return undefined;
     }
   };
 
@@ -220,6 +213,7 @@ export function App() {
                 devices={snapshot.devices}
                 certificatesByDevice={snapshot.certificatesByDevice}
                 run={run}
+                refresh={refresh}
               />
             )}
             {page === 'profiles' && (
@@ -233,74 +227,84 @@ export function App() {
   );
 }
 
-function SettingsPage({ settings, run }: { settings: HackathonSettings | null; run: Runner }) {
-  const [input, setInput] = useState<HackathonSettingsInput>({
-    ...defaultSettings,
-    ...(settings ?? {}),
-  });
-  const [scoreboard, setScoreboard] = useState<HarnessScoreboardSnapshot | null>(null);
-  const [scoreboardError, setScoreboardError] = useState<string | null>(null);
+const lifetimePresetsHours: Array<{ label: string; hours: number }> = [
+  { label: '24 hours', hours: 24 },
+  { label: '7 days', hours: 24 * 7 },
+  { label: '30 days', hours: 24 * 30 },
+  { label: '90 days', hours: 24 * 90 },
+  { label: '1 year', hours: 24 * 365 },
+  { label: '2 years', hours: 24 * 365 * 2 },
+];
+
+function formatLifetime(hours: number): string {
+  if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'}`;
+  if (hours % (24 * 365) === 0) {
+    const years = hours / (24 * 365);
+    return `${years} year${years === 1 ? '' : 's'}`;
+  }
+  if (hours % 24 === 0) {
+    const days = hours / 24;
+    return `${days} day${days === 1 ? '' : 's'}`;
+  }
+  return `${hours} hours`;
+}
+
+function SettingsPage({ settings, run }: { settings: GatewaySettings | null; run: Runner }) {
+  const minHours = settings?.minCertificateLifetimeHours ?? 24;
+  const maxHours = settings?.maxCertificateLifetimeHours ?? 24 * 365 * 2;
+  const [hours, setHours] = useState<number>(settings?.defaultCertificateLifetimeHours ?? 24);
 
   useEffect(() => {
-    setInput({ ...defaultSettings, ...(settings ?? {}) });
+    if (settings) {
+      setHours(settings.defaultCertificateLifetimeHours);
+    }
   }, [settings]);
-
-  const update = (key: keyof HackathonSettingsInput, value: string | number | null) => {
-    setInput((current) => ({ ...current, [key]: value }));
-  };
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    await run(() => api.updateHackathonSettings(input), 'Saved hackathon settings');
+    const input: GatewaySettingsInput = { defaultCertificateLifetimeHours: hours };
+    await run(() => api.updateGatewaySettings(input), 'Saved gateway settings');
   };
 
-  const fetchScoreboard = async () => {
-    setScoreboardError(null);
-    try {
-      setScoreboard(await api.getHarnessScoreboard());
-    } catch (error) {
-      setScoreboardError(describeError(error));
-    }
-  };
+  const clamp = (value: number) => Math.min(maxHours, Math.max(minHours, value));
 
   return (
     <div className="stack">
       <section className="panel">
         <div className="panelHeader">
           <div>
-            <h2>Hackathon Settings</h2>
-            <p>Gateway-wide values used by enrollment demos, bridge jobs, ACME claims, and scoreboard reads.</p>
+            <h2>Device Registration Defaults</h2>
+            <p>Gateway-wide defaults applied when issuing certificates to registered devices.</p>
           </div>
         </div>
         <form className="settingsGrid" onSubmit={(event) => void submit(event)}>
-          <label>Harness URL<input value={input.harnessBaseUrl} onChange={(e) => update('harnessBaseUrl', e.target.value)} required /></label>
-          <label>Team Token<input value={input.teamToken} onChange={(e) => update('teamToken', e.target.value)} /></label>
-          <label>DIMSE Host<input value={input.dimseHost} onChange={(e) => update('dimseHost', e.target.value)} required /></label>
-          <label>DIMSE TLS Port<input type="number" min={1} max={65535} value={input.dimseTlsPort} onChange={(e) => update('dimseTlsPort', Number(e.target.value))} /></label>
-          <label>Orthanc DIMSE Port<input type="number" min={1} max={65535} value={input.orthancDimsePort} onChange={(e) => update('orthancDimsePort', Number(e.target.value))} /></label>
-          <label>DICOMweb URL<input value={input.dicomWebBaseUrl} onChange={(e) => update('dicomWebBaseUrl', e.target.value)} required /></label>
-          <label>Called AE Title<input value={input.calledAeTitle} onChange={(e) => update('calledAeTitle', e.target.value)} maxLength={16} required /></label>
-          <label>Bridge AE Title<input value={input.bridgeAeTitle} onChange={(e) => update('bridgeAeTitle', e.target.value)} maxLength={16} required /></label>
-          <label>Bridge Listen Port<input type="number" min={1} max={65535} value={input.bridgeListenPort} onChange={(e) => update('bridgeListenPort', Number(e.target.value))} /></label>
-          <label>Proxy Cert Thumbprint<input value={input.trustedProxyCertificateThumbprint ?? ''} onChange={(e) => update('trustedProxyCertificateThumbprint', e.target.value || null)} /></label>
+          <label>
+            Default Certificate Lifetime (hours)
+            <input
+              type="number"
+              min={minHours}
+              max={maxHours}
+              value={hours}
+              onChange={(e) => setHours(clamp(Number(e.target.value)))}
+              required
+            />
+            <small>
+              {formatLifetime(hours)} &middot; range {formatLifetime(minHours)} to {formatLifetime(maxHours)}
+            </small>
+          </label>
+          <label>
+            Quick presets
+            <select value={lifetimePresetsHours.find((p) => p.hours === hours)?.hours ?? ''} onChange={(e) => setHours(Number(e.target.value))}>
+              <option value="">Custom</option>
+              {lifetimePresetsHours.map((preset) => (
+                <option key={preset.hours} value={preset.hours}>{preset.label}</option>
+              ))}
+            </select>
+          </label>
           <div className="settingsActions">
             <button className="primary" type="submit">Save Settings</button>
           </div>
         </form>
-      </section>
-
-      <section className="panel">
-        <div className="panelHeader">
-          <div>
-            <h2>Scoreboard Snapshot</h2>
-            <p>Reads the configured harness scoreboard through the gateway.</p>
-          </div>
-          <button onClick={() => void fetchScoreboard()}><Trophy size={16} /> Fetch Scoreboard</button>
-        </div>
-        {scoreboardError && <p className="formError">{scoreboardError}</p>}
-        {scoreboard && (
-          <pre className="jsonPreview">{JSON.stringify(scoreboard.body, null, 2)}</pre>
-        )}
       </section>
     </div>
   );
@@ -426,10 +430,12 @@ function DevicesPage({
   devices,
   certificatesByDevice,
   run,
+  refresh,
 }: {
   devices: Device[];
   certificatesByDevice: Record<string, Certificate[]>;
   run: Runner;
+  refresh: () => Promise<void>;
 }) {
   const [creating, setCreating] = useState(false);
 
@@ -438,7 +444,7 @@ function DevicesPage({
       <div className="panelHeader">
         <div>
           <h2>Devices</h2>
-          <p>EST enrollment is allowed only after registration and approval.</p>
+          <p>Register an alias to issue a one-time activation code; the device supplies its identity during activation.</p>
         </div>
         <button className="primary" onClick={() => setCreating(true)}>
           <Plus size={16} /> Register Device
@@ -447,9 +453,10 @@ function DevicesPage({
       <table>
         <thead>
           <tr>
-            <th>Name</th>
-            <th>Subject CN</th>
+            <th>Alias</th>
+            <th>Device Identity</th>
             <th>Status</th>
+            <th>Activation</th>
             <th>Latest Certificate</th>
             <th>Actions</th>
           </tr>
@@ -460,22 +467,30 @@ function DevicesPage({
             return (
               <tr key={device.id}>
                 <td>{device.displayName}</td>
-                <td><code>{device.subjectCommonName}</code></td>
+                <td>
+                  {device.status === 'pending' ? (
+                    <span className="muted">Waiting for device activation</span>
+                  ) : (
+                    <>
+                      <code>{device.subjectCommonName}</code>
+                      <small>{[device.manufacturer, device.model, device.serialNumber].filter(Boolean).join(' · ')}</small>
+                    </>
+                  )}
+                </td>
                 <td><Badge tone={device.status === 'active' ? 'success' : device.status === 'removed' ? 'danger' : 'warn'}>{device.status}</Badge></td>
+                <td>{activationState(device)}</td>
                 <td>{latest ? `${latest.caBackendType ?? 'unknown'} · ${latest.gatewayOid ?? 'no OID'}` : '-'}</td>
                 <td className="actions">
-                  <button disabled={device.status === 'active'} onClick={() => void run(() => api.approveDevice(device.id), `Approved ${device.displayName}`)}>Approve</button>
-                  <button disabled={device.status !== 'active'} onClick={() => void run(() => api.demoEnrollDevice(device.id), `Enrolled ${device.displayName} through active backend`)}>Enroll</button>
                   <button disabled={device.status === 'removed'} className="danger" onClick={() => void run(() => api.removeDevice(device.id), `Removed ${device.displayName}`)}>Remove</button>
                 </td>
               </tr>
             );
           })}
-          {!devices.length && <EmptyRow columns={5} text="No devices registered." />}
+          {!devices.length && <EmptyRow columns={6} text="No devices registered." />}
         </tbody>
       </table>
       <CertificateHistory devices={devices} certificatesByDevice={certificatesByDevice} />
-      {creating && <DeviceModal onClose={() => setCreating(false)} run={run} />}
+      {creating && <DeviceModal onClose={() => setCreating(false)} run={run} refresh={refresh} />}
     </section>
   );
 }
@@ -763,33 +778,65 @@ function BackendConfigFields({
   return null;
 }
 
-function DeviceModal({ onClose, run }: { onClose: () => void; run: Runner }) {
+function DeviceModal({ onClose, run, refresh }: { onClose: () => void; run: Runner; refresh: () => Promise<void> }) {
   const stamp = new Date().toISOString().replace(/\D/g, '').slice(0, 14);
-  const [input, setInput] = useState<DeviceInput>({
-    displayName: `Demo Device ${stamp}`,
-    subjectCommonName: `kryptonian-demo-${stamp}`,
-    manufacturer: 'RTSec',
-    model: 'MEDIATE Demo',
-    serialNumber: stamp,
-  });
+  const [alias, setAlias] = useState(`Demo Device ${stamp}`);
+  const [activation, setActivation] = useState<DeviceActivationCode | null>(null);
+  const [copyStatus, setCopyStatus] = useState<string | null>(null);
 
-  const update = (key: keyof DeviceInput, value: string) => setInput((current) => ({ ...current, [key]: value }));
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    await run(() => api.createDevice(input), `Registered ${input.displayName}`);
+    const input: DeviceInput = { displayName: alias };
+    const result = await run(async () => {
+      const device = await api.createDevice(input);
+      return api.generateActivationCode(device.id);
+    }, `Registered ${alias} and generated an activation code`, { refresh: false });
+    if (result) {
+      setActivation(result);
+      await copyActivationCode(result.activationCode);
+    }
+  };
+
+  const copyActivationCode = async (code: string) => {
+    if (!navigator.clipboard) {
+      setCopyStatus('Clipboard is unavailable. Select and copy the code below.');
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopyStatus('Copied to clipboard.');
+    } catch {
+      setCopyStatus('Clipboard copy was blocked. Select and copy the code below.');
+    }
+  };
+
+  const closeAfterRefresh = async () => {
+    await refresh();
     onClose();
   };
 
   return (
     <Modal title="Register Device" onClose={onClose}>
-      <form onSubmit={(event) => void submit(event)} className="form">
-        <label>Name<input value={input.displayName} onChange={(e) => update('displayName', e.target.value)} required /></label>
-        <label>Subject CN<input value={input.subjectCommonName} onChange={(e) => update('subjectCommonName', e.target.value)} required /></label>
-        <label>Manufacturer<input value={input.manufacturer ?? ''} onChange={(e) => update('manufacturer', e.target.value)} /></label>
-        <label>Model<input value={input.model ?? ''} onChange={(e) => update('model', e.target.value)} /></label>
-        <label>Serial<input value={input.serialNumber ?? ''} onChange={(e) => update('serialNumber', e.target.value)} /></label>
-        <div className="modalActions"><button type="button" onClick={onClose}>Cancel</button><button className="primary" type="submit">Register</button></div>
-      </form>
+      {activation ? (
+        <div className="activationResult">
+          <label>
+            Activation code
+            <code>{activation.activationCode}</code>
+          </label>
+          {copyStatus && <p className="copyStatus">{copyStatus}</p>}
+          <p>Expires {formatDate(activation.expiresAt)}. Give this code to the device; it will present its CN, manufacturer, model, and serial during activation.</p>
+          <div className="modalActions">
+            <button type="button" onClick={() => void copyActivationCode(activation.activationCode)}>Copy Code</button>
+            <button className="primary" type="button" onClick={() => void closeAfterRefresh()}>Done</button>
+          </div>
+        </div>
+      ) : (
+        <form onSubmit={(event) => void submit(event)} className="form">
+          <label>Alias/Nickname<input value={alias} onChange={(e) => setAlias(e.target.value)} required /></label>
+          <div className="modalActions"><button type="button" onClick={onClose}>Cancel</button><button className="primary" type="submit">Register</button></div>
+        </form>
+      )}
     </Modal>
   );
 }
@@ -855,7 +902,11 @@ function ProfileModal({
   );
 }
 
-type Runner = (operation: () => Promise<unknown>, success: string) => Promise<void>;
+type Runner = <T>(
+  operation: () => Promise<T>,
+  success: string,
+  options?: { refresh?: boolean },
+) => Promise<T | undefined>;
 
 function Modal({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) {
   return (
@@ -890,6 +941,19 @@ function formatDate(value: string) {
 
 function shortId(value: string) {
   return value.length > 18 ? `${value.slice(0, 8)}...${value.slice(-6)}` : value;
+}
+
+function activationState(device: Device) {
+  if (device.activationCodeUsedAt) {
+    return `Used ${formatDate(device.activationCodeUsedAt)}`;
+  }
+  if (device.hasActivationCode && device.activationCodeExpiresAt) {
+    return `Code expires ${formatDate(device.activationCodeExpiresAt)}`;
+  }
+  if (device.status === 'pending') {
+    return 'No active code';
+  }
+  return '-';
 }
 
 function describeError(error: unknown) {

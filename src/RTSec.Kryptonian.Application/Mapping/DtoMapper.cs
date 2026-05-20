@@ -179,21 +179,14 @@ internal static class DtoMapper
         };
     }
 
-    public static HackathonSettingsDto ToDto(HackathonSettings entity)
+    public static GatewaySettingsDto ToDto(GatewaySettings entity)
     {
-        return new HackathonSettingsDto
+        return new GatewaySettingsDto
         {
             Id = entity.Id.ToString(),
-            HarnessBaseUrl = entity.HarnessBaseUrl,
-            TeamToken = entity.TeamToken,
-            DimseHost = entity.DimseHost,
-            DimseTlsPort = entity.DimseTlsPort,
-            OrthancDimsePort = entity.OrthancDimsePort,
-            DicomWebBaseUrl = entity.DicomWebBaseUrl,
-            CalledAeTitle = entity.CalledAeTitle,
-            BridgeAeTitle = entity.BridgeAeTitle,
-            BridgeListenPort = entity.BridgeListenPort,
-            TrustedProxyCertificateThumbprint = entity.TrustedProxyCertificateThumbprint,
+            DefaultCertificateLifetimeHours = entity.DefaultCertificateLifetimeHours,
+            MinCertificateLifetimeHours = GatewaySettings.MinCertificateLifetimeHours,
+            MaxCertificateLifetimeHours = GatewaySettings.MaxCertificateLifetimeHours,
             CreatedAt = entity.CreatedAt,
             UpdatedAt = entity.UpdatedAt
         };

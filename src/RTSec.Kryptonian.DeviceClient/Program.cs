@@ -1,6 +1,7 @@
-using System.Net.Http.Json;
-using System.Text.Json;
-using System.Text.Json.Serialization;
+using System.Net.Http.Headers;
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
+using System.Text;
 
 var options = DeviceClientOptions.Parse(args);
 if (options.ShowHelp)
@@ -24,39 +25,39 @@ using var http = new HttpClient
 
 try
 {
-    var request = new DeviceApprovalRequest(
-        options.DisplayName,
-        options.SubjectCommonName,
-        options.Manufacturer,
-        options.Model,
-        options.SerialNumber);
-
-    Console.WriteLine($"Requesting gateway approval from {new Uri(options.GatewayUrl!, "/api/device-requests")}");
-    Console.WriteLine($"Device CN: {request.SubjectCommonName}");
+    Console.WriteLine($"Activating device through {new Uri(options.GatewayUrl!, "/.well-known/est/simpleenroll")}");
+    Console.WriteLine($"Device alias: {options.DisplayName}");
+    Console.WriteLine($"Device CN: {options.SubjectCommonName}");
+    Console.WriteLine($"Serial: {options.SerialNumber}");
     Console.WriteLine();
 
-    using var response = await http.PostAsJsonAsync("/api/device-requests", request, Json.Options);
+    var (csr, privateKeyPem) = CreateCsr(options.SubjectCommonName);
+    using var request = new HttpRequestMessage(HttpMethod.Post, "/.well-known/est/simpleenroll");
+    request.Headers.Add("X-Activation-Code", options.ActivationCode);
+    request.Headers.Add("X-Device-Manufacturer", options.Manufacturer);
+    request.Headers.Add("X-Device-Model", options.Model);
+    request.Headers.Add("X-Device-Serial-Number", options.SerialNumber);
+    request.Headers.Add("Content-Transfer-Encoding", "base64");
+    request.Content = new StringContent(Convert.ToBase64String(csr), Encoding.ASCII);
+    request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/pkcs10");
+
+    using var response = await http.SendAsync(request);
     var responseText = await response.Content.ReadAsStringAsync();
 
     if (!response.IsSuccessStatusCode)
     {
-        Console.Error.WriteLine($"Approval request failed: HTTP {(int)response.StatusCode} {response.ReasonPhrase}");
+        Console.Error.WriteLine($"Activation enrollment failed: HTTP {(int)response.StatusCode} {response.ReasonPhrase}");
         Console.Error.WriteLine(responseText);
         return 1;
     }
 
-    var approval = JsonSerializer.Deserialize<DeviceApprovalResponse>(responseText, Json.Options);
-    if (approval == null)
-    {
-        Console.WriteLine(responseText);
-        return 0;
-    }
+    var outputPrefix = $"device-{options.SubjectCommonName}";
+    await File.WriteAllTextAsync($"{outputPrefix}.key.pem", privateKeyPem);
+    await File.WriteAllTextAsync($"{outputPrefix}.pkcs7.b64", responseText);
 
-    Console.WriteLine("Approval request accepted.");
-    Console.WriteLine($"Device ID: {approval.DeviceId}");
-    Console.WriteLine($"Status: {approval.Status}");
-    Console.WriteLine($"Subject CN: {approval.SubjectCommonName}");
-    Console.WriteLine(approval.Message);
+    Console.WriteLine("Activation certificate issued.");
+    Console.WriteLine($"Certificate response saved to {outputPrefix}.pkcs7.b64");
+    Console.WriteLine($"Private key saved to {outputPrefix}.key.pem");
     return 0;
 }
 catch (HttpRequestException ex)
@@ -70,25 +71,16 @@ catch (TaskCanceledException ex)
     return 1;
 }
 
-internal sealed record DeviceApprovalRequest(
-    [property: JsonPropertyName("displayName")] string DisplayName,
-    [property: JsonPropertyName("subjectCommonName")] string SubjectCommonName,
-    [property: JsonPropertyName("manufacturer")] string? Manufacturer,
-    [property: JsonPropertyName("model")] string? Model,
-    [property: JsonPropertyName("serialNumber")] string? SerialNumber);
-
-internal sealed record DeviceApprovalResponse(
-    [property: JsonPropertyName("deviceId")] string DeviceId,
-    [property: JsonPropertyName("status")] string Status,
-    [property: JsonPropertyName("subjectCommonName")] string SubjectCommonName,
-    [property: JsonPropertyName("message")] string Message);
-
-internal static class Json
+static (byte[] Csr, string PrivateKeyPem) CreateCsr(string commonName)
 {
-    public static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web)
-    {
-        WriteIndented = true
-    };
+    using var rsa = RSA.Create(2048);
+    var request = new CertificateRequest(
+        new X500DistinguishedName($"CN={commonName}"),
+        rsa,
+        HashAlgorithmName.SHA256,
+        RSASignaturePadding.Pkcs1);
+
+    return (request.CreateSigningRequest(), rsa.ExportPkcs8PrivateKeyPem());
 }
 
 internal sealed class DeviceClientOptions
@@ -104,6 +96,8 @@ internal sealed class DeviceClientOptions
     public string? Model { get; private init; }
 
     public string? SerialNumber { get; private init; }
+
+    public string ActivationCode { get; private init; } = string.Empty;
 
     public bool ShowHelp { get; private init; }
 
@@ -145,7 +139,7 @@ internal sealed class DeviceClientOptions
         var stamp = DateTimeOffset.UtcNow.ToString("yyyyMMddHHmmss", System.Globalization.CultureInfo.InvariantCulture);
         var gateway = GetValue(values, "gateway")
             ?? Environment.GetEnvironmentVariable("KRYPTONIAN_GATEWAY_URL")
-            ?? "http://localhost:5000";
+            ?? "https://localhost:8443";
         var serial = GetValue(values, "serial") ?? $"DEV-{stamp}";
         var cn = GetValue(values, "cn") ?? $"medical-device-{serial}".ToLowerInvariant();
 
@@ -157,7 +151,8 @@ internal sealed class DeviceClientOptions
             SubjectCommonName = cn,
             Manufacturer = GetValue(values, "manufacturer") ?? "Kryptonian Demo",
             Model = GetValue(values, "model") ?? "MEDIATE Device",
-            SerialNumber = serial
+            SerialNumber = serial,
+            ActivationCode = GetValue(values, "activation-code") ?? Environment.GetEnvironmentVariable("KRYPTONIAN_ACTIVATION_CODE") ?? string.Empty
         };
     }
 
@@ -169,9 +164,9 @@ internal sealed class DeviceClientOptions
             return false;
         }
 
-        if (GatewayUrl.Scheme != Uri.UriSchemeHttp && GatewayUrl.Scheme != Uri.UriSchemeHttps)
+        if (GatewayUrl.Scheme != Uri.UriSchemeHttps)
         {
-            error = "Gateway URL must use http or https.";
+            error = "Gateway URL must use https for EST activation.";
             return false;
         }
 
@@ -187,28 +182,41 @@ internal sealed class DeviceClientOptions
             return false;
         }
 
+        if (string.IsNullOrWhiteSpace(SerialNumber))
+        {
+            error = "Device serial number is required.";
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(ActivationCode))
+        {
+            error = "Activation code is required. Use --activation-code or KRYPTONIAN_ACTIVATION_CODE.";
+            return false;
+        }
+
         error = string.Empty;
         return true;
     }
 
     public static void PrintHelp()
     {
-        Console.WriteLine("Kryptonian medical device approval requester");
+        Console.WriteLine("Kryptonian medical device activation client");
         Console.WriteLine();
         Console.WriteLine("Usage:");
         Console.WriteLine("  dotnet run --project src/RTSec.Kryptonian.DeviceClient -- [options]");
         Console.WriteLine();
         Console.WriteLine("Options:");
-        Console.WriteLine("  --gateway <url>        Gateway base URL. Defaults to KRYPTONIAN_GATEWAY_URL or http://localhost:5000.");
+        Console.WriteLine("  --gateway <url>        Gateway base URL. Defaults to KRYPTONIAN_GATEWAY_URL or https://localhost:8443.");
         Console.WriteLine("  --name <name>          Device display name.");
         Console.WriteLine("  --cn <common-name>     CSR subject common name the gateway should approve.");
         Console.WriteLine("  --manufacturer <name>  Device manufacturer.");
         Console.WriteLine("  --model <name>         Device model.");
         Console.WriteLine("  --serial <value>       Device serial number.");
+        Console.WriteLine("  --activation-code <c>  One-time code generated from the Devices tab.");
         Console.WriteLine("  --help                 Show help.");
         Console.WriteLine();
         Console.WriteLine("Example:");
-        Console.WriteLine("  dotnet run --project src/RTSec.Kryptonian.DeviceClient -- --gateway http://localhost:5000 --name \"Scanner 7\" --cn scanner-7 --serial SCAN-7");
+        Console.WriteLine("  dotnet run --project src/RTSec.Kryptonian.DeviceClient -- --gateway https://localhost:8443 --name \"Scanner 7\" --cn scanner-7 --serial SCAN-7 --activation-code ABCD-EFGH");
     }
 
     private static string? GetValue(IReadOnlyDictionary<string, string?> values, string key)

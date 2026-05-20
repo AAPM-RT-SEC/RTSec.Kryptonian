@@ -5,14 +5,14 @@ using RTSec.Kryptonian.Infrastructure.Data;
 
 namespace RTSec.Kryptonian.Infrastructure.Repositories;
 
-public class HackathonSettingsRepository : BaseRepository<HackathonSettings>, IHackathonSettingsRepository
+public class GatewaySettingsRepository : BaseRepository<GatewaySettings>, IGatewaySettingsRepository
 {
-    public HackathonSettingsRepository(KryptonianDbContext context)
+    public GatewaySettingsRepository(KryptonianDbContext context)
         : base(context)
     {
     }
 
-    public async Task<HackathonSettings?> GetSingletonAsync(CancellationToken ct = default)
+    public async Task<GatewaySettings?> GetSingletonAsync(CancellationToken ct = default)
     {
         return await _dbSet
             .OrderBy(settings => settings.CreatedAt)

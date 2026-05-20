@@ -20,7 +20,7 @@ public static class ApplicationServiceExtensions
         services.AddScoped<IEnrollmentEventService, EnrollmentEventService>();
         services.AddScoped<IEnrollmentOrchestrator, EnrollmentOrchestrator>();
         services.AddScoped<IDeviceService, DeviceService>();
-        services.AddScoped<IHackathonSettingsService, HackathonSettingsService>();
+        services.AddScoped<IGatewaySettingsService, GatewaySettingsService>();
 
         return services;
     }
