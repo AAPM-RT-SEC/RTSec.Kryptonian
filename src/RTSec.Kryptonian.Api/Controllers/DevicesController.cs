@@ -133,6 +133,27 @@ public class DevicesController : ControllerBase
         return device == null ? NotFound() : Ok(device);
     }
 
+    [HttpDelete("{id}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> Delete(string id, CancellationToken ct)
+    {
+        if (!Guid.TryParse(id, out var guid))
+            return NotFound();
+
+        try
+        {
+            var deleted = await _deviceService.PurgeAsync(guid, ct);
+            return deleted ? NoContent() : NotFound();
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogWarning(ex, "Permanent device delete rejected");
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
     [HttpGet("{id}/certificates")]
     [ProducesResponseType(typeof(IEnumerable<CertificateDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]

@@ -1,11 +1,13 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import {
   Activity,
+  Archive,
   CheckCircle2,
   KeyRound,
   MonitorCheck,
   Plus,
   RefreshCw,
+  Search,
   ServerCog,
   Settings,
   ShieldCheck,
@@ -438,6 +440,27 @@ function DevicesPage({
   refresh: () => Promise<void>;
 }) {
   const [creating, setCreating] = useState(false);
+  const [tab, setTab] = useState<'registry' | 'archive'>('registry');
+  const [registrySearch, setRegistrySearch] = useState('');
+  const [archiveSearch, setArchiveSearch] = useState('');
+  const registryDevices = useMemo(() => devices.filter((device) => device.status !== 'removed'), [devices]);
+  const archivedDevices = useMemo(() => devices.filter((device) => device.status === 'removed'), [devices]);
+  const search = tab === 'registry' ? registrySearch : archiveSearch;
+  const visibleDevices = useMemo(
+    () => filterDevices(tab === 'registry' ? registryDevices : archivedDevices, certificatesByDevice, search),
+    [archivedDevices, certificatesByDevice, registryDevices, search, tab],
+  );
+
+  const deleteArchivedDevice = (device: Device) => {
+    const confirmed = window.confirm(
+      `Permanently delete ${device.displayName} from the device registry? This cannot be undone.`,
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    void run(() => api.deleteDevice(device.id), `Permanently deleted ${device.displayName}`);
+  };
 
   return (
     <section className="panel">
@@ -449,6 +472,30 @@ function DevicesPage({
         <button className="primary" onClick={() => setCreating(true)}>
           <Plus size={16} /> Register Device
         </button>
+      </div>
+      <div className="deviceToolbar">
+        <div className="segmented" aria-label="Device views">
+          <button className={tab === 'registry' ? 'active' : ''} onClick={() => setTab('registry')}>
+            <MonitorCheck size={16} /> Active Devices <span>{registryDevices.length}</span>
+          </button>
+          <button className={tab === 'archive' ? 'active' : ''} onClick={() => setTab('archive')}>
+            <Archive size={16} /> Archived Devices <span>{archivedDevices.length}</span>
+          </button>
+        </div>
+        <label className="searchBox">
+          <Search size={16} />
+          <input
+            value={search}
+            onChange={(event) => {
+              if (tab === 'registry') {
+                setRegistrySearch(event.target.value);
+              } else {
+                setArchiveSearch(event.target.value);
+              }
+            }}
+            placeholder={tab === 'registry' ? 'Search active devices' : 'Search archived devices'}
+          />
+        </label>
       </div>
       <table>
         <thead>
@@ -462,7 +509,7 @@ function DevicesPage({
           </tr>
         </thead>
         <tbody>
-          {devices.map((device) => {
+          {visibleDevices.map((device) => {
             const latest = certificatesByDevice[device.id]?.[0];
             return (
               <tr key={device.id}>
@@ -481,18 +528,67 @@ function DevicesPage({
                 <td>{activationState(device)}</td>
                 <td>{latest ? `${latest.caBackendType ?? 'unknown'} · ${latest.gatewayOid ?? 'no OID'}` : '-'}</td>
                 <td className="actions">
-                  <button disabled={device.status === 'removed'} className="danger" onClick={() => void run(() => api.removeDevice(device.id), `Removed ${device.displayName}`)}>Remove</button>
+                  {tab === 'archive' ? (
+                    <button className="danger" onClick={() => deleteArchivedDevice(device)}>
+                      <Trash2 size={15} /> Delete
+                    </button>
+                  ) : (
+                    <button className="danger" onClick={() => void run(() => api.removeDevice(device.id), `Archived ${device.displayName}`)}>
+                      <Trash2 size={15} /> Archive
+                    </button>
+                  )}
                 </td>
               </tr>
             );
           })}
-          {!devices.length && <EmptyRow columns={6} text="No devices registered." />}
+          {!visibleDevices.length && (
+            <EmptyRow
+              columns={6}
+              text={search.trim() ? 'No devices match your search.' : tab === 'registry' ? 'No active devices registered.' : 'No archived devices.'}
+            />
+          )}
         </tbody>
       </table>
-      <CertificateHistory devices={devices} certificatesByDevice={certificatesByDevice} />
+      <CertificateHistory devices={visibleDevices} certificatesByDevice={certificatesByDevice} />
       {creating && <DeviceModal onClose={() => setCreating(false)} run={run} refresh={refresh} />}
     </section>
   );
+}
+
+function filterDevices(
+  devices: Device[],
+  certificatesByDevice: Record<string, Certificate[]>,
+  search: string,
+) {
+  const query = search.trim().toLowerCase();
+  if (!query) {
+    return devices;
+  }
+
+  return devices.filter((device) => {
+    const certificates = certificatesByDevice[device.id] ?? [];
+    const haystack = [
+      device.displayName,
+      device.subjectCommonName,
+      device.manufacturer,
+      device.model,
+      device.serialNumber,
+      device.status,
+      ...certificates.flatMap((certificate) => [
+        certificate.serialNumber,
+        certificate.subjectDn,
+        certificate.issuerDn,
+        certificate.thumbprint,
+        certificate.caBackendType,
+        certificate.gatewayOid,
+      ]),
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
+
+    return haystack.includes(query);
+  });
 }
 
 function CertificateHistory({

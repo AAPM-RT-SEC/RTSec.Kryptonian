@@ -85,6 +85,54 @@ public class DeviceServiceActivationTests
             .WithMessage("*lifetime*");
     }
 
+    [Fact]
+    public async Task PurgeAsyncDeletesRemovedDevice()
+    {
+        var device = new Device
+        {
+            Id = Guid.NewGuid(),
+            DisplayName = "Retired Scanner",
+            SubjectCommonName = "retired-scanner",
+            Status = DeviceStatus.Removed
+        };
+
+        _deviceRepoMock
+            .Setup(r => r.GetByIdAsync(device.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(device);
+
+        var sut = CreateSut();
+
+        var result = await sut.PurgeAsync(device.Id);
+
+        result.Should().BeTrue();
+        _deviceRepoMock.Verify(r => r.Delete(device), Times.Once);
+        _unitOfWorkMock.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task PurgeAsyncRejectsActiveDevice()
+    {
+        var device = new Device
+        {
+            Id = Guid.NewGuid(),
+            DisplayName = "Scanner",
+            SubjectCommonName = "scanner",
+            Status = DeviceStatus.Active
+        };
+
+        _deviceRepoMock
+            .Setup(r => r.GetByIdAsync(device.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(device);
+
+        var sut = CreateSut();
+
+        var act = () => sut.PurgeAsync(device.Id);
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*archived devices*");
+        _deviceRepoMock.Verify(r => r.Delete(It.IsAny<Device>()), Times.Never);
+    }
+
     private DeviceService CreateSut()
     {
         return new DeviceService(
