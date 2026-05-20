@@ -48,13 +48,7 @@ public class DeviceService : IDeviceService
     {
         ArgumentNullException.ThrowIfNull(dto);
 
-        var device = await CreatePendingDeviceAsync(
-            dto.DisplayName,
-            dto.SubjectCommonName,
-            dto.Manufacturer,
-            dto.Model,
-            dto.SerialNumber,
-            ct);
+        var device = await CreatePendingDeviceAsync(dto.DisplayName, ct);
 
         return DtoMapper.ToDto(device);
     }
@@ -63,13 +57,7 @@ public class DeviceService : IDeviceService
     {
         ArgumentNullException.ThrowIfNull(dto);
 
-        var device = await CreatePendingDeviceAsync(
-            dto.DisplayName,
-            dto.SubjectCommonName,
-            dto.Manufacturer,
-            dto.Model,
-            dto.SerialNumber,
-            ct);
+        var device = await CreatePendingDeviceAsync(dto.DisplayName, ct);
 
         _logger.LogInformation("Device approval requested for {SubjectCommonName}", device.SubjectCommonName);
 
@@ -78,7 +66,7 @@ public class DeviceService : IDeviceService
             DeviceId = device.Id.ToString(),
             Status = device.Status.ToString().ToLowerInvariant(),
             SubjectCommonName = device.SubjectCommonName,
-            Message = "Approval request received. An administrator must approve this device before EST enrollment is allowed."
+            Message = "Device registration created. An administrator must provide the activation code before first enrollment."
         };
     }
 
@@ -100,11 +88,6 @@ public class DeviceService : IDeviceService
             throw new InvalidOperationException("Activation codes can only be generated for pending devices.");
         }
 
-        if (string.IsNullOrWhiteSpace(device.SerialNumber))
-        {
-            throw new InvalidOperationException("Device serial number is required before generating an activation code.");
-        }
-
         var validForMinutes = dto.ValidForMinutes ?? DefaultActivationCodeMinutes;
         if (validForMinutes <= 0 || validForMinutes > MaxActivationCodeMinutes)
         {
@@ -114,7 +97,7 @@ public class DeviceService : IDeviceService
         var activationCode = GenerateActivationCode();
         var expiresAt = DateTime.UtcNow.AddMinutes(validForMinutes);
 
-        device.ActivationCodeHash = HashActivationCode(activationCode, device.SubjectCommonName, device.SerialNumber);
+        device.ActivationCodeHash = HashActivationCode(activationCode, device.Id);
         device.ActivationCodeExpiresAt = expiresAt;
         device.ActivationCodeUsedAt = null;
 
@@ -127,9 +110,9 @@ public class DeviceService : IDeviceService
         {
             DeviceId = device.Id.ToString(),
             SubjectCommonName = device.SubjectCommonName,
-            SerialNumber = device.SerialNumber,
+            SerialNumber = device.SerialNumber ?? string.Empty,
             ActivationCode = activationCode,
-            QrPayload = $"kryptonian-activation:{device.SubjectCommonName}:{device.SerialNumber}:{activationCode}",
+            QrPayload = $"kryptonian-activation:{device.Id}:{activationCode}",
             ExpiresAt = expiresAt
         };
     }
@@ -242,51 +225,29 @@ public class DeviceService : IDeviceService
         return Convert.ToHexString(bytes);
     }
 
-    public static string HashActivationCode(string activationCode, string subjectCommonName, string serialNumber)
+    public static string HashActivationCode(string activationCode, Guid deviceId)
     {
-        var material = $"{NormalizeBindingValue(subjectCommonName)}|{NormalizeBindingValue(serialNumber)}|{activationCode.Trim()}";
+        ArgumentException.ThrowIfNullOrWhiteSpace(activationCode);
+
+        var material = $"{deviceId:N}|{activationCode.Trim()}";
         var hash = SHA256.HashData(Encoding.UTF8.GetBytes(material));
         return Convert.ToHexString(hash);
     }
 
-    private static string NormalizeBindingValue(string value)
-    {
-        return value.Trim().ToUpperInvariant();
-    }
-
-    private async Task<Device> CreatePendingDeviceAsync(
-        string displayName,
-        string subjectCommonName,
-        string? manufacturer,
-        string? model,
-        string? serialNumber,
-        CancellationToken ct)
+    private async Task<Device> CreatePendingDeviceAsync(string displayName, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(displayName))
         {
             throw new ArgumentException("Display name is required.");
         }
 
-        if (string.IsNullOrWhiteSpace(subjectCommonName))
-        {
-            throw new ArgumentException("Subject common name is required.");
-        }
-
-        var normalizedCn = subjectCommonName.Trim();
-        var existing = await _unitOfWork.Devices.GetBySubjectCommonNameAsync(normalizedCn, ct);
-        if (existing != null)
-        {
-            throw new ArgumentException($"A device with subject common name '{normalizedCn}' already exists.");
-        }
+        var id = Guid.NewGuid();
 
         var device = new Device
         {
-            Id = Guid.NewGuid(),
+            Id = id,
             DisplayName = displayName.Trim(),
-            SubjectCommonName = normalizedCn,
-            Manufacturer = string.IsNullOrWhiteSpace(manufacturer) ? null : manufacturer.Trim(),
-            Model = string.IsNullOrWhiteSpace(model) ? null : model.Trim(),
-            SerialNumber = string.IsNullOrWhiteSpace(serialNumber) ? null : serialNumber.Trim(),
+            SubjectCommonName = $"pending-{id:N}",
             Status = DeviceStatus.Pending
         };
 

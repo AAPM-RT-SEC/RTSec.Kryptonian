@@ -227,6 +227,16 @@ main {
   color: #607479;
 }
 
+.muted,
+td small {
+  color: #64787d;
+}
+
+td small {
+  display: block;
+  margin-top: 5px;
+}
+
 table {
   border-collapse: collapse;
   width: 100%;
@@ -423,6 +433,33 @@ th {
   gap: 8px;
   justify-content: flex-end;
   margin-top: 6px;
+}
+
+.activationResult {
+  display: grid;
+  gap: 14px;
+}
+
+.activationResult label {
+  color: #435b61;
+  display: grid;
+  gap: 6px;
+}
+
+.activationResult code {
+  display: block;
+  font-size: 1.25rem;
+  padding: 10px 12px;
+}
+
+.activationResult p {
+  color: #52686e;
+  margin: 0;
+}
+
+.activationResult .copyStatus {
+  color: #147245;
+  font-weight: 600;
 }
 
 .settingsGrid {

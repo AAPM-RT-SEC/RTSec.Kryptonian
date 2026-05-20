@@ -24,14 +24,17 @@ public class EstProfileRepository : BaseRepository<EstProfile>, IEstProfileRepos
     {
         var normalizedHostname = HostnameMatcher.NormalizeHostname(hostname);
 
-        // First, try exact matches (most common case, fully server-side)
-        var exactMatch = await _dbSet
+        // First, try exact matches (most common case).
+        // Hostname lists are value-converted collections, so keep the comparison explicit
+        // and case-insensitive instead of relying on provider-specific collection Contains.
+        var exactCandidates = await _dbSet
             .Include(p => p.CaBackend)
             .Where(p => p.IsEnabled)
             .Where(p => p.PathPrefix == pathPrefix)
             .Where(p => p.HostnameMatchType == HostnameMatchType.Exact)
-            .Where(p => p.Hostnames.Contains(normalizedHostname))
-            .FirstOrDefaultAsync(ct);
+            .ToListAsync(ct);
+
+        var exactMatch = exactCandidates.FirstOrDefault(p => HostnameMatcher.Matches(p, normalizedHostname));
 
         if (exactMatch != null)
             return exactMatch;

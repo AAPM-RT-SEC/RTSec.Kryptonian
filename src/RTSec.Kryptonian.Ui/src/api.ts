@@ -29,6 +29,9 @@ export interface Device {
   model?: string | null;
   serialNumber?: string | null;
   status: string;
+  hasActivationCode: boolean;
+  activationCodeExpiresAt?: string | null;
+  activationCodeUsedAt?: string | null;
   approvedAt?: string | null;
   removedAt?: string | null;
   lastCertificateId?: string | null;
@@ -38,10 +41,19 @@ export interface Device {
 
 export interface DeviceInput {
   displayName: string;
-  subjectCommonName: string;
+  subjectCommonName?: string;
   manufacturer?: string | null;
   model?: string | null;
   serialNumber?: string | null;
+}
+
+export interface DeviceActivationCode {
+  deviceId: string;
+  subjectCommonName: string;
+  serialNumber: string;
+  activationCode: string;
+  qrPayload: string;
+  expiresAt: string;
 }
 
 export interface Certificate {
@@ -113,28 +125,17 @@ export interface EnrollmentEvent {
   issuedCertificateId?: string | null;
 }
 
-export interface HackathonSettings {
+export interface GatewaySettings {
   id: string;
-  harnessBaseUrl: string;
-  teamToken: string;
-  dimseHost: string;
-  dimseTlsPort: number;
-  orthancDimsePort: number;
-  dicomWebBaseUrl: string;
-  calledAeTitle: string;
-  bridgeAeTitle: string;
-  bridgeListenPort: number;
-  trustedProxyCertificateThumbprint?: string | null;
+  defaultCertificateLifetimeHours: number;
+  minCertificateLifetimeHours: number;
+  maxCertificateLifetimeHours: number;
   createdAt: string;
   updatedAt: string;
 }
 
-export type HackathonSettingsInput = Omit<HackathonSettings, 'id' | 'createdAt' | 'updatedAt'>;
-
-export interface HarnessScoreboardSnapshot {
-  fetchedAt: string;
-  url: string;
-  body: unknown;
+export interface GatewaySettingsInput {
+  defaultCertificateLifetimeHours: number;
 }
 
 export class ApiError extends Error {
@@ -208,6 +209,11 @@ export const api = {
   getDevices: () => request<Device[]>('/api/devices'),
   createDevice: (input: DeviceInput) => request<Device>('/api/devices', jsonBody(input)),
   approveDevice: (id: string) => request<Device>(`/api/devices/${id}/approve`, { method: 'POST' }),
+  generateActivationCode: (id: string, validForMinutes?: number) =>
+    request<DeviceActivationCode>(
+      `/api/devices/${id}/activation-code`,
+      jsonBody(validForMinutes == null ? {} : { validForMinutes }),
+    ),
   removeDevice: (id: string) => request<Device>(`/api/devices/${id}/remove`, { method: 'POST' }),
   getDeviceCertificates: (id: string) => request<Certificate[]>(`/api/devices/${id}/certificates`),
   demoEnrollDevice: (id: string) =>
@@ -223,9 +229,7 @@ export const api = {
   getEnrollmentEvents: (limit = 50) =>
     request<EnrollmentEvent[]>(`/api/status/enrollments?limit=${encodeURIComponent(limit)}`),
 
-  getHackathonSettings: () => request<HackathonSettings>('/api/settings/hackathon'),
-  updateHackathonSettings: (input: HackathonSettingsInput) =>
-    request<HackathonSettings>('/api/settings/hackathon', { method: 'PUT', body: JSON.stringify(input) }),
-  getHarnessScoreboard: () =>
-    request<HarnessScoreboardSnapshot>('/api/settings/hackathon/scoreboard'),
+  getGatewaySettings: () => request<GatewaySettings>('/api/settings/gateway'),
+  updateGatewaySettings: (input: GatewaySettingsInput) =>
+    request<GatewaySettings>('/api/settings/gateway', { method: 'PUT', body: JSON.stringify(input) }),
 };

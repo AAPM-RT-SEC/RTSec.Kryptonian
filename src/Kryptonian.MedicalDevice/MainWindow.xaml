@@ -1,0 +1,83 @@
+<Window x:Class="Kryptonian.MedicalDevice.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Kryptonian Medical Device"
+        Width="560" Height="780"
+        WindowStartupLocation="CenterScreen"
+        Background="#F4F4F4"
+        ResizeMode="CanMinimize"
+        UseLayoutRounding="True"
+        SnapsToDevicePixels="True">
+    <Border Margin="18" Padding="28" Background="{StaticResource PanelBackground}" BorderBrush="#1A1A1A" BorderThickness="1.5" CornerRadius="22">
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <StackPanel>
+                <TextBlock Text="Kryptonian Medical Device"
+                           HorizontalAlignment="Center"
+                           FontSize="24" FontWeight="SemiBold"
+                           Margin="0,4,0,24"/>
+
+                <TextBlock Text="Kryptonian Gateway" Style="{StaticResource FieldLabel}"/>
+                <TextBox x:Name="GatewayText" Text="https://localhost:8443"/>
+
+                <TextBlock Text="CN" Style="{StaticResource FieldLabel}"/>
+                <TextBox x:Name="CommonNameText"/>
+
+                <TextBlock Text="Manufacturer" Style="{StaticResource FieldLabel}"/>
+                <TextBox x:Name="ManufacturerText"/>
+
+                <TextBlock Text="Model" Style="{StaticResource FieldLabel}"/>
+                <TextBox x:Name="ModelText"/>
+
+                <TextBlock Text="Serial" Style="{StaticResource FieldLabel}"/>
+                <TextBox x:Name="SerialText"/>
+
+                <TextBlock Text="Activation Code" Style="{StaticResource FieldLabel}"/>
+                <PasswordBox x:Name="ActivationCodeBox" PasswordChanged="OnInputChanged"/>
+
+                <Grid Margin="0,4,0,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0"
+                               Text="Install Certificate After Activation"
+                               VerticalAlignment="Center"
+                               FontSize="13"/>
+                    <CheckBox Grid.Column="1"
+                              x:Name="InstallToggle"
+                              Content="Yes"
+                              VerticalContentAlignment="Center"
+                              FontSize="13"
+                              IsChecked="False"/>
+                </Grid>
+
+                <TextBlock x:Name="StatusText"
+                           Text=""
+                           TextWrapping="Wrap"
+                           Foreground="#555555"
+                           Margin="0,10,0,0"
+                           FontSize="12"/>
+
+                <Grid Margin="0,18,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <ProgressBar Grid.Column="0"
+                                 x:Name="BusyBar"
+                                 IsIndeterminate="True"
+                                 Visibility="Collapsed"
+                                 VerticalAlignment="Center"
+                                 Height="6"
+                                 Margin="0,0,16,0"/>
+                    <Button Grid.Column="1"
+                            x:Name="EnrollButton"
+                            Content="Enroll"
+                            Style="{StaticResource PrimaryButton}"
+                            Click="OnEnrollClicked"
+                            IsEnabled="False"/>
+                </Grid>
+            </StackPanel>
+        </ScrollViewer>
+    </Border>
+</Window>

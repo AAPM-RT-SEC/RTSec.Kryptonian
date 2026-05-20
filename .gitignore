@@ -11,6 +11,7 @@ Thumbs.db
 [Oo]bj/
 **/[Bb]in/
 **/[Oo]bj/
+**/.test-bin/
 artifacts/
 TestResults/
 *.appxupload
