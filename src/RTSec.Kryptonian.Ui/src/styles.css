@@ -322,6 +322,73 @@ th {
   gap: 6px;
 }
 
+.countdown {
+  align-items: center;
+  border-radius: 999px;
+  display: inline-flex;
+  font-variant-numeric: tabular-nums;
+  gap: 7px;
+  min-width: 112px;
+  padding: 5px 10px;
+}
+
+.countdown .pulse {
+  border-radius: 999px;
+  height: 8px;
+  width: 8px;
+}
+
+.countdown.healthy {
+  background: #e7f6ef;
+  color: #126842;
+}
+
+.countdown.healthy .pulse {
+  background: #19a463;
+}
+
+.countdown.soon {
+  background: #fff4db;
+  color: #805300;
+}
+
+.countdown.soon .pulse {
+  background: #d68a00;
+}
+
+.countdown.urgent,
+.countdown.expired {
+  background: #ffe8e8;
+  color: #9d2626;
+}
+
+.countdown.urgent .pulse,
+.countdown.expired .pulse {
+  background: #c92a2a;
+}
+
+.countdown.empty {
+  background: #eef3f4;
+  color: #64787d;
+}
+
+.countdown:not(.empty) .pulse {
+  animation: countdown-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes countdown-pulse {
+  0%,
+  100% {
+    opacity: 0.45;
+    transform: scale(0.9);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1.18);
+  }
+}
+
 .badge {
   background: #eef3f4;
   border-radius: 999px;
