@@ -150,6 +150,26 @@ public class DeviceService : IDeviceService
         return DtoMapper.ToDto(device);
     }
 
+    public async Task<bool> PurgeAsync(Guid id, CancellationToken ct = default)
+    {
+        var device = await _unitOfWork.Devices.GetByIdAsync(id, ct);
+        if (device == null)
+        {
+            return false;
+        }
+
+        if (device.Status != DeviceStatus.Removed)
+        {
+            throw new InvalidOperationException("Only archived devices can be permanently deleted.");
+        }
+
+        _unitOfWork.Devices.Delete(device);
+        await _unitOfWork.SaveChangesAsync(ct);
+
+        _logger.LogInformation("Permanently deleted archived device {DeviceId}", id);
+        return true;
+    }
+
     public async Task<IEnumerable<CertificateDto>> GetCertificatesAsync(Guid id, CancellationToken ct = default)
     {
         var certificates = await _unitOfWork.Certificates.GetByDeviceRecordIdAsync(id, ct);

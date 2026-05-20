@@ -11,6 +11,7 @@ public interface IDeviceService
     Task<DeviceActivationCodeDto?> GenerateActivationCodeAsync(Guid id, DeviceActivationCodeCreateDto dto, CancellationToken ct = default);
     Task<DeviceDto?> ApproveAsync(Guid id, CancellationToken ct = default);
     Task<DeviceDto?> RemoveAsync(Guid id, CancellationToken ct = default);
+    Task<bool> PurgeAsync(Guid id, CancellationToken ct = default);
     Task<IEnumerable<CertificateDto>> GetCertificatesAsync(Guid id, CancellationToken ct = default);
     Task<DemoEnrollResponseDto?> DemoEnrollAsync(Guid id, Guid profileId, CancellationToken ct = default);
 }

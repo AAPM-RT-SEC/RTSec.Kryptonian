@@ -215,6 +215,7 @@ export const api = {
       jsonBody(validForMinutes == null ? {} : { validForMinutes }),
     ),
   removeDevice: (id: string) => request<Device>(`/api/devices/${id}/remove`, { method: 'POST' }),
+  deleteDevice: (id: string) => request<void>(`/api/devices/${id}`, { method: 'DELETE' }),
   getDeviceCertificates: (id: string) => request<Certificate[]>(`/api/devices/${id}/certificates`),
   demoEnrollDevice: (id: string) =>
     request<DemoEnrollResponse>(`/api/devices/${id}/demo-enroll`, { method: 'POST' }),
