@@ -32,9 +32,10 @@ public class CaBackendConfiguration : IEntityTypeConfiguration<CaBackend>
             .HasColumnName("url")
             .HasMaxLength(1024);
 
+        // No provider-specific column type — value converter serializes to a JSON string,
+        // which works identically on Postgres (text), SQLite (TEXT), and in-memory.
         builder.Property(e => e.Config)
             .HasColumnName("config")
-            .HasColumnType("jsonb")
             .HasConversion(
                 value => SerializeConfig(value),
                 value => DeserializeConfig(value))

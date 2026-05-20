@@ -93,26 +93,57 @@ try
     // Add API key authentication (passes isDevelopment to allow dev bypass if configured)
     builder.Services.AddApiKeyAuthentication(builder.Configuration, builder.Environment.IsDevelopment());
 
-    // Configure DbContext
+    // Configure DbContext. Provider is selected by Kryptonian:Database:Provider
+    // (Sqlite | PostgreSQL | InMemory); when unset it falls back to PostgreSQL if a
+    // connection string is present, otherwise InMemory.
     var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
         ?? builder.Configuration["Kryptonian:Database:ConnectionString"];
-
-    if (string.IsNullOrEmpty(connectionString))
+    var configuredProvider = builder.Configuration["Kryptonian:Database:Provider"];
+    var provider = configuredProvider?.Trim().ToLowerInvariant() ?? "";
+    if (string.IsNullOrEmpty(provider))
     {
-        // Use in-memory database for development if no connection string provided
-        builder.Services.AddDbContext<KryptonianDbContext>(options =>
-            options.UseInMemoryDatabase("KryptonianDev"));
-        Log.Warning("No connection string configured. Using in-memory database for development.");
+        provider = string.IsNullOrEmpty(connectionString) ? "inmemory" : "postgresql";
     }
-    else
-    {
-        // Configure Npgsql with dynamic JSON support for Dictionary<string, object> columns
-        var dataSourceBuilder = new Npgsql.NpgsqlDataSourceBuilder(connectionString);
-        dataSourceBuilder.EnableDynamicJson();
-        var dataSource = dataSourceBuilder.Build();
 
-        builder.Services.AddDbContext<KryptonianDbContext>(options =>
-            options.UseNpgsql(dataSource));
+    switch (provider)
+    {
+        case "sqlite":
+            if (string.IsNullOrEmpty(connectionString))
+            {
+                connectionString = "Data Source=kryptonian.db;Cache=Shared";
+            }
+            builder.Services.AddDbContext<KryptonianDbContext>(options =>
+                options.UseSqlite(connectionString));
+            Log.Information("Using SQLite database. Connection: {Conn}", connectionString);
+            break;
+
+        case "postgresql":
+        case "postgres":
+        case "npgsql":
+            if (string.IsNullOrEmpty(connectionString))
+            {
+                throw new InvalidOperationException("Kryptonian:Database:Provider=PostgreSQL requires ConnectionStrings:DefaultConnection.");
+            }
+            // Configure Npgsql with dynamic JSON support for Dictionary<string, object> columns
+            var dataSourceBuilder = new Npgsql.NpgsqlDataSourceBuilder(connectionString);
+            dataSourceBuilder.EnableDynamicJson();
+            var dataSource = dataSourceBuilder.Build();
+            builder.Services.AddDbContext<KryptonianDbContext>(options =>
+                options.UseNpgsql(dataSource));
+            Log.Information("Using PostgreSQL database.");
+            break;
+
+        case "inmemory":
+        case "in-memory":
+        case "memory":
+            builder.Services.AddDbContext<KryptonianDbContext>(options =>
+                options.UseInMemoryDatabase("KryptonianDev"));
+            Log.Warning("Using in-memory database. State will not survive process restarts.");
+            break;
+
+        default:
+            throw new InvalidOperationException(
+                $"Unknown Kryptonian:Database:Provider '{configuredProvider}'. Valid: Sqlite, PostgreSQL, InMemory.");
     }
 
     // Register Unit of Work (provides access to all repositories)
@@ -151,18 +182,23 @@ try
 
     var app = builder.Build();
 
-    // Apply database migrations in development
-    if (app.Environment.IsDevelopment())
+    // Initialize the database. Postgres uses the migration history; SQLite uses
+    // EnsureCreated since our migrations are Postgres-specific; in-memory needs no
+    // setup. Applies on every environment so deployments don't ship without a schema.
+    using (var scope = app.Services.CreateScope())
     {
-        using var scope = app.Services.CreateScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<KryptonianDbContext>();
-
-        // Only migrate if using a real database (not in-memory)
-        if (!dbContext.Database.IsInMemory())
+        if (dbContext.Database.IsNpgsql())
         {
             Log.Information("Applying database migrations...");
             dbContext.Database.Migrate();
             Log.Information("Database migrations applied successfully");
+        }
+        else if (dbContext.Database.IsSqlite())
+        {
+            Log.Information("Ensuring SQLite database schema...");
+            dbContext.Database.EnsureCreated();
+            Log.Information("SQLite schema ready");
         }
     }
 
@@ -193,17 +229,27 @@ try
         app.UseSwaggerUI();
     }
 
-    var uiDistPath = Path.GetFullPath(Path.Combine(
-        app.Environment.ContentRootPath,
-        "..",
-        "RTSec.Kryptonian.Ui",
-        "dist"));
-
-    if (Directory.Exists(uiDistPath))
+    // The dashboard ships in two layouts:
+    //   - Dev: ../RTSec.Kryptonian.Ui/dist (built by `npm run build` next to the API repo).
+    //   - Container: /app/wwwroot/ui (copied in from the Docker ui stage).
+    // The first existing path wins.
+    var uiCandidatePaths = new[]
     {
+        Path.GetFullPath(Path.Combine(app.Environment.ContentRootPath, "wwwroot", "ui")),
+        Path.GetFullPath(Path.Combine(app.Environment.ContentRootPath, "..", "RTSec.Kryptonian.Ui", "dist")),
+    };
+    var uiDistPath = uiCandidatePaths.FirstOrDefault(Directory.Exists);
+
+    if (uiDistPath != null)
+    {
+        Log.Information("Serving admin dashboard from {Path}", uiDistPath);
         var uiFileProvider = new PhysicalFileProvider(uiDistPath);
         app.UseDefaultFiles(new DefaultFilesOptions { FileProvider = uiFileProvider });
         app.UseStaticFiles(new StaticFileOptions { FileProvider = uiFileProvider });
+    }
+    else
+    {
+        Log.Information("No dashboard bundle found; API-only mode (checked: {Paths})", string.Join(", ", uiCandidatePaths));
     }
 
     var allowPlainHttpEst = app.Configuration.GetValue<bool>("Kryptonian:Est:AllowPlainHttp", false);
