@@ -443,6 +443,7 @@ function DevicesPage({
   const [tab, setTab] = useState<'registry' | 'archive'>('registry');
   const [registrySearch, setRegistrySearch] = useState('');
   const [archiveSearch, setArchiveSearch] = useState('');
+  const [now, setNow] = useState(() => Date.now());
   const registryDevices = useMemo(() => devices.filter((device) => device.status !== 'removed'), [devices]);
   const archivedDevices = useMemo(() => devices.filter((device) => device.status === 'removed'), [devices]);
   const search = tab === 'registry' ? registrySearch : archiveSearch;
@@ -461,6 +462,11 @@ function DevicesPage({
 
     void run(() => api.deleteDevice(device.id), `Permanently deleted ${device.displayName}`);
   };
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(interval);
+  }, []);
 
   return (
     <section className="panel">
@@ -505,6 +511,8 @@ function DevicesPage({
             <th>Status</th>
             <th>Activation</th>
             <th>Latest Certificate</th>
+            <th>Last Renewed</th>
+            <th>Expires In</th>
             <th>Actions</th>
           </tr>
         </thead>
@@ -527,6 +535,8 @@ function DevicesPage({
                 <td><Badge tone={device.status === 'active' ? 'success' : device.status === 'removed' ? 'danger' : 'warn'}>{device.status}</Badge></td>
                 <td>{activationState(device)}</td>
                 <td>{latest ? `${latest.caBackendType ?? 'unknown'} · ${latest.gatewayOid ?? 'no OID'}` : '-'}</td>
+                <td>{latest ? <RenewedAt certificate={latest} /> : <span className="muted">No certificate</span>}</td>
+                <td><ExpiryCountdown certificate={latest} now={now} /></td>
                 <td className="actions">
                   {tab === 'archive' ? (
                     <button className="danger" onClick={() => deleteArchivedDevice(device)}>
@@ -543,7 +553,7 @@ function DevicesPage({
           })}
           {!visibleDevices.length && (
             <EmptyRow
-              columns={6}
+              columns={8}
               text={search.trim() ? 'No devices match your search.' : tab === 'registry' ? 'No active devices registered.' : 'No archived devices.'}
             />
           )}
@@ -552,6 +562,51 @@ function DevicesPage({
       <CertificateHistory devices={visibleDevices} certificatesByDevice={certificatesByDevice} />
       {creating && <DeviceModal onClose={() => setCreating(false)} run={run} refresh={refresh} />}
     </section>
+  );
+}
+
+function RenewedAt({ certificate }: { certificate: Certificate }) {
+  return (
+    <>
+      <span>{formatDate(certificate.createdAt)}</span>
+      <small>{shortId(certificate.serialNumber)}</small>
+    </>
+  );
+}
+
+function ExpiryCountdown({ certificate, now }: { certificate?: Certificate; now: number }) {
+  if (!certificate) {
+    return <span className="countdown empty">No certificate</span>;
+  }
+
+  const remainingMs = new Date(certificate.notAfter).getTime() - now;
+  if (!Number.isFinite(remainingMs)) {
+    return <span className="countdown empty">Unknown</span>;
+  }
+
+  if (remainingMs <= 0) {
+    return (
+      <span className="countdown expired" title={`Expired ${formatDate(certificate.notAfter)}`}>
+        Expired
+      </span>
+    );
+  }
+
+  const totalSeconds = Math.floor(remainingMs / 1000);
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  const tone = remainingMs <= 24 * 60 * 60 * 1000 ? 'urgent' : remainingMs <= 7 * 24 * 60 * 60 * 1000 ? 'soon' : 'healthy';
+  const label = days > 0
+    ? `${days}d ${hours}h ${minutes}m`
+    : `${hours}h ${minutes}m ${seconds}s`;
+
+  return (
+    <span className={`countdown ${tone}`} title={`Expires ${formatDate(certificate.notAfter)}`}>
+      <span className="pulse" />
+      {label}
+    </span>
   );
 }
 
