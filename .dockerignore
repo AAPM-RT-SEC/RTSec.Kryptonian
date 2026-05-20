@@ -1,0 +1,45 @@
+# Build outputs and tooling state — never copied into Docker contexts.
+**/bin/
+**/obj/
+**/.test-bin/
+**/node_modules/
+**/dist/
+
+# Local logs / DBs / temp
+**/*.log
+**/*.db
+**/*.db-journal
+**/coverage/
+
+# Local env and secrets
+**/.env
+**/.env.*
+!**/.env.example
+**/appsettings.*.local.json
+**/appsettings.*.development.json
+**/appsettings.*.secrets.json
+
+# IDE / OS noise
+.vs/
+.idea/
+.vscode/
+.git/
+.github/
+.husky/
+.task/
+.devcontainer/
+
+# Other artifacts not needed by the build
+demo-output/
+docs/
+plans/
+tests/
+deploy/
+certs/
+
+# Repo-level files irrelevant to the API image
+*.md
+!README.md
+*.user
+*.suo
+TestResults/

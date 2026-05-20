@@ -26,9 +26,10 @@ public class EstProfileConfiguration : IEntityTypeConfiguration<EstProfile>
             .IsRequired()
             .HasMaxLength(255);
 
-        builder.Property(e => e.Hostnames)
+        // EF Core 8 maps primitive collections to JSON by default — works on Postgres,
+        // SQLite, and in-memory without provider-specific column hints.
+        builder.PrimitiveCollection(e => e.Hostnames)
             .HasColumnName("hostnames")
-            .HasColumnType("text[]")
             .Metadata.SetValueComparer(ValueComparers.StringCollectionComparer);
 
         builder.Property(e => e.HostnameMatchType)
@@ -49,9 +50,8 @@ public class EstProfileConfiguration : IEntityTypeConfiguration<EstProfile>
             .HasColumnName("certificate_template")
             .HasMaxLength(255);
 
-        builder.Property(e => e.AllowedKeyUsages)
+        builder.PrimitiveCollection(e => e.AllowedKeyUsages)
             .HasColumnName("allowed_key_usages")
-            .HasColumnType("jsonb")
             .Metadata.SetValueComparer(ValueComparers.StringCollectionComparer);
 
         builder.Property(e => e.ValidityDays)
@@ -80,9 +80,10 @@ public class EstProfileConfiguration : IEntityTypeConfiguration<EstProfile>
         builder.HasIndex(e => e.Name)
             .IsUnique();
 
-        // Unique constraint on pathPrefix + hostname combination
-        // Note: Requires custom handling for array containment in PostgreSQL
-        builder.HasIndex(e => new { e.PathPrefix, e.Hostnames })
-            .HasDatabaseName("ix_est_profiles_path_hostnames");
+        // Hostnames is a JSON-mapped primitive collection; SQL indexes cannot cover it
+        // portably. Hostname matching happens in-process after loading the profile, so
+        // no index is needed here.
+        builder.HasIndex(e => e.PathPrefix)
+            .HasDatabaseName("ix_est_profiles_path_prefix");
     }
 }

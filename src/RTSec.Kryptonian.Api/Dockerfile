@@ -1,4 +1,17 @@
-# Build stage
+# syntax=docker/dockerfile:1.7
+
+# ── UI stage ──────────────────────────────────────────────────────────────────
+# Builds the Vite admin dashboard. VITE_API_KEY is baked into the bundle so the
+# dashboard sends X-API-Key against the deployed gateway.
+FROM node:22-alpine AS ui
+WORKDIR /ui
+ARG VITE_API_KEY=""
+COPY src/RTSec.Kryptonian.Ui/package.json src/RTSec.Kryptonian.Ui/package-lock.json ./
+RUN npm ci
+COPY src/RTSec.Kryptonian.Ui/ ./
+RUN echo "VITE_API_KEY=$VITE_API_KEY" > .env.production && npm run build
+
+# ── .NET build stage ──────────────────────────────────────────────────────────
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 
@@ -19,7 +32,7 @@ COPY src/ src/
 WORKDIR /src/src/RTSec.Kryptonian.Api
 RUN dotnet publish -c Release -o /app/publish
 
-# Runtime stage
+# ── Runtime stage ─────────────────────────────────────────────────────────────
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
 WORKDIR /app
 
@@ -33,13 +46,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Create non-root user for security
 RUN groupadd -r kryptonian && useradd -r -g kryptonian kryptonian
 
-# Create directories for logs and certificates
-RUN mkdir -p /app/logs /app/certs && chown -R kryptonian:kryptonian /app
+# Create directories for logs, certificates, and the SQLite data volume
+RUN mkdir -p /app/logs /app/certs /app/wwwroot/ui /data && chown -R kryptonian:kryptonian /app /data
 
 # Copy published application
 COPY --from=build /app/publish .
 
-# Set ownership
+# Copy the built admin dashboard. Program.cs serves /app/wwwroot/ui in addition
+# to the legacy dev path under ../RTSec.Kryptonian.Ui/dist.
+COPY --from=ui /ui/dist/ /app/wwwroot/ui/
+
+# Set ownership after copies so the kryptonian user owns the new files
 RUN chown -R kryptonian:kryptonian /app
 
 # Switch to non-root user
