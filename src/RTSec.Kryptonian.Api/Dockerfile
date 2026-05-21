@@ -3,7 +3,9 @@
 # ── UI stage ──────────────────────────────────────────────────────────────────
 # Builds the Vite admin dashboard. VITE_API_KEY is baked into the bundle so the
 # dashboard sends X-API-Key against the deployed gateway.
-FROM node:22-alpine AS ui
+# Pulls from AWS ECR Public's Docker Hub mirror to bypass Docker Hub's
+# anonymous-pull rate limit that breaks ACR builds intermittently.
+FROM public.ecr.aws/docker/library/node:22-alpine AS ui
 WORKDIR /ui
 ARG VITE_API_KEY=""
 COPY src/RTSec.Kryptonian.Ui/package.json src/RTSec.Kryptonian.Ui/package-lock.json ./
