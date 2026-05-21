@@ -184,7 +184,7 @@ public sealed class InMemoryCaEngine
         keyGen.Init(new RsaKeyGenerationParameters(
             BigInteger.ValueOf(65537),
             new SecureRandom(),
-            2048, 112));
+            4096, 112));
         var keyPair = keyGen.GenerateKeyPair();
 
         var dn = new X509Name($"CN={_displayName} Harness CA {_instanceTag},O=Kryptonian Hackathon,C=US");

@@ -73,7 +73,7 @@ catch (TaskCanceledException ex)
 
 static (byte[] Csr, string PrivateKeyPem) CreateCsr(string commonName)
 {
-    using var rsa = RSA.Create(2048);
+    using var rsa = RSA.Create(4096);
     var request = new CertificateRequest(
         new X500DistinguishedName($"CN={commonName}"),
         rsa,

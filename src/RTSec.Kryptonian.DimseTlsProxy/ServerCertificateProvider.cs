@@ -43,7 +43,7 @@ public sealed class ServerCertificateProvider
     {
         var keyGen = new RsaKeyPairGenerator();
         keyGen.Init(new RsaKeyGenerationParameters(
-            BigInteger.ValueOf(65537), new SecureRandom(), 2048, 112));
+            BigInteger.ValueOf(65537), new SecureRandom(), 4096, 112));
         var keyPair = keyGen.GenerateKeyPair();
 
         var dn = new X509Name("CN=Kryptonian DIMSE Proxy,O=Kryptonian Hackathon,C=US");

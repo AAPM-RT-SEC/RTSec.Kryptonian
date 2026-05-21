@@ -30,7 +30,7 @@ internal sealed class ScepClient : IDisposable
     public byte[] BuildPkcsReq(byte[] csrDer, BcX509Certificate caCert)
     {
         var kpg = new RsaKeyPairGenerator();
-        kpg.Init(new KeyGenerationParameters(Rng, 2048));
+        kpg.Init(new KeyGenerationParameters(Rng, 4096));
         _keyPair = kpg.GenerateKeyPair();
         _cert = SelfSignedCert(_keyPair);
 

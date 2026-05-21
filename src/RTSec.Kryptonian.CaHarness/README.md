@@ -79,7 +79,7 @@ TEAM=team-alpha     # use your assigned team ID
 **Step 2 — Generate a private key and CSR** (example using `openssl`):
 
 ```bash
-openssl req -newkey rsa:2048 -nodes -keyout device.key \
+openssl req -newkey rsa:4096 -nodes -keyout device.key \
   -subj "/CN=linac-001/O=Hospital/C=US" \
   -out device.csr
 
