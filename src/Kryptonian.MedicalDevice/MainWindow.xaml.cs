@@ -65,7 +65,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        var commonName = CommonNameText.Text.Trim();
+        var commonName = NormalizeCommonName(CommonNameText.Text);
         var manufacturer = ManufacturerText.Text.Trim();
         var model = ModelText.Text.Trim();
         var serial = SerialText.Text.Trim();
@@ -223,7 +223,7 @@ public partial class MainWindow : Window
         handler.ClientCertificates.Add(existingClientCert);
         using var http = new HttpClient(handler);
 
-        using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(gateway, "/.well-known/est/simplereenroll"));
+        using var request = new HttpRequestMessage(HttpMethod.Post, BuildEstUri(gateway, "simplereenroll"));
         request.Headers.Add("Content-Transfer-Encoding", "base64");
         request.Content = new StringContent(Convert.ToBase64String(csrDer), Encoding.ASCII);
         request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/pkcs10");
@@ -256,7 +256,7 @@ public partial class MainWindow : Window
         string model,
         string serial)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(gateway, "/.well-known/est/simpleenroll"));
+        using var request = new HttpRequestMessage(HttpMethod.Post, BuildEstUri(gateway, "simpleenroll"));
         request.Headers.Add("X-Activation-Code", activationCode);
         request.Headers.Add("X-Device-Manufacturer", manufacturer);
         request.Headers.Add("X-Device-Model", model);
@@ -305,6 +305,40 @@ public partial class MainWindow : Window
         var subject = new X500DistinguishedName($"CN={commonName}");
         var request = new CertificateRequest(subject, rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
         return request.CreateSigningRequest();
+    }
+
+    private static Uri BuildEstUri(Uri gateway, string operation)
+    {
+        var basePath = gateway.AbsolutePath;
+        if (string.IsNullOrWhiteSpace(basePath) || basePath == "/")
+        {
+            basePath = "/.well-known/est";
+        }
+
+        basePath = basePath.TrimEnd('/');
+        if (basePath.EndsWith("/simpleenroll", StringComparison.OrdinalIgnoreCase)
+            || basePath.EndsWith("/simplereenroll", StringComparison.OrdinalIgnoreCase))
+        {
+            var lastSlash = basePath.LastIndexOf('/');
+            basePath = lastSlash <= 0 ? "/.well-known/est" : basePath[..lastSlash];
+        }
+
+        var builder = new UriBuilder(gateway)
+        {
+            Path = $"{basePath}/{operation}",
+            Query = string.Empty,
+            Fragment = string.Empty
+        };
+
+        return builder.Uri;
+    }
+
+    private static string NormalizeCommonName(string value)
+    {
+        var trimmed = value.Trim();
+        return trimmed.StartsWith("CN=", StringComparison.OrdinalIgnoreCase)
+            ? trimmed[3..].Trim()
+            : trimmed;
     }
 
     private static void InstallCertificate(X509Certificate2 certificate)
