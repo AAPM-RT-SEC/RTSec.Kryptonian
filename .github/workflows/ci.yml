@@ -7,10 +7,12 @@ name: RTSec.Kryptonian CI Pipeline
 # - Git Bash/WSL: ./build.sh ci-local
 
 on:
-  push:
-    branches: [ main, develop, 'release/**' ]
-  pull_request:
-    branches: [ main, develop ]
+  # Auto-triggers temporarily disabled for faster deployment cadence.
+  # Re-enable by uncommenting the push/pull_request blocks below.
+  # push:
+  #   branches: [ main, develop, 'release/**' ]
+  # pull_request:
+  #   branches: [ main, develop ]
   workflow_dispatch:
 
 # Security: Minimal permissions principle
