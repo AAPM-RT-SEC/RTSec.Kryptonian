@@ -28,7 +28,7 @@ public class NotificationDispatcherTests
     }
 
     [Fact]
-    public async Task EnrollmentRejected_DoesNothing_WhenSettingsDisabled()
+    public async Task EnrollmentRejectedDoesNothingWhenSettingsDisabled()
     {
         _settingsRepo.Setup(r => r.GetSingletonAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new NotificationSettings { Enabled = false, SmtpHost = "x", NotifyOnEnrollmentRejected = true });
@@ -39,7 +39,7 @@ public class NotificationDispatcherTests
     }
 
     [Fact]
-    public async Task EnrollmentRejected_DoesNothing_WhenEventToggleOff()
+    public async Task EnrollmentRejectedDoesNothingWhenEventToggleOff()
     {
         _settingsRepo.Setup(r => r.GetSingletonAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new NotificationSettings
@@ -56,7 +56,7 @@ public class NotificationDispatcherTests
     }
 
     [Fact]
-    public async Task EnrollmentRejected_SendsToSubscribedRecipientsOnly()
+    public async Task EnrollmentRejectedSendsToSubscribedRecipientsOnly()
     {
         _settingsRepo.Setup(r => r.GetSingletonAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new NotificationSettings
@@ -90,7 +90,7 @@ public class NotificationDispatcherTests
     }
 
     [Fact]
-    public async Task EnrollmentRejected_SwallowsExceptionsFromSender()
+    public async Task EnrollmentRejectedSwallowsExceptionsFromSender()
     {
         _settingsRepo.Setup(r => r.GetSingletonAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new NotificationSettings
@@ -114,7 +114,7 @@ public class NotificationDispatcherTests
     }
 
     [Fact]
-    public async Task ExpiryNotice_RoutedToExpirySubscribersOnly()
+    public async Task ExpiryNoticeRoutedToExpirySubscribersOnly()
     {
         _settingsRepo.Setup(r => r.GetSingletonAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new NotificationSettings

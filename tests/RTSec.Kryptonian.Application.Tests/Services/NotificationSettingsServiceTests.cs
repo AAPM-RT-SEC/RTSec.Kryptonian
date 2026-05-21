@@ -30,7 +30,7 @@ public class NotificationSettingsServiceTests
     }
 
     [Fact]
-    public async Task GetAsync_CreatesSingletonWhenMissing()
+    public async Task GetAsyncCreatesSingletonWhenMissing()
     {
         _settingsRepo.Setup(r => r.GetSingletonAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync((NotificationSettings?)null);
@@ -43,7 +43,7 @@ public class NotificationSettingsServiceTests
     }
 
     [Fact]
-    public async Task GetAsync_NeverExposesPlainPassword()
+    public async Task GetAsyncNeverExposesPlainPassword()
     {
         var settings = ValidStoredSettings(encryptedPassword: "ENC(secret)");
         _settingsRepo.Setup(r => r.GetSingletonAsync(It.IsAny<CancellationToken>()))
@@ -57,7 +57,7 @@ public class NotificationSettingsServiceTests
     }
 
     [Fact]
-    public async Task UpdateAsync_PreservesExistingPasswordWhenDtoPasswordIsNull()
+    public async Task UpdateAsyncPreservesExistingPasswordWhenDtoPasswordIsNull()
     {
         var settings = ValidStoredSettings(encryptedPassword: "ENC(existing)");
         _settingsRepo.Setup(r => r.GetSingletonAsync(It.IsAny<CancellationToken>()))
@@ -72,7 +72,7 @@ public class NotificationSettingsServiceTests
     }
 
     [Fact]
-    public async Task UpdateAsync_ClearsPasswordWhenDtoPasswordIsEmpty()
+    public async Task UpdateAsyncClearsPasswordWhenDtoPasswordIsEmpty()
     {
         var settings = ValidStoredSettings(encryptedPassword: "ENC(existing)");
         _settingsRepo.Setup(r => r.GetSingletonAsync(It.IsAny<CancellationToken>()))
@@ -87,7 +87,7 @@ public class NotificationSettingsServiceTests
     }
 
     [Fact]
-    public async Task UpdateAsync_EncryptsNewPassword()
+    public async Task UpdateAsyncEncryptsNewPassword()
     {
         var settings = ValidStoredSettings();
         _settingsRepo.Setup(r => r.GetSingletonAsync(It.IsAny<CancellationToken>()))
@@ -102,7 +102,7 @@ public class NotificationSettingsServiceTests
     }
 
     [Fact]
-    public async Task UpdateAsync_RejectsEmptyHost()
+    public async Task UpdateAsyncRejectsEmptyHost()
     {
         _settingsRepo.Setup(r => r.GetSingletonAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(ValidStoredSettings());
@@ -117,7 +117,7 @@ public class NotificationSettingsServiceTests
     }
 
     [Fact]
-    public async Task UpdateAsync_RejectsAuthModeWithoutUsername()
+    public async Task UpdateAsyncRejectsAuthModeWithoutUsername()
     {
         _settingsRepo.Setup(r => r.GetSingletonAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(ValidStoredSettings());
@@ -133,7 +133,7 @@ public class NotificationSettingsServiceTests
     }
 
     [Fact]
-    public async Task UpdateAsync_RejectsInvalidEmail()
+    public async Task UpdateAsyncRejectsInvalidEmail()
     {
         _settingsRepo.Setup(r => r.GetSingletonAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(ValidStoredSettings());
@@ -147,7 +147,7 @@ public class NotificationSettingsServiceTests
     }
 
     [Fact]
-    public async Task UpsertRecipient_NormalizesDuplicateEmails()
+    public async Task UpsertRecipientNormalizesDuplicateEmails()
     {
         var existing = new NotificationRecipient
         {
@@ -172,7 +172,7 @@ public class NotificationSettingsServiceTests
     }
 
     [Fact]
-    public async Task SendTestEmailAsync_UsesStoredPasswordWhenDtoPasswordOmitted()
+    public async Task SendTestEmailAsyncUsesStoredPasswordWhenDtoPasswordOmitted()
     {
         var stored = ValidStoredSettings(encryptedPassword: "ENC(realpw)");
         _settingsRepo.Setup(r => r.GetSingletonAsync(It.IsAny<CancellationToken>()))

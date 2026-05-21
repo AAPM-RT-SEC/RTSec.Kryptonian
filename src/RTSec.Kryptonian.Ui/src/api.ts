@@ -138,6 +138,67 @@ export interface GatewaySettingsInput {
   defaultCertificateLifetimeHours: number;
 }
 
+export type SmtpTlsMode = 'none' | 'starttls' | 'implicit';
+export type SmtpAuthMode = 'none' | 'basic' | 'ntlm';
+
+export interface NotificationSettings {
+  id: string;
+  enabled: boolean;
+  smtpHost: string;
+  smtpPort: number;
+  tlsMode: SmtpTlsMode;
+  authMode: SmtpAuthMode;
+  username?: string | null;
+  hasPassword: boolean;
+  fromAddress: string;
+  fromDisplayName?: string | null;
+  trustServerCertificate: boolean;
+  notifyOnEnrollmentRejected: boolean;
+  notifyOnCertificateNearExpiry: boolean;
+  expiryWarningDays: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface NotificationSettingsInput {
+  enabled: boolean;
+  smtpHost: string;
+  smtpPort: number;
+  tlsMode: SmtpTlsMode;
+  authMode: SmtpAuthMode;
+  username?: string | null;
+  /** null: keep stored. empty string: clear. non-empty: replace. */
+  password?: string | null;
+  fromAddress: string;
+  fromDisplayName?: string | null;
+  trustServerCertificate: boolean;
+  notifyOnEnrollmentRejected: boolean;
+  notifyOnCertificateNearExpiry: boolean;
+  expiryWarningDays: number;
+}
+
+export interface NotificationRecipient {
+  id: string;
+  email: string;
+  displayName?: string | null;
+  notifyOnEnrollmentRejected: boolean;
+  notifyOnCertificateNearExpiry: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface NotificationRecipientInput {
+  email: string;
+  displayName?: string | null;
+  notifyOnEnrollmentRejected: boolean;
+  notifyOnCertificateNearExpiry: boolean;
+}
+
+export interface NotificationTestRequest {
+  settings: NotificationSettingsInput;
+  recipientEmail: string;
+}
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -238,4 +299,23 @@ export const api = {
   getGatewaySettings: () => request<GatewaySettings>('/api/settings/gateway'),
   updateGatewaySettings: (input: GatewaySettingsInput) =>
     request<GatewaySettings>('/api/settings/gateway', { method: 'PUT', body: JSON.stringify(input) }),
+
+  getNotificationSettings: () =>
+    request<NotificationSettings>('/api/settings/notifications'),
+  updateNotificationSettings: (input: NotificationSettingsInput) =>
+    request<NotificationSettings>('/api/settings/notifications', {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    }),
+  getNotificationRecipients: () =>
+    request<NotificationRecipient[]>('/api/settings/notifications/recipients'),
+  upsertNotificationRecipient: (input: NotificationRecipientInput) =>
+    request<NotificationRecipient>(
+      '/api/settings/notifications/recipients',
+      jsonBody(input),
+    ),
+  deleteNotificationRecipient: (id: string) =>
+    request<void>(`/api/settings/notifications/recipients/${id}`, { method: 'DELETE' }),
+  testNotificationSettings: (request_: NotificationTestRequest) =>
+    request<void>('/api/settings/notifications/test', jsonBody(request_)),
 };
