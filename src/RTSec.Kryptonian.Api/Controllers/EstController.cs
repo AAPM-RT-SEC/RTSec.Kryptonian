@@ -53,7 +53,6 @@ public class EstController : ControllerBase
     /// <param name="ct">Cancellation token</param>
     [HttpGet("{label}/cacerts")]
     [HttpGet("cacerts")]
-    [Produces(Pkcs7MimeType)]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status500InternalServerError)]
@@ -96,7 +95,6 @@ public class EstController : ControllerBase
     [HttpPost("{label}/simpleenroll")]
     [HttpPost("simpleenroll")]
     [Consumes(Pkcs10MimeType, "text/plain")]
-    [Produces(Pkcs7MimeType)]
     [RequestSizeLimit(MaxCsrBodySize)]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status202Accepted)]
@@ -194,7 +192,6 @@ public class EstController : ControllerBase
     [HttpPost("{label}/simplereenroll")]
     [HttpPost("simplereenroll")]
     [Consumes(Pkcs10MimeType, "text/plain")]
-    [Produces(Pkcs7MimeType)]
     [RequestSizeLimit(MaxCsrBodySize)]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status202Accepted)]

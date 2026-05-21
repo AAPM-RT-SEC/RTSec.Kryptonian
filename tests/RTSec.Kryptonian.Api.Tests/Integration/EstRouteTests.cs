@@ -30,24 +30,48 @@ public class EstRouteTests
     // [HttpPost] attributes.
     [Theory]
     [MemberData(nameof(ReenrollRoutes))]
-    public async Task SimpleReenrollRoutesDoNotAmbiguouslyMatch(string route)
+    public async Task SimpleReenrollRoutesReturnJsonErrorsInsteadOfNotAcceptable(string route)
     {
         // Arrange
         using var host = await CreateHostAsync();
         using var client = host.GetTestClient();
-        using var content = new ByteArrayContent(Convert.FromBase64String("AQID"));
-        content.Headers.ContentType = new MediaTypeHeaderValue("application/pkcs10");
+        using var request = new HttpRequestMessage(HttpMethod.Post, route);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/pkcs7-mime"));
+        request.Content = new ByteArrayContent(Convert.FromBase64String("AQID"));
+        request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/pkcs10");
 
         // Act
-        using var response = await client.PostAsync(route, content);
+        using var response = await client.SendAsync(request);
 
-        // Assert: must not be 500 (which is how AmbiguousMatchException surfaces),
-        // and must not be 404 (which would mean the URL didn't route at all).
-        response.StatusCode.Should().NotBe(HttpStatusCode.InternalServerError);
-        response.StatusCode.Should().NotBe(HttpStatusCode.NotFound);
+        // Assert: proves the route matched and the real EST error survived content negotiation.
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        response.Content.Headers.ContentType?.MediaType.Should().Be("application/json");
+        var body = await response.Content.ReadAsStringAsync();
+        body.Should().Contain("Client certificate required for re-enrollment");
     }
 
-    private static async Task<IHost> CreateHostAsync()
+    [Fact]
+    public async Task SimpleReenrollWhenProfileIsMissingReturnsJsonNotFoundInsteadOfNotAcceptable()
+    {
+        // Arrange
+        using var host = await CreateHostAsync(hasProfile: false);
+        using var client = host.GetTestClient();
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/.well-known/est/simplereenroll");
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/pkcs7-mime"));
+        request.Content = new ByteArrayContent(Convert.FromBase64String("AQID"));
+        request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/pkcs10");
+
+        // Act
+        using var response = await client.SendAsync(request);
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        response.Content.Headers.ContentType?.MediaType.Should().Be("application/json");
+        var body = await response.Content.ReadAsStringAsync();
+        body.Should().Contain("EST profile not found");
+    }
+
+    private static async Task<IHost> CreateHostAsync(bool hasProfile = true)
     {
         var profile = new EstProfile
         {
@@ -64,7 +88,7 @@ public class EstRouteTests
         var estProfiles = new Mock<IEstProfileRepository>();
         estProfiles
             .Setup(r => r.GetByPathAndHostnameAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(profile);
+            .ReturnsAsync(hasProfile ? profile : null);
 
         var unitOfWork = new Mock<IUnitOfWork>();
         unitOfWork.Setup(u => u.EstProfiles).Returns(estProfiles.Object);
