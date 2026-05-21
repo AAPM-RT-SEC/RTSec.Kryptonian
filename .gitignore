@@ -1,6 +1,7 @@
 # Private notes and secrets (not for source control)
 AZURE-CLEANUP.md
 .env.internal
+docs/_claude-*.md
 
 # OS-generated files
 .DS_Store
