@@ -88,33 +88,43 @@ public class DeviceService : IDeviceService
             throw new InvalidOperationException("Activation codes can only be generated for pending devices.");
         }
 
-        var validForMinutes = dto.ValidForMinutes ?? DefaultActivationCodeMinutes;
-        if (validForMinutes <= 0 || validForMinutes > MaxActivationCodeMinutes)
+        return await GenerateActivationCodeForDeviceAsync(device, dto, "Activation code generated for device {DeviceId}", ct);
+    }
+
+    public async Task<DeviceActivationCodeDto?> ReactivateActivationCodeAsync(
+        Guid id,
+        DeviceActivationCodeCreateDto dto,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(dto);
+
+        var device = await _unitOfWork.Devices.GetByIdAsync(id, ct);
+        if (device == null)
         {
-            throw new ArgumentException($"Activation code lifetime must be between 1 and {MaxActivationCodeMinutes} minutes.");
+            return null;
         }
 
-        var activationCode = GenerateActivationCode();
-        var expiresAt = DateTime.UtcNow.AddMinutes(validForMinutes);
-
-        device.ActivationCodeHash = HashActivationCode(activationCode, device.Id);
-        device.ActivationCodeExpiresAt = expiresAt;
-        device.ActivationCodeUsedAt = null;
-
-        _unitOfWork.Devices.Update(device);
-        await _unitOfWork.SaveChangesAsync(ct);
-
-        _logger.LogInformation("Activation code generated for device {DeviceId}", device.Id);
-
-        return new DeviceActivationCodeDto
+        if (device.Status != DeviceStatus.Pending)
         {
-            DeviceId = device.Id.ToString(),
-            SubjectCommonName = device.SubjectCommonName,
-            SerialNumber = device.SerialNumber ?? string.Empty,
-            ActivationCode = activationCode,
-            QrPayload = $"kryptonian-activation:{device.Id}:{activationCode}",
-            ExpiresAt = expiresAt
-        };
+            throw new InvalidOperationException("Only pending devices can be reactivated.");
+        }
+
+        if (device.ActivationCodeUsedAt != null)
+        {
+            throw new InvalidOperationException("Activation code has already been used.");
+        }
+
+        if (string.IsNullOrWhiteSpace(device.ActivationCodeHash) || device.ActivationCodeExpiresAt == null)
+        {
+            throw new InvalidOperationException("Device does not have an activation code to reactivate.");
+        }
+
+        if (device.ActivationCodeExpiresAt > DateTime.UtcNow)
+        {
+            throw new InvalidOperationException("Activation code has not expired.");
+        }
+
+        return await GenerateActivationCodeForDeviceAsync(device, dto, "Activation code reactivated for device {DeviceId}", ct);
     }
 
     public async Task<DeviceDto?> ApproveAsync(Guid id, CancellationToken ct = default)
@@ -252,6 +262,41 @@ public class DeviceService : IDeviceService
         var material = $"{deviceId:N}|{activationCode.Trim()}";
         var hash = SHA256.HashData(Encoding.UTF8.GetBytes(material));
         return Convert.ToHexString(hash);
+    }
+
+    private async Task<DeviceActivationCodeDto> GenerateActivationCodeForDeviceAsync(
+        Device device,
+        DeviceActivationCodeCreateDto dto,
+        string logMessage,
+        CancellationToken ct)
+    {
+        var validForMinutes = dto.ValidForMinutes ?? DefaultActivationCodeMinutes;
+        if (validForMinutes <= 0 || validForMinutes > MaxActivationCodeMinutes)
+        {
+            throw new ArgumentException($"Activation code lifetime must be between 1 and {MaxActivationCodeMinutes} minutes.");
+        }
+
+        var activationCode = GenerateActivationCode();
+        var expiresAt = DateTime.UtcNow.AddMinutes(validForMinutes);
+
+        device.ActivationCodeHash = HashActivationCode(activationCode, device.Id);
+        device.ActivationCodeExpiresAt = expiresAt;
+        device.ActivationCodeUsedAt = null;
+
+        _unitOfWork.Devices.Update(device);
+        await _unitOfWork.SaveChangesAsync(ct);
+
+        _logger.LogInformation(logMessage, device.Id);
+
+        return new DeviceActivationCodeDto
+        {
+            DeviceId = device.Id.ToString(),
+            SubjectCommonName = device.SubjectCommonName,
+            SerialNumber = device.SerialNumber ?? string.Empty,
+            ActivationCode = activationCode,
+            QrPayload = $"kryptonian-activation:{device.Id}:{activationCode}",
+            ExpiresAt = expiresAt
+        };
     }
 
     private async Task<Device> CreatePendingDeviceAsync(string displayName, CancellationToken ct)

@@ -86,6 +86,117 @@ public class DeviceServiceActivationTests
     }
 
     [Fact]
+    public async Task ReactivateActivationCodeAsyncForExpiredUnusedCodeStoresNewHashAndReturnsPlaintext()
+    {
+        var device = CreatePendingDeviceWithActivationCode();
+        var previousHash = device.ActivationCodeHash;
+
+        _deviceRepoMock
+            .Setup(r => r.GetByIdAsync(device.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(device);
+
+        var sut = CreateSut();
+
+        var result = await sut.ReactivateActivationCodeAsync(device.Id, new DeviceActivationCodeCreateDto
+        {
+            ValidForMinutes = 10
+        });
+
+        result.Should().NotBeNull();
+        result!.ActivationCode.Should().HaveLength(20);
+        result.ExpiresAt.Should().BeAfter(DateTime.UtcNow);
+        device.ActivationCodeHash.Should().NotBeNullOrWhiteSpace();
+        device.ActivationCodeHash.Should().NotBe(previousHash);
+        device.ActivationCodeUsedAt.Should().BeNull();
+        device.ActivationCodeExpiresAt.Should().Be(result.ExpiresAt);
+        device.Status.Should().Be(DeviceStatus.Pending);
+        _deviceRepoMock.Verify(r => r.Update(device), Times.Once);
+        _unitOfWorkMock.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task ReactivateActivationCodeAsyncRejectsStillValidCode()
+    {
+        var device = CreatePendingDeviceWithActivationCode(expiresAt: DateTime.UtcNow.AddMinutes(5));
+
+        _deviceRepoMock
+            .Setup(r => r.GetByIdAsync(device.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(device);
+
+        var sut = CreateSut();
+
+        var act = () => sut.ReactivateActivationCodeAsync(device.Id, new DeviceActivationCodeCreateDto());
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*has not expired*");
+        _deviceRepoMock.Verify(r => r.Update(It.IsAny<Device>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ReactivateActivationCodeAsyncRejectsUsedCode()
+    {
+        var device = CreatePendingDeviceWithActivationCode();
+        device.ActivationCodeUsedAt = DateTime.UtcNow.AddMinutes(-1);
+
+        _deviceRepoMock
+            .Setup(r => r.GetByIdAsync(device.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(device);
+
+        var sut = CreateSut();
+
+        var act = () => sut.ReactivateActivationCodeAsync(device.Id, new DeviceActivationCodeCreateDto());
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*already been used*");
+        _deviceRepoMock.Verify(r => r.Update(It.IsAny<Device>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ReactivateActivationCodeAsyncRejectsDeviceWithoutCode()
+    {
+        var device = new Device
+        {
+            Id = Guid.NewGuid(),
+            DisplayName = "Scanner",
+            SubjectCommonName = "pending-device",
+            Status = DeviceStatus.Pending
+        };
+
+        _deviceRepoMock
+            .Setup(r => r.GetByIdAsync(device.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(device);
+
+        var sut = CreateSut();
+
+        var act = () => sut.ReactivateActivationCodeAsync(device.Id, new DeviceActivationCodeCreateDto());
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*does not have an activation code*");
+        _deviceRepoMock.Verify(r => r.Update(It.IsAny<Device>()), Times.Never);
+    }
+
+    [Theory]
+    [InlineData(DeviceStatus.Active)]
+    [InlineData(DeviceStatus.Removed)]
+    public async Task ReactivateActivationCodeAsyncRejectsNonPendingDevice(DeviceStatus status)
+    {
+        var device = CreatePendingDeviceWithActivationCode();
+        device.Status = status;
+
+        _deviceRepoMock
+            .Setup(r => r.GetByIdAsync(device.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(device);
+
+        var sut = CreateSut();
+
+        var act = () => sut.ReactivateActivationCodeAsync(device.Id, new DeviceActivationCodeCreateDto());
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*pending devices*");
+        _deviceRepoMock.Verify(r => r.Update(It.IsAny<Device>()), Times.Never);
+    }
+
+    [Fact]
     public async Task PurgeAsyncDeletesRemovedDevice()
     {
         var device = new Device
@@ -140,5 +251,20 @@ public class DeviceServiceActivationTests
             _orchestratorMock.Object,
             _dataProtectionMock.Object,
             _loggerMock.Object);
+    }
+
+    private static Device CreatePendingDeviceWithActivationCode(DateTime? expiresAt = null)
+    {
+        var device = new Device
+        {
+            Id = Guid.NewGuid(),
+            DisplayName = "Scanner",
+            SubjectCommonName = "pending-device",
+            Status = DeviceStatus.Pending,
+            ActivationCodeExpiresAt = expiresAt ?? DateTime.UtcNow.AddMinutes(-5),
+            ActivationCodeUsedAt = null
+        };
+        device.ActivationCodeHash = DeviceService.HashActivationCode("OLD-CODE", device.Id);
+        return device;
     }
 }
