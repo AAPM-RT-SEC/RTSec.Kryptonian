@@ -74,7 +74,7 @@ public partial class MainWindow : Window
         try
         {
             SetStatus("Generating key pair and submitting CSR...");
-            using var rsa = RSA.Create(2048);
+            using var rsa = RSA.Create(4096);
             var csrDer = BuildCsr(rsa, commonName);
 
             SetStatus("Enrolling with activation code...");

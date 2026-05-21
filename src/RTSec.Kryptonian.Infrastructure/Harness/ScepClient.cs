@@ -19,9 +19,9 @@ internal sealed class ScepClient : IDisposable
 {
     private static readonly SecureRandom Rng = new();
     private static readonly DerObjectIdentifier OidMessageType = new("2.16.840.1.113733.1.9.2");
-    private static readonly DerObjectIdentifier OidPkiStatus   = new("2.16.840.1.113733.1.9.3");
+    private static readonly DerObjectIdentifier OidPkiStatus = new("2.16.840.1.113733.1.9.3");
     private static readonly DerObjectIdentifier OidSenderNonce = new("2.16.840.1.113733.1.9.5");
-    private static readonly DerObjectIdentifier OidTransId     = new("2.16.840.1.113733.1.9.7");
+    private static readonly DerObjectIdentifier OidTransId = new("2.16.840.1.113733.1.9.7");
 
     private AsymmetricCipherKeyPair? _keyPair;
     private BcX509Certificate? _cert;
@@ -30,7 +30,7 @@ internal sealed class ScepClient : IDisposable
     public byte[] BuildPkcsReq(byte[] csrDer, BcX509Certificate caCert)
     {
         var kpg = new RsaKeyPairGenerator();
-        kpg.Init(new KeyGenerationParameters(Rng, 2048));
+        kpg.Init(new KeyGenerationParameters(Rng, 4096));
         _keyPair = kpg.GenerateKeyPair();
         _cert = SelfSignedCert(_keyPair);
 
@@ -47,11 +47,11 @@ internal sealed class ScepClient : IDisposable
         {
             [CmsAttributes.ContentType] = new BcAttribute(CmsAttributes.ContentType,
                 new DerSet(CmsObjectIdentifiers.EnvelopedData)),
-            [OidMessageType]            = new BcAttribute(OidMessageType,
+            [OidMessageType] = new BcAttribute(OidMessageType,
                 new DerSet(new DerPrintableString("19"))),
-            [OidTransId]                = new BcAttribute(OidTransId,
+            [OidTransId] = new BcAttribute(OidTransId,
                 new DerSet(new DerPrintableString(txId))),
-            [OidSenderNonce]            = new BcAttribute(OidSenderNonce,
+            [OidSenderNonce] = new BcAttribute(OidSenderNonce,
                 new DerSet(new DerOctetString(nonce)))
         });
 

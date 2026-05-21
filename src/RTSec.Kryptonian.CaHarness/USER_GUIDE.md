@@ -89,7 +89,7 @@ To earn gateway credit for the `selfsigned` backend your device certificates **m
 
 **Enroll a new device:**
 ```bash
-CSR=$(openssl req -newkey rsa:2048 -nodes -keyout device.key \
+CSR=$(openssl req -newkey rsa:4096 -nodes -keyout device.key \
   -subj "/CN=my-device/O=Hospital/C=US" -outform DER 2>/dev/null | base64 -w 0)
 
 curl -s -X POST https://ca-harness.mangotree-b3d09362.eastus.azurecontainerapps.io/teams/{token}/est/selfsigned/simpleenroll \
@@ -149,7 +149,7 @@ The EJBCA backend uses the EJBCA REST API. Send a JSON body with a PEM-encoded P
 **Enroll a new device:**
 ```bash
 # Generate CSR
-openssl req -newkey rsa:2048 -nodes -keyout device.key \
+openssl req -newkey rsa:4096 -nodes -keyout device.key \
   -subj "/CN=my-device/O=Hospital/C=US" -out device.csr
 
 CSR_PEM=$(cat device.csr)
@@ -384,7 +384,7 @@ curl https://ca-harness.mangotree-b3d09362.eastus.azurecontainerapps.io/teams/{t
 These are for testing only — use the EST path for scoring.
 
 ```bash
-openssl req -newkey rsa:2048 -nodes -keyout device.key \
+openssl req -newkey rsa:4096 -nodes -keyout device.key \
   -subj "/CN=my-device/O=Hospital/C=US" -out device.csr
 
 CSR=$(openssl req -in device.csr -outform DER | base64 -w 0)
