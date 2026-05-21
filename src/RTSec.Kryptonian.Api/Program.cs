@@ -157,6 +157,13 @@ try
         .SetApplicationName("RTSec.Kryptonian");
     builder.Services.AddSingleton<IDataProtectionService, DataProtectionService>();
 
+    // Notification SMTP transport (on-prem friendly — MailKit, no cloud APIs)
+    builder.Services.AddSingleton<RTSec.Kryptonian.Application.Notifications.ISmtpSender,
+        RTSec.Kryptonian.Infrastructure.Notifications.MailKitSmtpSender>();
+
+    // Background service that scans for soon-to-expire device certs and notifies opted-in recipients
+    builder.Services.AddHostedService<RTSec.Kryptonian.Api.HostedServices.CertificateExpiryWatcher>();
+
     // Register ACME challenge providers (singletons for token storage)
     builder.Services.AddSingleton<Http01ChallengeStore>();
     builder.Services.AddSingleton<Dns01ChallengeStub>();

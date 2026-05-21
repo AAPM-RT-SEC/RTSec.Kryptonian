@@ -21,6 +21,7 @@
     <PackageReference Include="BouncyCastle.Cryptography" Version="2.5.0" />
     <PackageReference Include="Certes" Version="3.0.4" />
     <PackageReference Include="Microsoft.AspNetCore.DataProtection" Version="8.0.11" />
+    <PackageReference Include="MailKit" Version="4.8.0" />
     <!-- Exclude Portable.BouncyCastle brought in by Certes to avoid conflict with BouncyCastle.Cryptography -->
     <PackageReference Include="Portable.BouncyCastle" Version="1.9.0">
       <ExcludeAssets>all</ExcludeAssets>

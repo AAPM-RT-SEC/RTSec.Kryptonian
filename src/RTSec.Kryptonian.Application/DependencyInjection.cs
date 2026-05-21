@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using RTSec.Kryptonian.Application.Notifications;
 using RTSec.Kryptonian.Application.Services;
 using RTSec.Kryptonian.Domain.Interfaces;
 
@@ -21,6 +22,8 @@ public static class ApplicationServiceExtensions
         services.AddScoped<IEnrollmentOrchestrator, EnrollmentOrchestrator>();
         services.AddScoped<IDeviceService, DeviceService>();
         services.AddScoped<IGatewaySettingsService, GatewaySettingsService>();
+        services.AddScoped<INotificationSettingsService, NotificationSettingsService>();
+        services.AddScoped<INotificationDispatcher, NotificationDispatcher>();
 
         return services;
     }

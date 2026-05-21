@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using Microsoft.Extensions.Logging;
+using RTSec.Kryptonian.Application.Notifications;
 using RTSec.Kryptonian.Domain.Entities;
 using RTSec.Kryptonian.Domain.Enums;
 using RTSec.Kryptonian.Domain.Interfaces;
@@ -17,17 +18,20 @@ public class EnrollmentOrchestrator : IEnrollmentOrchestrator
     private readonly IUnitOfWork _unitOfWork;
     private readonly ICaConnectorFactory _connectorFactory;
     private readonly IPkcsService _pkcsService;
+    private readonly INotificationDispatcher _notificationDispatcher;
     private readonly ILogger<EnrollmentOrchestrator> _logger;
 
     public EnrollmentOrchestrator(
         IUnitOfWork unitOfWork,
         ICaConnectorFactory connectorFactory,
         IPkcsService pkcsService,
+        INotificationDispatcher notificationDispatcher,
         ILogger<EnrollmentOrchestrator> logger)
     {
         _unitOfWork = unitOfWork;
         _connectorFactory = connectorFactory;
         _pkcsService = pkcsService;
+        _notificationDispatcher = notificationDispatcher;
         _logger = logger;
     }
 
@@ -386,15 +390,19 @@ public class EnrollmentOrchestrator : IEnrollmentOrchestrator
         _logger.LogInformation("Starting re-enrollment for profile {ProfileId}, existing cert serial {Serial}",
             profileId, existingCert.SerialNumber);
 
+        var existingSubjectCn = ExtractSubjectCommonName(existingCert.Subject);
+
         var now = DateTime.UtcNow;
         if (existingCert.NotAfter.ToUniversalTime() <= now)
         {
-            return EnrollmentResult.Failed("Client certificate has expired", 403);
+            return await RejectReenrollmentAsync(existingCert.Subject, existingSubjectCn, clientIp,
+                "Client certificate has expired", 403, ct);
         }
 
         if (existingCert.NotBefore.ToUniversalTime() > now)
         {
-            return EnrollmentResult.Failed("Client certificate is not yet valid", 403);
+            return await RejectReenrollmentAsync(existingCert.Subject, existingSubjectCn, clientIp,
+                "Client certificate is not yet valid", 403, ct);
         }
 
         var profile = await _unitOfWork.EstProfiles.GetByIdAsync(profileId, ct);
@@ -407,7 +415,8 @@ public class EnrollmentOrchestrator : IEnrollmentOrchestrator
         if (!profile.IsEnabled)
         {
             _logger.LogWarning("EST profile is disabled: {ProfileId}", profileId);
-            return EnrollmentResult.Failed($"EST profile is disabled: {profileId}", 403);
+            return await RejectReenrollmentAsync(existingCert.Subject, existingSubjectCn, clientIp,
+                $"EST profile is disabled: {profileId}", 403, ct);
         }
 
         var existingThumbprint = NormalizeThumbprint(existingCert.GetCertHashString());
@@ -416,9 +425,8 @@ public class EnrollmentOrchestrator : IEnrollmentOrchestrator
 
         if (existingDbCert == null)
         {
-            _logger.LogWarning("Re-enrollment attempted with certificate not registered in gateway: {Serial}",
-                existingCert.SerialNumber);
-            return EnrollmentResult.Failed("Certificate is not registered for re-enrollment", 403);
+            return await RejectReenrollmentAsync(existingCert.Subject, existingSubjectCn, clientIp,
+                "Certificate is not registered for re-enrollment", 403, ct);
         }
 
         if (existingDbCert.EstProfileId != profileId)
@@ -426,7 +434,8 @@ public class EnrollmentOrchestrator : IEnrollmentOrchestrator
             _logger.LogWarning("Re-enrollment attempted with certificate from different profile. " +
                 "Cert profile: {CertProfile}, Request profile: {RequestProfile}",
                 existingDbCert.EstProfileId, profileId);
-            return EnrollmentResult.Failed("Certificate does not belong to this EST profile", 403);
+            return await RejectReenrollmentAsync(existingCert.Subject, existingSubjectCn, clientIp,
+                "Certificate does not belong to this EST profile", 403, ct);
         }
 
         if (existingDbCert.Status != CertificateStatus.Valid)
@@ -434,34 +443,35 @@ public class EnrollmentOrchestrator : IEnrollmentOrchestrator
             var reason = existingDbCert.Status == CertificateStatus.Revoked
                 ? "Certificate has been revoked"
                 : "Certificate is not valid for re-enrollment";
-            _logger.LogWarning("Re-enrollment attempted with {Status} certificate: {Serial}",
-                existingDbCert.Status, existingCert.SerialNumber);
-            return EnrollmentResult.Failed(reason, 403);
+            return await RejectReenrollmentAsync(existingCert.Subject, existingSubjectCn, clientIp,
+                reason, 403, ct);
         }
 
         if (existingDbCert.NotAfter <= now)
         {
-            return EnrollmentResult.Failed("Certificate has expired", 403);
+            return await RejectReenrollmentAsync(existingCert.Subject, existingSubjectCn, clientIp,
+                "Certificate has expired", 403, ct);
         }
 
         if (existingDbCert.NotBefore > now)
         {
-            return EnrollmentResult.Failed("Certificate is not yet valid", 403);
+            return await RejectReenrollmentAsync(existingCert.Subject, existingSubjectCn, clientIp,
+                "Certificate is not yet valid", 403, ct);
         }
 
         var device = await ResolveDeviceForCertificateAsync(existingDbCert, existingCert, ct);
         if (device == null)
         {
-            _logger.LogWarning("Re-enrollment certificate {Serial} does not map to an active device record",
-                existingCert.SerialNumber);
-            return EnrollmentResult.Failed("Certificate does not map to an active device", 403);
+            return await RejectReenrollmentAsync(existingCert.Subject, existingSubjectCn, clientIp,
+                "Certificate does not map to an active device", 403, ct);
         }
 
         if (device.Status != DeviceStatus.Active || device.RemovedAt != null)
         {
             _logger.LogWarning("Re-enrollment attempted for device {DeviceId} with status {Status}",
                 device.Id, device.Status);
-            return EnrollmentResult.Failed("Device is not active", 403);
+            return await RejectReenrollmentAsync(existingCert.Subject, device.SubjectCommonName, clientIp,
+                "Device is not active", 403, ct);
         }
 
         ParsedCsr csr;
@@ -485,7 +495,8 @@ public class EnrollmentOrchestrator : IEnrollmentOrchestrator
         {
             _logger.LogWarning("Re-enrollment CSR CN mismatch for device {DeviceId}. Existing CN: {ExistingCn}, CSR CN: {CsrCn}",
                 device.Id, device.SubjectCommonName, csrCommonName);
-            return EnrollmentResult.Failed("CSR subject common name does not match the existing device", 403);
+            return await RejectReenrollmentAsync(csr.SubjectDn, device.SubjectCommonName, clientIp,
+                "CSR subject common name does not match the existing device", 403, ct);
         }
 
         var backend = await _unitOfWork.CaBackends.GetActiveAsync(ct);
@@ -658,7 +669,41 @@ public class EnrollmentOrchestrator : IEnrollmentOrchestrator
         await _unitOfWork.SaveChangesAsync(ct);
 
         _logger.LogWarning("Rejected enrollment for subject {SubjectDn}: {Reason}", subjectDn, reason);
+
+        await _notificationDispatcher.NotifyEnrollmentRejectedAsync(
+            new EnrollmentRejectionContext(
+                Operation: "Enrollment",
+                SubjectDn: subjectDn,
+                DeviceId: device?.SubjectCommonName,
+                ClientIp: clientIp,
+                Reason: reason,
+                OccurredAtUtc: DateTime.UtcNow),
+            ct);
+
         return EnrollmentResult.Failed(reason, 403);
+    }
+
+    private async Task<EnrollmentResult> RejectReenrollmentAsync(
+        string subjectDn,
+        string? deviceId,
+        string? clientIp,
+        string reason,
+        int statusCode,
+        CancellationToken ct)
+    {
+        _logger.LogWarning("Rejected re-enrollment for subject {SubjectDn}: {Reason}", subjectDn, reason);
+
+        await _notificationDispatcher.NotifyEnrollmentRejectedAsync(
+            new EnrollmentRejectionContext(
+                Operation: "Re-enrollment",
+                SubjectDn: subjectDn,
+                DeviceId: deviceId,
+                ClientIp: clientIp,
+                Reason: reason,
+                OccurredAtUtc: DateTime.UtcNow),
+            ct);
+
+        return EnrollmentResult.Failed(reason, statusCode);
     }
 
     private static string? ExtractSubjectCommonName(string subjectDn)

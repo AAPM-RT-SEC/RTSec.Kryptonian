@@ -15,6 +15,8 @@ public interface IUnitOfWork : IDisposable
     IEnrollmentEventRepository EnrollmentEvents { get; }
     IAcmeAccountRepository AcmeAccounts { get; }
     IGatewaySettingsRepository GatewaySettings { get; }
+    INotificationSettingsRepository NotificationSettings { get; }
+    INotificationRecipientRepository NotificationRecipients { get; }
 
     /// <summary>
     /// Saves all pending changes to the database.
@@ -115,4 +117,17 @@ public interface IAcmeAccountRepository : IRepository<AcmeAccount>
 public interface IGatewaySettingsRepository : IRepository<GatewaySettings>
 {
     Task<GatewaySettings?> GetSingletonAsync(CancellationToken ct = default);
+}
+
+public interface INotificationSettingsRepository : IRepository<NotificationSettings>
+{
+    Task<NotificationSettings?> GetSingletonAsync(CancellationToken ct = default);
+}
+
+public interface INotificationRecipientRepository : IRepository<NotificationRecipient>
+{
+    Task<NotificationRecipient?> GetByEmailAsync(string email, CancellationToken ct = default);
+    Task<IEnumerable<NotificationRecipient>> GetSubscribedToAsync(
+        Domain.Enums.NotificationEventType eventType,
+        CancellationToken ct = default);
 }

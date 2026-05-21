@@ -3,6 +3,7 @@ using System.Security.Cryptography.X509Certificates;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Moq;
+using RTSec.Kryptonian.Application.Notifications;
 using RTSec.Kryptonian.Application.Services;
 using RTSec.Kryptonian.Domain.Entities;
 using RTSec.Kryptonian.Domain.Enums;
@@ -24,6 +25,7 @@ public class EnrollmentOrchestratorTests : IDisposable
     private readonly Mock<IEnrollmentEventRepository> _enrollmentEventRepoMock;
     private readonly Mock<ICertificateRepository> _certificateRepoMock;
     private readonly Mock<ICaConnector> _connectorMock;
+    private readonly Mock<INotificationDispatcher> _notificationDispatcherMock;
     private readonly EnrollmentOrchestrator _sut;
     private readonly X509Certificate2 _testCert;
 
@@ -39,6 +41,7 @@ public class EnrollmentOrchestratorTests : IDisposable
         _enrollmentEventRepoMock = new Mock<IEnrollmentEventRepository>();
         _certificateRepoMock = new Mock<ICertificateRepository>();
         _connectorMock = new Mock<ICaConnector>();
+        _notificationDispatcherMock = new Mock<INotificationDispatcher>();
 
         _unitOfWorkMock.Setup(u => u.EstProfiles).Returns(_estProfileRepoMock.Object);
         _unitOfWorkMock.Setup(u => u.CaBackends).Returns(_caBackendRepoMock.Object);
@@ -52,6 +55,7 @@ public class EnrollmentOrchestratorTests : IDisposable
             _unitOfWorkMock.Object,
             _connectorFactoryMock.Object,
             _pkcsServiceMock.Object,
+            _notificationDispatcherMock.Object,
             _loggerMock.Object);
     }
 
