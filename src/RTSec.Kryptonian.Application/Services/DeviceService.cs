@@ -186,6 +186,14 @@ public class DeviceService : IDeviceService
         return certificates.Select(DtoMapper.ToDto);
     }
 
+    public async Task<IEnumerable<CertificateDto>> GetAllCertificatesAsync(CancellationToken ct = default)
+    {
+        var certificates = await _unitOfWork.Certificates.GetAllAsync(ct);
+        return certificates
+            .OrderByDescending(c => c.CreatedAt)
+            .Select(DtoMapper.ToDto);
+    }
+
     public async Task<DemoEnrollResponseDto?> DemoEnrollAsync(Guid id, Guid profileId, CancellationToken ct = default)
     {
         var device = await _unitOfWork.Devices.GetByIdAsync(id, ct);

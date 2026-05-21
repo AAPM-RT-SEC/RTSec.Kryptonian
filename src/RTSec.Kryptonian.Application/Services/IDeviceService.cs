@@ -14,5 +14,12 @@ public interface IDeviceService
     Task<DeviceDto?> RemoveAsync(Guid id, CancellationToken ct = default);
     Task<bool> PurgeAsync(Guid id, CancellationToken ct = default);
     Task<IEnumerable<CertificateDto>> GetCertificatesAsync(Guid id, CancellationToken ct = default);
+
+    /// <summary>
+    /// Returns every certificate in the system, ordered by createdAt descending.
+    /// Used by the dashboard to avoid an N+1 fetch when rendering the devices table.
+    /// </summary>
+    Task<IEnumerable<CertificateDto>> GetAllCertificatesAsync(CancellationToken ct = default);
+
     Task<DemoEnrollResponseDto?> DemoEnrollAsync(Guid id, Guid profileId, CancellationToken ct = default);
 }

@@ -106,17 +106,24 @@ export function App() {
   const refresh = async () => {
     setLoading(true);
     try {
-      const [backends, devices, profiles, events, settings] = await Promise.all([
+      const [backends, devices, profiles, events, settings, certificates] = await Promise.all([
         api.getCaBackends(),
         api.getDevices(),
         api.getEstProfiles(),
         api.getEnrollmentEvents(100),
         api.getGatewaySettings(),
+        api.getAllCertificates(),
       ]);
 
-      const certificatePairs = await Promise.all(
-        devices.map(async (device) => [device.id, await api.getDeviceCertificates(device.id)] as const),
-      );
+      // Group by deviceId once; certificates from the API are already ordered newest
+      // first. Orphan certs (deviceId null — issued via EST without a matching
+      // pending-device row) are dropped here on purpose; the registry only shows
+      // certs that belong to a known device.
+      const certificatesByDevice: Record<string, Certificate[]> = {};
+      for (const cert of certificates) {
+        if (!cert.deviceId) continue;
+        (certificatesByDevice[cert.deviceId] ??= []).push(cert);
+      }
 
       setSnapshot({
         backends,
@@ -124,7 +131,7 @@ export function App() {
         profiles,
         events,
         settings,
-        certificatesByDevice: Object.fromEntries(certificatePairs),
+        certificatesByDevice,
       });
     } catch (error) {
       setFlash({ kind: 'error', message: describeError(error) });
