@@ -357,6 +357,11 @@ public class EstControllerTests
         // Assert
         var unauthorizedResult = result.Should().BeOfType<UnauthorizedObjectResult>().Subject;
         unauthorizedResult.StatusCode.Should().Be(401);
+        _pkcsServiceMock.Verify(p => p.DecodeEstRequestBodyAsync(
+            It.IsAny<Stream>(),
+            It.IsAny<string?>(),
+            It.IsAny<int>(),
+            It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -373,6 +378,135 @@ public class EstControllerTests
         // Assert
         var notFoundResult = result.Should().BeOfType<NotFoundObjectResult>().Subject;
         notFoundResult.StatusCode.Should().Be(404);
+    }
+
+    [Fact]
+    public async Task SimpleReenrollWithInvalidCsrReturns400()
+    {
+        // Arrange
+        using var clientCert = CreateClientCertificate("TestDevice");
+        var profileId = Guid.NewGuid();
+        var testProfile = CreateTestProfile(profileId, validateClientCertChain: false);
+        _sut.HttpContext.Connection.ClientCertificate = clientCert;
+
+        _estProfileRepoMock
+            .Setup(r => r.GetByPathAndHostnameAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(testProfile);
+
+        _estProfileRepoMock
+            .Setup(r => r.GetByIdAsync(profileId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(testProfile);
+
+        _pkcsServiceMock
+            .Setup(p => p.DecodeEstRequestBodyAsync(It.IsAny<Stream>(), It.IsAny<string?>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new ArgumentException("Invalid CSR format"));
+
+        // Act
+        var result = await _sut.SimpleReenroll(null, CancellationToken.None);
+
+        // Assert
+        var badRequestResult = result.Should().BeOfType<BadRequestObjectResult>().Subject;
+        badRequestResult.StatusCode.Should().Be(400);
+    }
+
+    [Fact]
+    public async Task SimpleReenrollWithOversizedBodyReturns413()
+    {
+        // Arrange
+        using var clientCert = CreateClientCertificate("TestDevice");
+        var profileId = Guid.NewGuid();
+        var testProfile = CreateTestProfile(profileId, validateClientCertChain: false);
+        _sut.HttpContext.Connection.ClientCertificate = clientCert;
+
+        _estProfileRepoMock
+            .Setup(r => r.GetByPathAndHostnameAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(testProfile);
+
+        _estProfileRepoMock
+            .Setup(r => r.GetByIdAsync(profileId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(testProfile);
+
+        _pkcsServiceMock
+            .Setup(p => p.DecodeEstRequestBodyAsync(It.IsAny<Stream>(), It.IsAny<string?>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("Request body exceeds maximum allowed size"));
+
+        // Act
+        var result = await _sut.SimpleReenroll(null, CancellationToken.None);
+
+        // Assert
+        var objectResult = result.Should().BeOfType<ObjectResult>().Subject;
+        objectResult.StatusCode.Should().Be(413);
+    }
+
+    [Fact]
+    public async Task SimpleReenrollWhenOrchestratorFailsReturnsAppropriateStatusCode()
+    {
+        // Arrange
+        using var clientCert = CreateClientCertificate("TestDevice");
+        var profileId = Guid.NewGuid();
+        var testProfile = CreateTestProfile(profileId, validateClientCertChain: false);
+        var csrBytes = CreateTestCsrBytes();
+        _sut.HttpContext.Connection.ClientCertificate = clientCert;
+
+        _estProfileRepoMock
+            .Setup(r => r.GetByPathAndHostnameAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(testProfile);
+
+        _estProfileRepoMock
+            .Setup(r => r.GetByIdAsync(profileId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(testProfile);
+
+        _pkcsServiceMock
+            .Setup(p => p.DecodeEstRequestBodyAsync(It.IsAny<Stream>(), It.IsAny<string?>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(csrBytes);
+
+        _orchestratorMock
+            .Setup(o => o.ReenrollAsync(profileId, csrBytes, clientCert, It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(EnrollmentResult.Failed("Device is not active", 403));
+
+        // Act
+        var result = await _sut.SimpleReenroll(null, CancellationToken.None);
+
+        // Assert
+        var objectResult = result.Should().BeOfType<ObjectResult>().Subject;
+        objectResult.StatusCode.Should().Be(403);
+    }
+
+    [Fact]
+    public async Task SimpleReenrollWithValidCsrReturnsPkcs7WithBase64TransferEncoding()
+    {
+        // Arrange
+        using var clientCert = CreateClientCertificate("TestDevice");
+        var profileId = Guid.NewGuid();
+        var testProfile = CreateTestProfile(profileId, validateClientCertChain: false);
+        var csrBytes = CreateTestCsrBytes();
+        var pkcs7Response = new byte[] { 0x30, 0x82, 0x01, 0x00 };
+        _sut.HttpContext.Connection.ClientCertificate = clientCert;
+
+        _estProfileRepoMock
+            .Setup(r => r.GetByPathAndHostnameAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(testProfile);
+
+        _estProfileRepoMock
+            .Setup(r => r.GetByIdAsync(profileId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(testProfile);
+
+        _pkcsServiceMock
+            .Setup(p => p.DecodeEstRequestBodyAsync(It.IsAny<Stream>(), It.IsAny<string?>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(csrBytes);
+
+        _orchestratorMock
+            .Setup(o => o.ReenrollAsync(profileId, csrBytes, clientCert, It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(EnrollmentResult.Successful(pkcs7Response, Guid.NewGuid()));
+
+        // Act
+        var result = await _sut.SimpleReenroll(null, CancellationToken.None);
+
+        // Assert
+        var fileResult = result.Should().BeOfType<FileContentResult>().Subject;
+        fileResult.ContentType.Should().Be(Pkcs7MimeType);
+        fileResult.FileContents.Should().BeEquivalentTo(pkcs7Response);
+        _sut.HttpContext.Response.Headers["Content-Transfer-Encoding"].ToString().Should().Be("base64");
     }
 
     #endregion
@@ -423,6 +557,24 @@ public class EstControllerTests
         return request.CreateSigningRequest();
     }
 
+    private static X509Certificate2 CreateClientCertificate(string commonName)
+    {
+        using var rsa = RSA.Create(2048);
+        var request = new CertificateRequest(
+            new X500DistinguishedName($"CN={commonName}"),
+            rsa,
+            HashAlgorithmName.SHA256,
+            RSASignaturePadding.Pkcs1);
+
+        var cert = request.CreateSelfSigned(
+            DateTimeOffset.UtcNow.AddMinutes(-5),
+            DateTimeOffset.UtcNow.AddYears(1));
+
+        return new X509Certificate2(
+            cert.Export(X509ContentType.Pfx, "test"),
+            "test",
+            X509KeyStorageFlags.Exportable | X509KeyStorageFlags.EphemeralKeySet);
+    }
+
     #endregion
 }
-

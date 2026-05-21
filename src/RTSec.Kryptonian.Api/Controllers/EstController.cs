@@ -89,6 +89,7 @@ public class EstController : ControllerBase
     /// <summary>
     /// EST /simpleenroll endpoint - Request a new certificate.
     /// Accepts PKCS#10 CSR, returns PKCS#7 certificate chain.
+    /// ASP.NET Core route matching is case-insensitive, so simpleEnroll is accepted by the same routes.
     /// </summary>
     /// <param name="label">EST profile path prefix (optional)</param>
     /// <param name="ct">Cancellation token</param>
@@ -186,6 +187,7 @@ public class EstController : ControllerBase
     /// <summary>
     /// EST /simplereenroll endpoint - Renew an existing certificate.
     /// Requires valid client certificate for authentication.
+    /// ASP.NET Core route matching is case-insensitive, so simpleReenroll is accepted by the same routes.
     /// </summary>
     /// <param name="label">EST profile path prefix (optional)</param>
     /// <param name="ct">Cancellation token</param>
@@ -313,12 +315,13 @@ public class EstController : ControllerBase
     private (bool IsValid, string? Reason) ValidateClientCertificate(X509Certificate2 clientCert, EstProfile profile)
     {
         // Check basic validity (not expired)
-        if (clientCert.NotAfter < DateTime.UtcNow)
+        var now = DateTime.UtcNow;
+        if (clientCert.NotAfter.ToUniversalTime() < now)
         {
             return (false, "Client certificate has expired");
         }
 
-        if (clientCert.NotBefore > DateTime.UtcNow)
+        if (clientCert.NotBefore.ToUniversalTime() > now)
         {
             return (false, "Client certificate is not yet valid");
         }

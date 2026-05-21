@@ -386,37 +386,249 @@ public class EnrollmentOrchestrator : IEnrollmentOrchestrator
         _logger.LogInformation("Starting re-enrollment for profile {ProfileId}, existing cert serial {Serial}",
             profileId, existingCert.SerialNumber);
 
-        // For re-enrollment, we use the existing certificate's subject as device ID
-        var deviceId = existingCert.Subject;
-
-        // Validate that the existing certificate was issued by us (optional)
-        var existingDbCert = await _unitOfWork.Certificates.GetBySerialNumberAsync(existingCert.SerialNumber, ct);
-        if (existingDbCert != null)
+        var now = DateTime.UtcNow;
+        if (existingCert.NotAfter.ToUniversalTime() <= now)
         {
-            // Validate that the certificate belongs to this profile
-            if (existingDbCert.EstProfileId != profileId)
-            {
-                _logger.LogWarning("Re-enrollment attempted with certificate from different profile. " +
-                    "Cert profile: {CertProfile}, Request profile: {RequestProfile}",
-                    existingDbCert.EstProfileId, profileId);
-                return EnrollmentResult.Failed("Certificate does not belong to this EST profile", 403);
-            }
-
-            // Check certificate status
-            if (existingDbCert.Status == CertificateStatus.Revoked)
-            {
-                _logger.LogWarning("Re-enrollment attempted with revoked certificate: {Serial}",
-                    existingCert.SerialNumber);
-                return EnrollmentResult.Failed("Certificate has been revoked", 403);
-            }
-        }
-        else
-        {
-            _logger.LogDebug("Existing certificate not found in database, allowing re-enrollment");
+            return EnrollmentResult.Failed("Client certificate has expired", 403);
         }
 
-        // Proceed with enrollment using the same logic
-        return await EnrollAsync(profileId, csrBytes, deviceId, clientIp, ct);
+        if (existingCert.NotBefore.ToUniversalTime() > now)
+        {
+            return EnrollmentResult.Failed("Client certificate is not yet valid", 403);
+        }
+
+        var profile = await _unitOfWork.EstProfiles.GetByIdAsync(profileId, ct);
+        if (profile == null)
+        {
+            _logger.LogWarning("EST profile not found: {ProfileId}", profileId);
+            return EnrollmentResult.Failed($"EST profile not found: {profileId}", 404);
+        }
+
+        if (!profile.IsEnabled)
+        {
+            _logger.LogWarning("EST profile is disabled: {ProfileId}", profileId);
+            return EnrollmentResult.Failed($"EST profile is disabled: {profileId}", 403);
+        }
+
+        var existingThumbprint = NormalizeThumbprint(existingCert.GetCertHashString());
+        var existingDbCert = await _unitOfWork.Certificates.GetByThumbprintAsync(existingThumbprint, ct)
+            ?? await _unitOfWork.Certificates.GetBySerialNumberAsync(existingCert.SerialNumber, ct);
+
+        if (existingDbCert == null)
+        {
+            _logger.LogWarning("Re-enrollment attempted with certificate not registered in gateway: {Serial}",
+                existingCert.SerialNumber);
+            return EnrollmentResult.Failed("Certificate is not registered for re-enrollment", 403);
+        }
+
+        if (existingDbCert.EstProfileId != profileId)
+        {
+            _logger.LogWarning("Re-enrollment attempted with certificate from different profile. " +
+                "Cert profile: {CertProfile}, Request profile: {RequestProfile}",
+                existingDbCert.EstProfileId, profileId);
+            return EnrollmentResult.Failed("Certificate does not belong to this EST profile", 403);
+        }
+
+        if (existingDbCert.Status != CertificateStatus.Valid)
+        {
+            var reason = existingDbCert.Status == CertificateStatus.Revoked
+                ? "Certificate has been revoked"
+                : "Certificate is not valid for re-enrollment";
+            _logger.LogWarning("Re-enrollment attempted with {Status} certificate: {Serial}",
+                existingDbCert.Status, existingCert.SerialNumber);
+            return EnrollmentResult.Failed(reason, 403);
+        }
+
+        if (existingDbCert.NotAfter <= now)
+        {
+            return EnrollmentResult.Failed("Certificate has expired", 403);
+        }
+
+        if (existingDbCert.NotBefore > now)
+        {
+            return EnrollmentResult.Failed("Certificate is not yet valid", 403);
+        }
+
+        var device = await ResolveDeviceForCertificateAsync(existingDbCert, existingCert, ct);
+        if (device == null)
+        {
+            _logger.LogWarning("Re-enrollment certificate {Serial} does not map to an active device record",
+                existingCert.SerialNumber);
+            return EnrollmentResult.Failed("Certificate does not map to an active device", 403);
+        }
+
+        if (device.Status != DeviceStatus.Active || device.RemovedAt != null)
+        {
+            _logger.LogWarning("Re-enrollment attempted for device {DeviceId} with status {Status}",
+                device.Id, device.Status);
+            return EnrollmentResult.Failed("Device is not active", 403);
+        }
+
+        ParsedCsr csr;
+        try
+        {
+            csr = _pkcsService.ParsePkcs10(csrBytes);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to parse re-enrollment CSR");
+            return EnrollmentResult.Failed($"Invalid CSR: {ex.Message}", 400);
+        }
+
+        var csrCommonName = ExtractSubjectCommonName(csr.SubjectDn);
+        if (string.IsNullOrWhiteSpace(csrCommonName))
+        {
+            return EnrollmentResult.Failed("CSR subject common name is required for re-enrollment", 400);
+        }
+
+        if (!string.Equals(csrCommonName.Trim(), device.SubjectCommonName, StringComparison.OrdinalIgnoreCase))
+        {
+            _logger.LogWarning("Re-enrollment CSR CN mismatch for device {DeviceId}. Existing CN: {ExistingCn}, CSR CN: {CsrCn}",
+                device.Id, device.SubjectCommonName, csrCommonName);
+            return EnrollmentResult.Failed("CSR subject common name does not match the existing device", 403);
+        }
+
+        var backend = await _unitOfWork.CaBackends.GetActiveAsync(ct);
+        if (backend == null)
+        {
+            _logger.LogError("No active CA backend configured for profile {ProfileId}", profileId);
+            return EnrollmentResult.Failed("No active CA backend configured", 503);
+        }
+
+        if (!backend.IsEnabled)
+        {
+            _logger.LogWarning("Active CA backend is disabled: {BackendId}", backend.Id);
+            return EnrollmentResult.Failed("Active CA backend is disabled", 503);
+        }
+
+        if (!_pkcsService.ValidateCsrSignature(csr))
+        {
+            _logger.LogWarning("Re-enrollment CSR signature validation failed");
+            return EnrollmentResult.Failed("CSR signature validation failed", 400);
+        }
+
+        var enrollmentEvent = new EnrollmentEvent
+        {
+            Id = Guid.NewGuid(),
+            Timestamp = DateTime.UtcNow,
+            ProfileId = profileId,
+            DeviceId = device.SubjectCommonName,
+            DeviceRecordId = device.Id,
+            CaBackendId = backend.Id,
+            SubjectDn = csr.SubjectDn,
+            RequestorIpAddress = clientIp,
+            Status = EnrollmentStatus.Pending,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+
+        _unitOfWork.EnrollmentEvents.Add(enrollmentEvent);
+        await _unitOfWork.SaveChangesAsync(ct);
+
+        try
+        {
+            var connector = _connectorFactory.CreateConnector(backend);
+            var issuanceResult = await connector.IssueCertificateAsync(csr, profile, ct);
+
+            if (!issuanceResult.Success)
+            {
+                enrollmentEvent.Status = EnrollmentStatus.Error;
+                enrollmentEvent.ErrorMessage = issuanceResult.ErrorMessage;
+                enrollmentEvent.UpdatedAt = DateTime.UtcNow;
+                _unitOfWork.EnrollmentEvents.Update(enrollmentEvent);
+                await _unitOfWork.SaveChangesAsync(ct);
+
+                _logger.LogWarning("Certificate re-issuance failed: {Error}", issuanceResult.ErrorMessage);
+                return EnrollmentResult.Failed(issuanceResult.ErrorMessage ?? "Certificate issuance failed", 500);
+            }
+
+            if (issuanceResult.Certificate == null)
+            {
+                enrollmentEvent.Status = EnrollmentStatus.Error;
+                enrollmentEvent.ErrorMessage = "No certificate returned from CA";
+                enrollmentEvent.UpdatedAt = DateTime.UtcNow;
+                _unitOfWork.EnrollmentEvents.Update(enrollmentEvent);
+                await _unitOfWork.SaveChangesAsync(ct);
+
+                return EnrollmentResult.Failed("No certificate returned from CA", 500);
+            }
+
+            var certificate = new Certificate
+            {
+                Id = Guid.NewGuid(),
+                SerialNumber = issuanceResult.Certificate.SerialNumber,
+                SubjectDn = issuanceResult.Certificate.Subject,
+                IssuerDn = issuanceResult.Certificate.Issuer,
+                Thumbprint = NormalizeThumbprint(issuanceResult.Certificate.GetCertHashString()),
+                NotBefore = issuanceResult.Certificate.NotBefore.ToUniversalTime(),
+                NotAfter = issuanceResult.Certificate.NotAfter.ToUniversalTime(),
+                CertificatePem = _pkcsService.ExportToPem(issuanceResult.Certificate),
+                Status = CertificateStatus.Valid,
+                EstProfileId = profileId,
+                DeviceId = device.SubjectCommonName,
+                DeviceRecordId = device.Id,
+                CaBackendId = backend.Id,
+                CaBackendType = backend.Type.ToString().ToLowerInvariant(),
+                CertificateDerBase64 = Convert.ToBase64String(issuanceResult.Certificate.RawData),
+                GatewayOid = ExtractGatewayOid(issuanceResult.Certificate),
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+
+            _unitOfWork.Certificates.Add(certificate);
+            device.LastCertificateId = certificate.Id;
+            _unitOfWork.Devices.Update(device);
+
+            enrollmentEvent.Status = EnrollmentStatus.Issued;
+            enrollmentEvent.IssuedCertificateId = certificate.Id;
+            enrollmentEvent.UpdatedAt = DateTime.UtcNow;
+            _unitOfWork.EnrollmentEvents.Update(enrollmentEvent);
+
+            await _unitOfWork.SaveChangesAsync(ct);
+
+            var certChain = issuanceResult.CertificateChain?.ToArray() ?? new[] { issuanceResult.Certificate! };
+            var pkcs7 = _pkcsService.EncodeToPkcs7(certChain);
+            var responseBody = _pkcsService.EncodeEstResponseBody(pkcs7);
+
+            _logger.LogInformation("Certificate re-issued successfully for profile {ProfileId}, serial {Serial}",
+                profileId, certificate.SerialNumber);
+
+            return EnrollmentResult.Successful(responseBody, enrollmentEvent.Id);
+        }
+        catch (Exception ex)
+        {
+            enrollmentEvent.Status = EnrollmentStatus.Error;
+            enrollmentEvent.ErrorMessage = ex.Message;
+            enrollmentEvent.UpdatedAt = DateTime.UtcNow;
+            _unitOfWork.EnrollmentEvents.Update(enrollmentEvent);
+            await _unitOfWork.SaveChangesAsync(ct);
+
+            _logger.LogError(ex, "Re-enrollment failed for profile {ProfileId}", profileId);
+            return EnrollmentResult.Failed($"Enrollment failed: {ex.Message}", 500);
+        }
+    }
+
+    private async Task<Device?> ResolveDeviceForCertificateAsync(
+        Certificate certificate,
+        X509Certificate2 presentedCertificate,
+        CancellationToken ct)
+    {
+        if (certificate.DeviceRecordId.HasValue)
+        {
+            var deviceById = await _unitOfWork.Devices.GetByIdAsync(certificate.DeviceRecordId.Value, ct);
+            if (deviceById != null)
+            {
+                return deviceById;
+            }
+        }
+
+        var commonName = ExtractSubjectCommonName(certificate.SubjectDn)
+            ?? (!string.IsNullOrWhiteSpace(certificate.DeviceId) ? certificate.DeviceId : null)
+            ?? ExtractSubjectCommonName(presentedCertificate.Subject);
+
+        return string.IsNullOrWhiteSpace(commonName)
+            ? null
+            : await _unitOfWork.Devices.GetBySubjectCommonNameAsync(commonName, ct);
     }
 
     private async Task<EnrollmentResult> RejectEnrollmentAsync(
@@ -482,4 +694,7 @@ public class EnrollmentOrchestrator : IEnrollmentOrchestrator
 
         return null;
     }
+
+    private static string NormalizeThumbprint(string thumbprint) =>
+        thumbprint.Replace(":", string.Empty, StringComparison.Ordinal).ToUpperInvariant();
 }

@@ -651,19 +651,23 @@ public class EnrollmentOrchestratorTests : IDisposable
         var parsedCsr = new ParsedCsr { SubjectDn = "CN=TestDevice", RawData = csrBytes };
         var pkcs7 = new byte[] { 0x30, 0x82 };
         var encodedPkcs7 = new byte[] { 0x65, 0x66 };
+        var device = CreateActiveDevice("TestDevice");
+        var existingDbCert = CreateStoredCertificate(_testCert, profileId, device);
+        Certificate? storedRenewedCertificate = null;
 
         _estProfileRepoMock
             .Setup(r => r.GetByIdAsync(profileId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(profile);
 
-        _caBackendRepoMock
-            .Setup(r => r.GetByIdAsync(backendId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(backend);
-        SetupActiveDeviceAndBackend(backend);
-
         _certificateRepoMock
-            .Setup(r => r.GetBySerialNumberAsync(_testCert.SerialNumber, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((Certificate?)null); // Certificate not in DB (allowed)
+            .Setup(r => r.GetByThumbprintAsync(_testCert.GetCertHashString(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(existingDbCert);
+
+        _deviceRepoMock
+            .Setup(r => r.GetByIdAsync(device.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(device);
+
+        SetupActiveBackend(backend);
 
         _pkcsServiceMock
             .Setup(p => p.ParsePkcs10(csrBytes))
@@ -693,12 +697,20 @@ public class EnrollmentOrchestratorTests : IDisposable
             .Setup(p => p.EncodeEstResponseBody(pkcs7))
             .Returns(encodedPkcs7);
 
+        _certificateRepoMock
+            .Setup(r => r.Add(It.IsAny<Certificate>()))
+            .Callback<Certificate>(c => storedRenewedCertificate = c);
+
         // Act
         var result = await _sut.ReenrollAsync(profileId, csrBytes, _testCert, "192.168.1.1");
 
         // Assert
         result.Success.Should().BeTrue();
         result.StatusCode.Should().Be(200);
+        result.Pkcs7Response.Should().BeEquivalentTo(encodedPkcs7);
+        storedRenewedCertificate.Should().NotBeNull();
+        device.LastCertificateId.Should().Be(storedRenewedCertificate!.Id);
+        existingDbCert.Status.Should().Be(CertificateStatus.Valid);
     }
 
     [Fact]
@@ -707,13 +719,7 @@ public class EnrollmentOrchestratorTests : IDisposable
         // Arrange
         var profileId = Guid.NewGuid();
         var profile = CreateEstProfile(profileId, Guid.NewGuid());
-        var existingDbCert = new Certificate
-        {
-            Id = Guid.NewGuid(),
-            SerialNumber = _testCert.SerialNumber,
-            EstProfileId = profileId,
-            Status = CertificateStatus.Revoked
-        };
+        var existingDbCert = CreateStoredCertificate(_testCert, profileId, CreateActiveDevice("TestDevice"), CertificateStatus.Revoked);
 
         _estProfileRepoMock
             .Setup(r => r.GetByIdAsync(profileId, It.IsAny<CancellationToken>()))
@@ -739,13 +745,7 @@ public class EnrollmentOrchestratorTests : IDisposable
         var profileId = Guid.NewGuid();
         var differentProfileId = Guid.NewGuid();
         var profile = CreateEstProfile(profileId, Guid.NewGuid());
-        var existingDbCert = new Certificate
-        {
-            Id = Guid.NewGuid(),
-            SerialNumber = _testCert.SerialNumber,
-            EstProfileId = differentProfileId, // Different profile!
-            Status = CertificateStatus.Valid
-        };
+        var existingDbCert = CreateStoredCertificate(_testCert, differentProfileId, CreateActiveDevice("TestDevice"));
 
         _estProfileRepoMock
             .Setup(r => r.GetByIdAsync(profileId, It.IsAny<CancellationToken>()))
@@ -761,6 +761,109 @@ public class EnrollmentOrchestratorTests : IDisposable
         // Assert
         result.Success.Should().BeFalse();
         result.StatusCode.Should().Be(403);
+    }
+
+    [Fact]
+    public async Task ReenrollAsyncWithExpiredCertificateReturns403()
+    {
+        // Arrange
+        using var expiredCert = CreateTestCertificate(
+            notBefore: DateTimeOffset.UtcNow.AddDays(-2),
+            notAfter: DateTimeOffset.UtcNow.AddDays(-1));
+
+        // Act
+        var result = await _sut.ReenrollAsync(Guid.NewGuid(), new byte[] { 1 }, expiredCert, null);
+
+        // Assert
+        result.Success.Should().BeFalse();
+        result.StatusCode.Should().Be(403);
+        result.ErrorMessage.Should().Contain("expired");
+    }
+
+    [Fact]
+    public async Task ReenrollAsyncWithNotYetValidCertificateReturns403()
+    {
+        // Arrange
+        using var futureCert = CreateTestCertificate(
+            notBefore: DateTimeOffset.UtcNow.AddDays(1),
+            notAfter: DateTimeOffset.UtcNow.AddDays(2));
+
+        // Act
+        var result = await _sut.ReenrollAsync(Guid.NewGuid(), new byte[] { 1 }, futureCert, null);
+
+        // Assert
+        result.Success.Should().BeFalse();
+        result.StatusCode.Should().Be(403);
+        result.ErrorMessage.Should().Contain("not yet valid");
+    }
+
+    [Fact]
+    public async Task ReenrollAsyncWithCsrCommonNameMismatchReturns403()
+    {
+        // Arrange
+        var profileId = Guid.NewGuid();
+        var profile = CreateEstProfile(profileId, Guid.NewGuid());
+        var device = CreateActiveDevice("TestDevice");
+        var existingDbCert = CreateStoredCertificate(_testCert, profileId, device);
+        var csrBytes = new byte[] { 1, 2, 3 };
+        var parsedCsr = new ParsedCsr { SubjectDn = "CN=OtherDevice", RawData = csrBytes };
+
+        _estProfileRepoMock
+            .Setup(r => r.GetByIdAsync(profileId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(profile);
+
+        _certificateRepoMock
+            .Setup(r => r.GetByThumbprintAsync(_testCert.GetCertHashString(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(existingDbCert);
+
+        _deviceRepoMock
+            .Setup(r => r.GetByIdAsync(device.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(device);
+
+        _pkcsServiceMock
+            .Setup(p => p.ParsePkcs10(csrBytes))
+            .Returns(parsedCsr);
+
+        // Act
+        var result = await _sut.ReenrollAsync(profileId, csrBytes, _testCert, null);
+
+        // Assert
+        result.Success.Should().BeFalse();
+        result.StatusCode.Should().Be(403);
+        result.ErrorMessage.Should().Contain("does not match");
+        _connectorFactoryMock.Verify(f => f.CreateConnector(It.IsAny<CaBackend>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ReenrollAsyncWithRemovedDeviceReturns403()
+    {
+        // Arrange
+        var profileId = Guid.NewGuid();
+        var profile = CreateEstProfile(profileId, Guid.NewGuid());
+        var device = CreateActiveDevice("TestDevice");
+        device.Status = DeviceStatus.Removed;
+        device.RemovedAt = DateTime.UtcNow;
+        var existingDbCert = CreateStoredCertificate(_testCert, profileId, device);
+
+        _estProfileRepoMock
+            .Setup(r => r.GetByIdAsync(profileId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(profile);
+
+        _certificateRepoMock
+            .Setup(r => r.GetByThumbprintAsync(_testCert.GetCertHashString(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(existingDbCert);
+
+        _deviceRepoMock
+            .Setup(r => r.GetByIdAsync(device.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(device);
+
+        // Act
+        var result = await _sut.ReenrollAsync(profileId, new byte[] { 1 }, _testCert, null);
+
+        // Assert
+        result.Success.Should().BeFalse();
+        result.StatusCode.Should().Be(403);
+        result.ErrorMessage.Should().Contain("Device is not active");
     }
 
     #endregion
@@ -802,23 +905,20 @@ public class EnrollmentOrchestratorTests : IDisposable
 
     private void SetupActiveDeviceAndBackend(CaBackend backend)
     {
+        SetupActiveBackend(backend);
+
+        _deviceRepoMock
+            .Setup(r => r.GetBySubjectCommonNameAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CreateActiveDevice("TestDevice"));
+    }
+
+    private void SetupActiveBackend(CaBackend backend)
+    {
         backend.IsActive = true;
 
         _caBackendRepoMock
             .Setup(r => r.GetActiveAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(backend);
-
-        _deviceRepoMock
-            .Setup(r => r.GetBySubjectCommonNameAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new Device
-            {
-                Id = Guid.NewGuid(),
-                DisplayName = "Test Device",
-                SubjectCommonName = "TestDevice",
-                Status = DeviceStatus.Active,
-                CreatedAt = DateTime.UtcNow,
-                UpdatedAt = DateTime.UtcNow
-            });
     }
 
     private static Device CreatePendingDevice(string commonName, string? serialNumber, string activationCode)
@@ -838,23 +938,58 @@ public class EnrollmentOrchestratorTests : IDisposable
         return device;
     }
 
-    private static X509Certificate2 CreateTestCertificate()
+    private static Device CreateActiveDevice(string commonName) => new()
+    {
+        Id = Guid.NewGuid(),
+        DisplayName = "Test Device",
+        SubjectCommonName = commonName,
+        Status = DeviceStatus.Active,
+        CreatedAt = DateTime.UtcNow,
+        UpdatedAt = DateTime.UtcNow
+    };
+
+    private static Certificate CreateStoredCertificate(
+        X509Certificate2 certificate,
+        Guid profileId,
+        Device device,
+        CertificateStatus status = CertificateStatus.Valid) => new()
+    {
+        Id = Guid.NewGuid(),
+        SerialNumber = certificate.SerialNumber,
+        SubjectDn = $"CN={device.SubjectCommonName}",
+        IssuerDn = certificate.Issuer,
+        Thumbprint = certificate.GetCertHashString(),
+        NotBefore = certificate.NotBefore.ToUniversalTime(),
+        NotAfter = certificate.NotAfter.ToUniversalTime(),
+        CertificatePem = "-----BEGIN CERTIFICATE-----\ntest\n-----END CERTIFICATE-----",
+        Status = status,
+        EstProfileId = profileId,
+        DeviceId = device.SubjectCommonName,
+        DeviceRecordId = device.Id,
+        CreatedAt = DateTime.UtcNow,
+        UpdatedAt = DateTime.UtcNow
+    };
+
+    private static X509Certificate2 CreateTestCertificate(
+        string commonName = "Test Cert",
+        DateTimeOffset? notBefore = null,
+        DateTimeOffset? notAfter = null)
     {
         using var rsa = RSA.Create(2048);
         var request = new CertificateRequest(
-            new X500DistinguishedName("CN=Test Cert"),
+            new X500DistinguishedName($"CN={commonName}"),
             rsa,
             HashAlgorithmName.SHA256,
             RSASignaturePadding.Pkcs1);
 
         var cert = request.CreateSelfSigned(
-            DateTimeOffset.UtcNow.AddMinutes(-5),
-            DateTimeOffset.UtcNow.AddYears(1));
+            notBefore ?? DateTimeOffset.UtcNow.AddMinutes(-5),
+            notAfter ?? DateTimeOffset.UtcNow.AddYears(1));
 
         return new X509Certificate2(
             cert.Export(X509ContentType.Pfx, "test"),
             "test",
-            X509KeyStorageFlags.Exportable);
+            X509KeyStorageFlags.Exportable | X509KeyStorageFlags.EphemeralKeySet);
     }
 
     private static byte[] CreateTestCsrBytes()
