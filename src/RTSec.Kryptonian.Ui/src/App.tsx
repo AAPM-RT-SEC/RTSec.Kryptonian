@@ -3,6 +3,7 @@ import {
   Activity,
   Archive,
   CheckCircle2,
+  Download,
   KeyRound,
   MonitorCheck,
   Plus,
@@ -968,6 +969,15 @@ function DevicesPage({
                 <td>{latest ? <RenewedAt certificate={latest} /> : <span className="muted">No certificate</span>}</td>
                 <td><ExpiryCountdown certificate={latest} now={now} /></td>
                 <td className="actions">
+                  {latest && (
+                    <button
+                      onClick={() => downloadCertificate(device, latest)}
+                      title="Download latest certificate (.pem)"
+                      aria-label={`Download latest certificate for ${device.displayName}`}
+                    >
+                      <Download size={15} />
+                    </button>
+                  )}
                   {tab === 'archive' ? (
                     <button className="danger" onClick={() => deleteArchivedDevice(device)}>
                       <Trash2 size={15} /> Delete
@@ -1579,6 +1589,22 @@ function formatDate(value: string) {
 
 function shortId(value: string) {
   return value.length > 18 ? `${value.slice(0, 8)}...${value.slice(-6)}` : value;
+}
+
+function downloadCertificate(device: Device, certificate: Certificate) {
+  const blob = new Blob([certificate.certificatePem], { type: 'application/x-pem-file' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${sanitizeFilename(device.subjectCommonName || device.displayName || device.id)}.pem`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function sanitizeFilename(value: string) {
+  return value.replace(/[^a-zA-Z0-9._-]+/g, '_').replace(/^_+|_+$/g, '') || 'certificate';
 }
 
 function activationState(device: Device, now: number) {
