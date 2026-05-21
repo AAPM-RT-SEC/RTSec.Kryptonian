@@ -29,7 +29,9 @@ public partial class MainWindow : Window
 
     private void OnInputChanged(object sender, EventArgs e)
     {
-        EnrollButton.IsEnabled = AllFieldsFilled() && Uri.TryCreate(GatewayText.Text.Trim().TrimEnd('/'), UriKind.Absolute, out _);
+        var gatewayValid = Uri.TryCreate(GatewayText.Text.Trim().TrimEnd('/'), UriKind.Absolute, out _);
+        EnrollButton.IsEnabled = AllFieldsFilled() && gatewayValid;
+        RenewButton.IsEnabled = gatewayValid;
     }
 
     private bool AllFieldsFilled()
@@ -105,6 +107,144 @@ public partial class MainWindow : Window
         {
             SetBusy(false);
         }
+    }
+
+    private async void OnRenewClicked(object sender, RoutedEventArgs e)
+    {
+        if (!Uri.TryCreate(GatewayText.Text.Trim().TrimEnd('/'), UriKind.Absolute, out var gatewayUri)
+            || gatewayUri.Scheme != Uri.UriSchemeHttps)
+        {
+            SetStatus("Gateway must be an absolute HTTPS URL for re-enrollment.", error: true);
+            return;
+        }
+
+        var dialog = new OpenFileDialog
+        {
+            Title = "Select existing certificate (.pfx) to renew",
+            Filter = "PKCS#12 (.pfx)|*.pfx|All files (*.*)|*.*",
+            CheckFileExists = true
+        };
+        if (dialog.ShowDialog() != true) { return; }
+
+        X509Certificate2? existing = null;
+        try
+        {
+            existing = LoadPfx(dialog.FileName, ActivationCodeBox.Password);
+        }
+        catch (Exception ex)
+        {
+            SetStatus($"Could not load .pfx: {ex.Message} (enter password in Activation Code field if needed).", error: true);
+            return;
+        }
+
+        if (existing.GetRSAPrivateKey() is null)
+        {
+            SetStatus("Selected certificate has no accessible private key; cannot perform mTLS re-enroll.", error: true);
+            existing.Dispose();
+            return;
+        }
+
+        var install = InstallToggle.IsChecked == true;
+        SetBusy(true);
+        try
+        {
+            var commonName = ExtractCommonName(existing.SubjectName) ?? existing.Subject;
+            SetStatus($"Generating new key pair for {commonName} and submitting re-enrollment CSR...");
+            using var newRsa = RSA.Create(4096);
+            var csrDer = BuildCsr(newRsa, commonName);
+
+            var renewed = await ReenrollAsync(gatewayUri, existing, newRsa, csrDer);
+
+            if (install)
+            {
+                InstallCertificate(renewed);
+                SetStatus($"Renewed certificate installed to CurrentUser\\My. New thumbprint: {renewed.Thumbprint}", success: true);
+            }
+            else
+            {
+                if (SaveCertificateToFile(renewed, commonName + "-renewed"))
+                {
+                    SetStatus($"Renewed certificate saved. New thumbprint: {renewed.Thumbprint}", success: true);
+                }
+                else
+                {
+                    SetStatus("Save cancelled. Renewed certificate was issued but not persisted.", error: true);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            SetStatus($"Re-enrollment failed: {ex.Message}", error: true);
+        }
+        finally
+        {
+            existing.Dispose();
+            SetBusy(false);
+        }
+    }
+
+    private static X509Certificate2 LoadPfx(string path, string activationCodePassword)
+    {
+        var bytes = File.ReadAllBytes(path);
+        try
+        {
+            return new X509Certificate2(bytes, "", X509KeyStorageFlags.Exportable);
+        }
+        catch (CryptographicException)
+        {
+            if (string.IsNullOrEmpty(activationCodePassword)) { throw; }
+            return new X509Certificate2(bytes, activationCodePassword, X509KeyStorageFlags.Exportable);
+        }
+    }
+
+    private static string? ExtractCommonName(X500DistinguishedName subject)
+    {
+        foreach (var part in subject.Format(true).Split('\n', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var trimmed = part.Trim();
+            if (trimmed.StartsWith("CN=", StringComparison.OrdinalIgnoreCase))
+            {
+                return trimmed.Substring(3).Trim();
+            }
+        }
+        return null;
+    }
+
+    private static async Task<X509Certificate2> ReenrollAsync(
+        Uri gateway,
+        X509Certificate2 existingClientCert,
+        RSA newPrivateKey,
+        byte[] csrDer)
+    {
+        using var handler = new HttpClientHandler
+        {
+            ClientCertificateOptions = ClientCertificateOption.Manual
+        };
+        handler.ClientCertificates.Add(existingClientCert);
+        using var http = new HttpClient(handler);
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(gateway, "/.well-known/est/simplereenroll"));
+        request.Headers.Add("Content-Transfer-Encoding", "base64");
+        request.Content = new StringContent(Convert.ToBase64String(csrDer), Encoding.ASCII);
+        request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/pkcs10");
+
+        using var response = await http.SendAsync(request);
+        var body = await response.Content.ReadAsStringAsync();
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new InvalidOperationException($"EST re-enrollment failed ({(int)response.StatusCode}): {body}");
+        }
+
+        var pkcs7Der = Convert.FromBase64String(body.Trim());
+        var signedCms = new SignedCms();
+        signedCms.Decode(pkcs7Der);
+        if (signedCms.Certificates.Count == 0)
+        {
+            throw new InvalidOperationException("Gateway response did not contain any certificates.");
+        }
+
+        var leaf = FindLeafCertificate(signedCms.Certificates);
+        return leaf.CopyWithPrivateKey(newPrivateKey);
     }
 
     private static async Task<X509Certificate2> EnrollAsync(
@@ -216,7 +356,9 @@ public partial class MainWindow : Window
     private void SetBusy(bool busy)
     {
         BusyBar.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
-        EnrollButton.IsEnabled = !busy && AllFieldsFilled();
+        var gatewayValid = Uri.TryCreate(GatewayText.Text.Trim().TrimEnd('/'), UriKind.Absolute, out _);
+        EnrollButton.IsEnabled = !busy && AllFieldsFilled() && gatewayValid;
+        RenewButton.IsEnabled = !busy && gatewayValid;
         foreach (var control in new Control[] { GatewayText, CommonNameText, ManufacturerText, ModelText, SerialText, ActivationCodeBox, InstallToggle })
         {
             control.IsEnabled = !busy;
