@@ -214,6 +214,11 @@ export const api = {
       `/api/devices/${id}/activation-code`,
       jsonBody(validForMinutes == null ? {} : { validForMinutes }),
     ),
+  reactivateActivationCode: (id: string, validForMinutes?: number) =>
+    request<DeviceActivationCode>(
+      `/api/devices/${id}/activation-code/reactivate`,
+      jsonBody(validForMinutes == null ? {} : { validForMinutes }),
+    ),
   removeDevice: (id: string) => request<Device>(`/api/devices/${id}/remove`, { method: 'POST' }),
   deleteDevice: (id: string) => request<void>(`/api/devices/${id}`, { method: 'DELETE' }),
   getDeviceCertificates: (id: string) => request<Certificate[]>(`/api/devices/${id}/certificates`),

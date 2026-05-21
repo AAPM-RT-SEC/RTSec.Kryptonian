@@ -445,6 +445,7 @@ function DevicesPage({
   const [registrySearch, setRegistrySearch] = useState('');
   const [archiveSearch, setArchiveSearch] = useState('');
   const [now, setNow] = useState(() => Date.now());
+  const [reactivatedCode, setReactivatedCode] = useState<DeviceActivationCode | null>(null);
   const registryDevices = useMemo(() => devices.filter((device) => device.status !== 'removed'), [devices]);
   const archivedDevices = useMemo(() => devices.filter((device) => device.status === 'removed'), [devices]);
   const search = tab === 'registry' ? registrySearch : archiveSearch;
@@ -462,6 +463,22 @@ function DevicesPage({
     }
 
     void run(() => api.deleteDevice(device.id), `Permanently deleted ${device.displayName}`);
+  };
+
+  const reactivateDevice = async (device: Device) => {
+    const activation = await run(
+      () => api.reactivateActivationCode(device.id),
+      `Generated a new activation code for ${device.displayName}`,
+      { refresh: false },
+    );
+    if (activation) {
+      setReactivatedCode(activation);
+    }
+  };
+
+  const closeReactivatedCode = async () => {
+    setReactivatedCode(null);
+    await refresh();
   };
 
   useEffect(() => {
@@ -520,6 +537,7 @@ function DevicesPage({
         <tbody>
           {visibleDevices.map((device) => {
             const latest = certificatesByDevice[device.id]?.[0];
+            const canReactivate = canReactivateActivationCode(device, now);
             return (
               <tr key={device.id}>
                 <td>{device.displayName}</td>
@@ -534,7 +552,7 @@ function DevicesPage({
                   )}
                 </td>
                 <td><Badge tone={device.status === 'active' ? 'success' : device.status === 'removed' ? 'danger' : 'warn'}>{device.status}</Badge></td>
-                <td>{activationState(device)}</td>
+                <td>{activationState(device, now)}</td>
                 <td>{latest ? `${latest.caBackendType ?? 'unknown'} · ${latest.gatewayOid ?? 'no OID'}` : '-'}</td>
                 <td>{latest ? <RenewedAt certificate={latest} /> : <span className="muted">No certificate</span>}</td>
                 <td><ExpiryCountdown certificate={latest} now={now} /></td>
@@ -544,9 +562,16 @@ function DevicesPage({
                       <Trash2 size={15} /> Delete
                     </button>
                   ) : (
-                    <button className="danger" onClick={() => void run(() => api.removeDevice(device.id), `Archived ${device.displayName}`)}>
-                      <Trash2 size={15} /> Archive
-                    </button>
+                    <>
+                      {canReactivate && (
+                        <button onClick={() => void reactivateDevice(device)}>
+                          <KeyRound size={15} /> Reactivate
+                        </button>
+                      )}
+                      <button className="danger" onClick={() => void run(() => api.removeDevice(device.id), `Archived ${device.displayName}`)}>
+                        <Trash2 size={15} /> Archive
+                      </button>
+                    </>
                   )}
                 </td>
               </tr>
@@ -562,6 +587,13 @@ function DevicesPage({
       </table>
       <CertificateHistory devices={visibleDevices} certificatesByDevice={certificatesByDevice} />
       {creating && <DeviceModal onClose={() => setCreating(false)} run={run} refresh={refresh} />}
+      {reactivatedCode && (
+        <ActivationCodeModal
+          title="Device Reactivated"
+          activation={reactivatedCode}
+          onClose={() => void closeReactivatedCode()}
+        />
+      )}
     </section>
   );
 }
@@ -993,6 +1025,49 @@ function DeviceModal({ onClose, run, refresh }: { onClose: () => void; run: Runn
   );
 }
 
+function ActivationCodeModal({
+  title,
+  activation,
+  onClose,
+}: {
+  title: string;
+  activation: DeviceActivationCode;
+  onClose: () => void;
+}) {
+  const [copyStatus, setCopyStatus] = useState<string | null>(null);
+
+  const copyActivationCode = async () => {
+    if (!navigator.clipboard) {
+      setCopyStatus('Clipboard is unavailable. Select and copy the code below.');
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(activation.activationCode);
+      setCopyStatus('Copied to clipboard.');
+    } catch {
+      setCopyStatus('Clipboard copy was blocked. Select and copy the code below.');
+    }
+  };
+
+  return (
+    <Modal title={title} onClose={onClose}>
+      <div className="activationResult">
+        <label>
+          Activation code
+          <code>{activation.activationCode}</code>
+        </label>
+        {copyStatus && <p className="copyStatus">{copyStatus}</p>}
+        <p>Expires {formatDate(activation.expiresAt)}.</p>
+        <div className="modalActions">
+          <button type="button" onClick={() => void copyActivationCode()}>Copy Code</button>
+          <button className="primary" type="button" onClick={onClose}>Done</button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 function ProfileModal({
   profile,
   backends,
@@ -1095,17 +1170,29 @@ function shortId(value: string) {
   return value.length > 18 ? `${value.slice(0, 8)}...${value.slice(-6)}` : value;
 }
 
-function activationState(device: Device) {
+function activationState(device: Device, now: number) {
   if (device.activationCodeUsedAt) {
     return `Used ${formatDate(device.activationCodeUsedAt)}`;
   }
   if (device.hasActivationCode && device.activationCodeExpiresAt) {
+    if (new Date(device.activationCodeExpiresAt).getTime() <= now) {
+      return `Code expired ${formatDate(device.activationCodeExpiresAt)}`;
+    }
     return `Code expires ${formatDate(device.activationCodeExpiresAt)}`;
   }
   if (device.status === 'pending') {
     return 'No active code';
   }
   return '-';
+}
+
+function canReactivateActivationCode(device: Device, now: number) {
+  if (device.status !== 'pending' || !device.hasActivationCode || device.activationCodeUsedAt || !device.activationCodeExpiresAt) {
+    return false;
+  }
+
+  const expiresAt = new Date(device.activationCodeExpiresAt).getTime();
+  return Number.isFinite(expiresAt) && expiresAt <= now;
 }
 
 function describeError(error: unknown) {

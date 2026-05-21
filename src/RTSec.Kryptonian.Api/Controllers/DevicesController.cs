@@ -121,6 +121,35 @@ public class DevicesController : ControllerBase
         }
     }
 
+    [HttpPost("{id}/activation-code/reactivate")]
+    [ProducesResponseType(typeof(DeviceActivationCodeDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> ReactivateActivationCode(
+        string id,
+        [FromBody] DeviceActivationCodeCreateDto? dto,
+        CancellationToken ct)
+    {
+        if (!Guid.TryParse(id, out var guid))
+            return NotFound();
+
+        try
+        {
+            var activation = await _deviceService.ReactivateActivationCodeAsync(guid, dto ?? new(), ct);
+            return activation == null ? NotFound() : Ok(activation);
+        }
+        catch (ArgumentException ex)
+        {
+            _logger.LogWarning(ex, "Invalid activation code reactivation request");
+            return BadRequest(new { error = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogWarning(ex, "Activation code reactivation failed");
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
     [HttpPost("{id}/remove")]
     [ProducesResponseType(typeof(DeviceDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
