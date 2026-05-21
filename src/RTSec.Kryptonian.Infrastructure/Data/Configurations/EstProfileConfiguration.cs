@@ -26,10 +26,13 @@ public class EstProfileConfiguration : IEntityTypeConfiguration<EstProfile>
             .IsRequired()
             .HasMaxLength(255);
 
-        // EF Core 8 maps primitive collections to JSON by default — works on Postgres,
-        // SQLite, and in-memory without provider-specific column hints.
-        builder.PrimitiveCollection(e => e.Hostnames)
+        // Native Postgres text[] array column. Hostname matching is done in-process
+        // after loading the profile, so we don't need JSON or any portable-collection
+        // mapping. Declaring the column type explicitly keeps EnsureCreated() in sync
+        // with what Npgsql will pick at read time.
+        builder.Property(e => e.Hostnames)
             .HasColumnName("hostnames")
+            .HasColumnType("text[]")
             .Metadata.SetValueComparer(ValueComparers.StringCollectionComparer);
 
         builder.Property(e => e.HostnameMatchType)
@@ -50,8 +53,9 @@ public class EstProfileConfiguration : IEntityTypeConfiguration<EstProfile>
             .HasColumnName("certificate_template")
             .HasMaxLength(255);
 
-        builder.PrimitiveCollection(e => e.AllowedKeyUsages)
+        builder.Property(e => e.AllowedKeyUsages)
             .HasColumnName("allowed_key_usages")
+            .HasColumnType("text[]")
             .Metadata.SetValueComparer(ValueComparers.StringCollectionComparer);
 
         builder.Property(e => e.ValidityDays)

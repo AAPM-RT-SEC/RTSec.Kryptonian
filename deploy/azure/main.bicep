@@ -1,23 +1,23 @@
 // Bicep template for the public Kryptonian gateway.
 //
 // What this provisions in rg-kryptonian-hackathon:
-//   1. File share `kryptonian-gateway-data` on the existing stkryptonianfiles
-//      storage account (SQLite file + logs survive container restarts here).
-//   2. Container Apps environment storage binding pointing at that share.
-//   3. Container app `kryptonian-gateway` running the image from
-//      kryptonianregistry.azurecr.io, with secrets for the admin API key and
-//      the harness team token, env vars selecting the SQLite provider, and a
-//      volume mount at /data backed by the file share.
-//   4. AcrPull role assignment so the container app's system-assigned identity
+//   1. Container app `kryptonian-gateway` running the image from
+//      kryptonianregistry.azurecr.io, with secrets for the admin API key,
+//      the harness team token, and the Postgres connection string.
+//   2. AcrPull role assignment so the container app's system-assigned identity
 //      can pull from kryptonianregistry.
+//
+// Database (Postgres flexible-server `kryptonian-pg`) is provisioned outside
+// this template by deploy.ps1 because flex-server creation has long-running
+// async semantics that don't compose cleanly with the rest of the deploy.
 //
 // Re-runnable: every resource uses a stable name and Bicep handles the
 // existing-vs-create branches. Updating `imageTag` does a rolling deploy.
 
 targetScope = 'resourceGroup'
 
-@description('Image tag to deploy, e.g. "v1" or "latest".')
-param imageTag string = 'v1'
+@description('Image tag to deploy, e.g. "v2" or "latest".')
+param imageTag string = 'v2'
 
 @description('Strong random API key for the admin endpoints. Generated outside Bicep and passed as a parameter.')
 @secure()
@@ -30,6 +30,10 @@ param harnessTeamToken string
 @description('CA harness public base URL.')
 param harnessBaseUrl string = 'https://ca-harness.mangotree-b3d09362.eastus.azurecontainerapps.io'
 
+@description('Postgres connection string in Npgsql format (Host=...;Database=...;Username=...;Password=...;SslMode=Require).')
+@secure()
+param postgresConnectionString string
+
 // ── References to existing resources ──────────────────────────────────────────
 resource acaEnv 'Microsoft.App/managedEnvironments@2024-03-01' existing = {
   name: 'kryptonian-cae'
@@ -37,37 +41,6 @@ resource acaEnv 'Microsoft.App/managedEnvironments@2024-03-01' existing = {
 
 resource registry 'Microsoft.ContainerRegistry/registries@2023-11-01-preview' existing = {
   name: 'kryptonianregistry'
-}
-
-resource storage 'Microsoft.Storage/storageAccounts@2023-05-01' existing = {
-  name: 'stkryptonianfiles'
-}
-
-// ── File share for SQLite + logs ──────────────────────────────────────────────
-resource fileShare 'Microsoft.Storage/storageAccounts/fileServices/shares@2023-05-01' = {
-  name: '${storage.name}/default/kryptonian-gateway-data'
-  properties: {
-    shareQuota: 5
-    enabledProtocols: 'SMB'
-    accessTier: 'Hot'
-  }
-}
-
-// ── Container Apps environment storage binding ───────────────────────────────
-resource acaStorage 'Microsoft.App/managedEnvironments/storages@2024-03-01' = {
-  parent: acaEnv
-  name: 'kryptonian-gateway-data'
-  properties: {
-    azureFile: {
-      accountName: storage.name
-      accountKey: storage.listKeys().keys[0].value
-      shareName: 'kryptonian-gateway-data'
-      accessMode: 'ReadWrite'
-    }
-  }
-  dependsOn: [
-    fileShare
-  ]
 }
 
 // ── Container app ─────────────────────────────────────────────────────────────
@@ -102,6 +75,10 @@ resource gatewayApp 'Microsoft.App/containerApps@2024-03-01' = {
           name: 'harness-team-token'
           value: harnessTeamToken
         }
+        {
+          name: 'pg-conn'
+          value: postgresConnectionString
+        }
       ]
     }
     template: {
@@ -124,16 +101,26 @@ resource gatewayApp 'Microsoft.App/containerApps@2024-03-01' = {
               value: 'http://+:5000'
             }
             {
+              // ACA terminates TLS at the ingress; trust the X-Forwarded-* headers
+              // so issued Location URLs use https:// and HttpsRedirection is happy.
+              name: 'ASPNETCORE_FORWARDEDHEADERS_ENABLED'
+              value: 'true'
+            }
+            {
               name: 'Kryptonian__Database__Provider'
-              value: 'Sqlite'
+              value: 'PostgreSQL'
             }
             {
               name: 'ConnectionStrings__DefaultConnection'
-              value: 'Data Source=/data/kryptonian.db;Cache=Shared'
+              secretRef: 'pg-conn'
             }
             {
               name: 'Kryptonian__Est__AllowPlainHttp'
               value: 'true'
+            }
+            {
+              name: 'Kryptonian__Tls__RedirectHttpToHttps'
+              value: 'false'
             }
             {
               name: 'Kryptonian__AdminApi__ApiKeys'
@@ -148,12 +135,6 @@ resource gatewayApp 'Microsoft.App/containerApps@2024-03-01' = {
               secretRef: 'harness-team-token'
             }
           ]
-          volumeMounts: [
-            {
-              volumeName: 'data'
-              mountPath: '/data'
-            }
-          ]
           probes: [
             {
               type: 'Liveness'
@@ -163,7 +144,7 @@ resource gatewayApp 'Microsoft.App/containerApps@2024-03-01' = {
               }
               periodSeconds: 30
               failureThreshold: 5
-              initialDelaySeconds: 20
+              initialDelaySeconds: 30
             }
             {
               type: 'Readiness'
@@ -173,23 +154,17 @@ resource gatewayApp 'Microsoft.App/containerApps@2024-03-01' = {
               }
               periodSeconds: 10
               failureThreshold: 3
-              initialDelaySeconds: 10
+              initialDelaySeconds: 15
             }
           ]
         }
       ]
-      // SQLite + Azure Files is only safe with one writer. Pin to a single replica.
+      // Postgres handles the multi-writer coordination, so we can scale out
+      // safely later. Cap at 3 for now to keep the bill predictable.
       scale: {
         minReplicas: 1
-        maxReplicas: 1
+        maxReplicas: 3
       }
-      volumes: [
-        {
-          name: 'data'
-          storageType: 'AzureFile'
-          storageName: acaStorage.name
-        }
-      ]
     }
   }
 }

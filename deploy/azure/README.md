@@ -1,17 +1,34 @@
 # Azure deployment — Kryptonian gateway
 
-Single-replica public gateway hosted on the existing
-`rg-kryptonian-hackathon` resource group, pre-seeded with four CA backends
-pointing at the CA harness and one EST profile so any device with a valid
-activation code can enroll right away.
+Public gateway hosted in the existing `rg-kryptonian-hackathon` resource group,
+pre-seeded with four CA backends pointing at the CA harness and one EST profile
+so any device with a valid activation code can enroll right away.
+
+## Architecture
+
+- **API + dashboard**: single ASP.NET Core container app `kryptonian-gateway`
+  on the existing `kryptonian-cae` Container Apps environment. ACA terminates
+  TLS; internal listener is plain HTTP. `ASPNETCORE_FORWARDEDHEADERS_ENABLED=true`
+  makes the app honour `X-Forwarded-Proto` from ingress.
+- **Database**: Azure Database for PostgreSQL Flexible Server `kryptonian-pg`
+  (Burstable B1ms, 32 GiB, PG 16). The schema is created from the EF model via
+  `EnsureCreated()` on first boot (versioned migrations are out of the repo
+  while the model stabilises — this is documented as a v2 follow-up).
+- **CA backends**: every backend's `HarnessBaseUrl`/`DirectoryUrl` points at
+  `https://ca-harness.…/teams/{token}/...`, where `{token}` was issued once
+  for the `kryptonian-collab` team. Re-running `deploy.ps1` keeps the same
+  token.
+- **TLS**: ACA managed cert at the ingress, default `*.azurecontainerapps.io`
+  FQDN.
 
 ## Files
 
 | File | Purpose |
 |---|---|
-| `main.bicep` | Provisions the file share, ACA storage binding, container app, and AcrPull role. Idempotent. |
-| `seed-gateway.ps1` | POSTs the four `selfsigned`/`adcs`/`ejbca`/`acme` CA backends and one `Default Device EST` profile through the admin API. Skips entries that already exist. |
-| `deploy.ps1` | Wrapper: ensures a harness team token, mints (or reuses) an admin API key, runs `az acr build`, runs the Bicep deployment, and runs `seed-gateway.ps1`. |
+| `main.bicep` | Container app + secrets + AcrPull role assignment. Idempotent. |
+| `deploy.ps1` | Wrapper: ensures Postgres + harness token + admin key, runs `az acr build`, runs Bicep, runs `seed-gateway.ps1`. |
+| `seed-gateway.ps1` | Idempotently POSTs the four CA backends and one EST profile through the admin API. |
+| `smoke-test.ps1` | End-to-end device enrollment probe. |
 
 ## First-time deploy
 
@@ -23,11 +40,15 @@ az account set --subscription 'Red Ion'     # if needed
 
 The first run will:
 
-1. Register `kryptonian-collab` with the harness and stash the token in an ACA secret.
-2. Generate a strong 256-bit admin API key and stash it in an ACA secret.
-3. `az acr build` the gateway image into `kryptonianregistry`.
-4. Deploy `main.bicep` (creates the file share, ACA storage binding, container app with system-assigned identity + AcrPull, single replica).
-5. Run `seed-gateway.ps1` to create four CA backends, activate the self-signed one, and create one EST profile.
+1. Provision Postgres flex server `kryptonian-pg` in **eastus2** (eastus is
+   restricted for the Burstable SKU on this subscription as of 2026-05).
+   Admin password is generated and stored as ACA secret `pg-admin-password`.
+2. Register `kryptonian-collab` with the harness and stash the token in
+   ACA secret `harness-team-token`.
+3. Mint a 32-byte admin API key, stash in ACA secret `admin-api-key`.
+4. `az acr build` the gateway image into `kryptonianregistry`.
+5. Deploy `main.bicep` (container app, secrets, AcrPull role).
+6. `seed-gateway.ps1` creates the four CA backends + EST profile.
 
 ## Re-deploys
 
@@ -37,54 +58,45 @@ The first run will:
 ./deploy/azure/deploy.ps1 -SkipBuild -SkipSeed   # bicep only
 ```
 
-Re-runs reuse the existing harness token and admin API key (read from the ACA
-secrets), so credentials stay stable across deployments.
+Re-runs reuse the existing Postgres password, harness token, and admin API
+key (read from the ACA secrets), so credentials stay stable.
 
 ## Retrieving credentials
 
 ```pwsh
-az containerapp secret show `
-  -g rg-kryptonian-hackathon -n kryptonian-gateway `
-  --secret-name admin-api-key --query value -o tsv
+az containerapp secret show -g rg-kryptonian-hackathon -n kryptonian-gateway --secret-name admin-api-key      --query value -o tsv
+az containerapp secret show -g rg-kryptonian-hackathon -n kryptonian-gateway --secret-name harness-team-token --query value -o tsv
+az containerapp secret show -g rg-kryptonian-hackathon -n kryptonian-gateway --secret-name pg-admin-password  --query value -o tsv
 ```
 
-`harness-team-token` works the same way. Both are also stored in the team's
-private gist (see the team handoff doc).
+All three are also stored in the team's private gist (see the team handoff
+doc for the URL).
 
 ## Smoke test
 
 ```pwsh
-$fqdn = az containerapp show -g rg-kryptonian-hackathon -n kryptonian-gateway --query properties.configuration.ingress.fqdn -o tsv
-Invoke-RestMethod "https://$fqdn/api/status/health"
+./deploy/azure/smoke-test.ps1
 ```
 
-Then open `https://$fqdn/` in a browser — the dashboard loads, all four CAs
-are visible under **CA Backends**, **Default Device EST** is in **EST
-Profiles**, and **Settings** shows the gateway defaults panel.
-
-## Architecture notes
-
-- **Storage**: SQLite at `/data/kryptonian.db`, backed by an Azure Files share
-  on `stkryptonianfiles`. Single writer — `maxReplicas: 1` is intentional.
-- **TLS**: ACA managed cert at the ingress. Internally the app listens on
-  port 5000 plain HTTP. `Kryptonian__Est__AllowPlainHttp=true` because the
-  TLS boundary is the ingress, not the container.
-- **Harness coupling**: every CA backend's `HarnessBaseUrl` is
-  `https://ca-harness.…/teams/{token}`, where `{token}` was issued once for
-  the `kryptonian-collab` team. Re-running `deploy.ps1` keeps the same token.
-- **Admin API**: protected by the API key in `admin-api-key`. The dashboard
-  bundle is built with `VITE_API_KEY=<same key>` so authenticated requests
-  from the dashboard JS work out of the box.
-- **EST enrollment**: anonymous (activation code only), not gated by the
-  admin API key.
+Should print an `=== Issued certificate ===` block with a `Gateway OID:
+1.3.6.1.4.1.99999.1` line — that OID is proof the enrollment travelled
+device → gateway → harness rather than going direct.
 
 ## Teardown
 
 ```pwsh
 az containerapp delete -g rg-kryptonian-hackathon -n kryptonian-gateway --yes
-az storage share delete --account-name stkryptonianfiles --name kryptonian-gateway-data
-az containerapp env storage remove -g rg-kryptonian-hackathon --name kryptonian-cae --storage-name kryptonian-gateway-data
+az postgres flexible-server delete -g rg-kryptonian-hackathon -n kryptonian-pg --yes
 ```
 
 The harness team registration on the harness side has no API for self-deletion
 without the harness admin key; ask Rex.
+
+## Cost
+
+| Item | Approx. monthly |
+|---|---|
+| Container App (1 vCPU / 1 GiB, single replica at low traffic) | < $10 |
+| Postgres Flex B1ms + 32 GiB | ~$13 |
+| ACR Basic | already billed |
+| **Total incremental** | **~$20** while running |
