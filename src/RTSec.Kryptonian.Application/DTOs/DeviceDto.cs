@@ -133,6 +133,14 @@ public class CertificateDto
     [JsonPropertyName("id")]
     public string Id { get; set; } = string.Empty;
 
+    /// <summary>
+    /// The registered Device record this certificate belongs to (entity FK).
+    /// Null for orphan certificates that were issued via EST without a matching
+    /// pending-device row.
+    /// </summary>
+    [JsonPropertyName("deviceId")]
+    public string? DeviceId { get; set; }
+
     [JsonPropertyName("serialNumber")]
     public string SerialNumber { get; set; } = string.Empty;
 

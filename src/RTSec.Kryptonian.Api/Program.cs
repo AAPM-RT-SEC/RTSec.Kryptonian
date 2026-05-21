@@ -284,7 +284,29 @@ try
         Log.Information("Serving admin dashboard from {Path}", uiDistPath);
         var uiFileProvider = new PhysicalFileProvider(uiDistPath);
         app.UseDefaultFiles(new DefaultFilesOptions { FileProvider = uiFileProvider });
-        app.UseStaticFiles(new StaticFileOptions { FileProvider = uiFileProvider });
+        app.UseStaticFiles(new StaticFileOptions
+        {
+            FileProvider = uiFileProvider,
+            OnPrepareResponse = ctx =>
+            {
+                // Vite emits content-hashed filenames under /assets so those can cache
+                // forever. index.html (and any other root-level html/json) carries the
+                // pointers to the hashed bundle and must NOT be cached — otherwise a
+                // stale index.html keeps referencing a deleted bundle and the dashboard
+                // 404s after every redeploy.
+                var path = ctx.File.PhysicalPath?.Replace('\\', '/') ?? string.Empty;
+                if (path.Contains("/assets/", StringComparison.OrdinalIgnoreCase))
+                {
+                    ctx.Context.Response.Headers["Cache-Control"] = "public, max-age=31536000, immutable";
+                }
+                else
+                {
+                    ctx.Context.Response.Headers["Cache-Control"] = "no-cache, no-store, must-revalidate";
+                    ctx.Context.Response.Headers["Pragma"] = "no-cache";
+                    ctx.Context.Response.Headers["Expires"] = "0";
+                }
+            }
+        });
     }
     else
     {

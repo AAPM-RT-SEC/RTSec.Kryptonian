@@ -77,6 +77,7 @@ internal static class DtoMapper
         return new CertificateDto
         {
             Id = entity.Id.ToString(),
+            DeviceId = entity.DeviceRecordId?.ToString(),
             SerialNumber = entity.SerialNumber,
             SubjectDn = entity.SubjectDn,
             IssuerDn = entity.IssuerDn,

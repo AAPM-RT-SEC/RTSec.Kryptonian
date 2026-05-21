@@ -198,6 +198,19 @@ public class DevicesController : ControllerBase
         return Ok(certificates);
     }
 
+    /// <summary>
+    /// Returns every certificate across every device in one response, ordered newest
+    /// first. The dashboard groups by <c>deviceId</c> client-side to avoid an N+1
+    /// fetch pattern that exhausts the Postgres connection pool on larger tenants.
+    /// </summary>
+    [HttpGet("certificates")]
+    [ProducesResponseType(typeof(IEnumerable<CertificateDto>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> AllCertificates(CancellationToken ct)
+    {
+        var certificates = await _deviceService.GetAllCertificatesAsync(ct);
+        return Ok(certificates);
+    }
+
     [HttpPost("{id}/demo-enroll")]
     [ProducesResponseType(typeof(DemoEnrollResponseDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]

@@ -58,6 +58,11 @@ export interface DeviceActivationCode {
 
 export interface Certificate {
   id: string;
+  /**
+   * GUID of the Device record this certificate belongs to. Null for "orphan"
+   * certs issued via EST without a matching pending-device row.
+   */
+  deviceId?: string | null;
   serialNumber: string;
   subjectDn: string;
   issuerDn: string;
@@ -283,6 +288,9 @@ export const api = {
   removeDevice: (id: string) => request<Device>(`/api/devices/${id}/remove`, { method: 'POST' }),
   deleteDevice: (id: string) => request<void>(`/api/devices/${id}`, { method: 'DELETE' }),
   getDeviceCertificates: (id: string) => request<Certificate[]>(`/api/devices/${id}/certificates`),
+  // Batch: one DB query for every cert in the system; the dashboard groups by deviceId
+  // client-side instead of firing a /api/devices/{id}/certificates per row.
+  getAllCertificates: () => request<Certificate[]>(`/api/devices/certificates`),
   demoEnrollDevice: (id: string) =>
     request<DemoEnrollResponse>(`/api/devices/${id}/demo-enroll`, { method: 'POST' }),
 
