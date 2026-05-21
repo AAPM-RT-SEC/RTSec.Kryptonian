@@ -59,6 +59,10 @@ resource gatewayApp 'Microsoft.App/containerApps@2024-03-01' = {
         targetPort: 5000
         transport: 'auto'
         allowInsecure: false
+        // EST simplereenroll requires mTLS. 'accept' makes Envoy advertise a
+        // client-cert request in the TLS handshake and forward the presented
+        // cert as X-ARR-ClientCert (the header AddCertificateForwarding reads).
+        clientCertificateMode: 'accept'
       }
       registries: [
         {
