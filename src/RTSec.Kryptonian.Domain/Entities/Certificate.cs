@@ -69,6 +69,12 @@ public class Certificate : BaseEntity
 
     public string? GatewayOid { get; set; }
 
+    /// <summary>
+    /// Last time an "approaching expiry" notification was dispatched for this certificate.
+    /// Used by CertificateExpiryWatcher to debounce repeated daily emails.
+    /// </summary>
+    public DateTime? LastExpiryNotifiedAt { get; set; }
+
     // Navigation properties
     public EstProfile? EstProfile { get; set; }
     public Device? Device { get; set; }

@@ -79,6 +79,9 @@ public class CertificateConfiguration : IEntityTypeConfiguration<Certificate>
             .HasColumnName("gateway_oid")
             .HasMaxLength(128);
 
+        builder.Property(e => e.LastExpiryNotifiedAt)
+            .HasColumnName("last_expiry_notified_at");
+
         builder.Property(e => e.CreatedAt)
             .HasColumnName("created_at");
 

@@ -19,6 +19,8 @@ public class UnitOfWork : IUnitOfWork
     private IEnrollmentEventRepository? _enrollmentEvents;
     private IAcmeAccountRepository? _acmeAccounts;
     private IGatewaySettingsRepository? _gatewaySettings;
+    private INotificationSettingsRepository? _notificationSettings;
+    private INotificationRecipientRepository? _notificationRecipients;
 
     public UnitOfWork(KryptonianDbContext context)
     {
@@ -45,6 +47,12 @@ public class UnitOfWork : IUnitOfWork
 
     public IGatewaySettingsRepository GatewaySettings =>
         _gatewaySettings ??= new GatewaySettingsRepository(_context);
+
+    public INotificationSettingsRepository NotificationSettings =>
+        _notificationSettings ??= new NotificationSettingsRepository(_context);
+
+    public INotificationRecipientRepository NotificationRecipients =>
+        _notificationRecipients ??= new NotificationRecipientRepository(_context);
 
     public async Task<int> SaveChangesAsync(CancellationToken ct = default)
     {

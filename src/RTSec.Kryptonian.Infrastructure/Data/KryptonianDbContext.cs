@@ -17,6 +17,8 @@ public class KryptonianDbContext : DbContext
     public DbSet<EnrollmentEvent> EnrollmentEvents => Set<EnrollmentEvent>();
     public DbSet<AcmeAccount> AcmeAccounts => Set<AcmeAccount>();
     public DbSet<GatewaySettings> GatewaySettings => Set<GatewaySettings>();
+    public DbSet<NotificationSettings> NotificationSettings => Set<NotificationSettings>();
+    public DbSet<NotificationRecipient> NotificationRecipients => Set<NotificationRecipient>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
