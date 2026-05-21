@@ -28,6 +28,11 @@ import {
   EstProfileInput,
   GatewaySettings,
   GatewaySettingsInput,
+  NotificationRecipient,
+  NotificationSettings,
+  NotificationSettingsInput,
+  SmtpAuthMode,
+  SmtpTlsMode,
 } from './api';
 
 type Page = 'dashboard' | 'settings' | 'cas' | 'devices' | 'profiles' | 'events';
@@ -252,6 +257,15 @@ function formatLifetime(hours: number): string {
 }
 
 function SettingsPage({ settings, run }: { settings: GatewaySettings | null; run: Runner }) {
+  return (
+    <div className="stack">
+      <GatewayDefaultsSection settings={settings} run={run} />
+      <NotificationsSection run={run} />
+    </div>
+  );
+}
+
+function GatewayDefaultsSection({ settings, run }: { settings: GatewaySettings | null; run: Runner }) {
   const minHours = settings?.minCertificateLifetimeHours ?? 24;
   const maxHours = settings?.maxCertificateLifetimeHours ?? 24 * 365 * 2;
   const [hours, setHours] = useState<number>(settings?.defaultCertificateLifetimeHours ?? 24);
@@ -271,46 +285,443 @@ function SettingsPage({ settings, run }: { settings: GatewaySettings | null; run
   const clamp = (value: number) => Math.min(maxHours, Math.max(minHours, value));
 
   return (
-    <div className="stack">
+    <section className="panel">
+      <div className="panelHeader">
+        <div>
+          <h2>Device Registration Defaults</h2>
+          <p>Gateway-wide defaults applied when issuing certificates to registered devices.</p>
+        </div>
+      </div>
+      <form className="settingsGrid" onSubmit={(event) => void submit(event)}>
+        <label className="settingsField">
+          <span>Default Certificate Lifetime (hours)</span>
+          <input
+            type="number"
+            min={minHours}
+            max={maxHours}
+            value={hours}
+            onChange={(e) => setHours(clamp(Number(e.target.value)))}
+            required
+          />
+          <small>
+            {formatLifetime(hours)} &middot; range {formatLifetime(minHours)} to {formatLifetime(maxHours)}
+          </small>
+        </label>
+        <label className="settingsField">
+          <span>Quick presets</span>
+          <select value={lifetimePresetsHours.find((p) => p.hours === hours)?.hours ?? ''} onChange={(e) => setHours(Number(e.target.value))}>
+            <option value="">Custom</option>
+            {lifetimePresetsHours.map((preset) => (
+              <option key={preset.hours} value={preset.hours}>{preset.label}</option>
+            ))}
+          </select>
+          <small>Choose a common lifetime or enter a custom hour value.</small>
+        </label>
+        <div className="settingsActions">
+          <button className="primary" type="submit">Save Settings</button>
+        </div>
+      </form>
+    </section>
+  );
+}
+
+function NotificationsSection({ run }: { run: Runner }) {
+  const [settings, setSettings] = useState<NotificationSettings | null>(null);
+  const [recipients, setRecipients] = useState<NotificationRecipient[]>([]);
+  const [draft, setDraft] = useState<NotificationSettingsInput | null>(null);
+  // null = keep stored; '' = clear; anything else = replace
+  const [passwordDraft, setPasswordDraft] = useState<string | null>(null);
+  const [testRecipient, setTestRecipient] = useState('');
+  const [newRecipient, setNewRecipient] = useState<{
+    email: string;
+    displayName: string;
+    notifyOnEnrollmentRejected: boolean;
+    notifyOnCertificateNearExpiry: boolean;
+  }>({ email: '', displayName: '', notifyOnEnrollmentRejected: true, notifyOnCertificateNearExpiry: true });
+
+  useEffect(() => {
+    void reload();
+  }, []);
+
+  const reload = async () => {
+    const [s, r] = await Promise.all([
+      api.getNotificationSettings(),
+      api.getNotificationRecipients(),
+    ]);
+    setSettings(s);
+    setRecipients(r);
+    setDraft(toInput(s));
+    setPasswordDraft(null);
+  };
+
+  if (!draft) {
+    return (
+      <section className="panel">
+        <div className="panelHeader"><div><h2>Email Notifications</h2><p>Loading…</p></div></div>
+      </section>
+    );
+  }
+
+  const update = <K extends keyof NotificationSettingsInput>(key: K, value: NotificationSettingsInput[K]) => {
+    setDraft({ ...draft, [key]: value });
+  };
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    const payload: NotificationSettingsInput = { ...draft, password: passwordDraft };
+    const result = await run(() => api.updateNotificationSettings(payload), 'Saved notification settings');
+    if (result) {
+      setSettings(result);
+      setDraft(toInput(result));
+      setPasswordDraft(null);
+    }
+  };
+
+  const sendTest = async () => {
+    if (!testRecipient.trim()) return;
+    await run(
+      () => api.testNotificationSettings({
+        settings: { ...draft, password: passwordDraft },
+        recipientEmail: testRecipient.trim(),
+      }),
+      `Test email sent to ${testRecipient.trim()}`,
+    );
+  };
+
+  const addRecipient = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!newRecipient.email.trim()) return;
+    const result = await run(
+      () => api.upsertNotificationRecipient({
+        email: newRecipient.email.trim(),
+        displayName: newRecipient.displayName.trim() || null,
+        notifyOnEnrollmentRejected: newRecipient.notifyOnEnrollmentRejected,
+        notifyOnCertificateNearExpiry: newRecipient.notifyOnCertificateNearExpiry,
+      }),
+      'Recipient saved',
+    );
+    if (result) {
+      await reload();
+      setNewRecipient({ email: '', displayName: '', notifyOnEnrollmentRejected: true, notifyOnCertificateNearExpiry: true });
+    }
+  };
+
+  const toggleRecipient = async (
+    recipient: NotificationRecipient,
+    key: 'notifyOnEnrollmentRejected' | 'notifyOnCertificateNearExpiry',
+  ) => {
+    await run(
+      () => api.upsertNotificationRecipient({
+        email: recipient.email,
+        displayName: recipient.displayName ?? null,
+        notifyOnEnrollmentRejected: key === 'notifyOnEnrollmentRejected' ? !recipient[key] : recipient.notifyOnEnrollmentRejected,
+        notifyOnCertificateNearExpiry: key === 'notifyOnCertificateNearExpiry' ? !recipient[key] : recipient.notifyOnCertificateNearExpiry,
+      }),
+      'Recipient updated',
+    );
+    await reload();
+  };
+
+  const deleteRecipient = async (id: string) => {
+    await run(() => api.deleteNotificationRecipient(id), 'Recipient removed');
+    await reload();
+  };
+
+  const passwordPlaceholder = settings?.hasPassword
+    ? '••••••• (stored — leave blank to keep)'
+    : 'Leave blank for anonymous relay';
+
+  return (
+    <>
       <section className="panel">
         <div className="panelHeader">
           <div>
-            <h2>Device Registration Defaults</h2>
-            <p>Gateway-wide defaults applied when issuing certificates to registered devices.</p>
+            <h2>Email Notifications</h2>
+            <p>SMTP server for outbound alerts. Designed for on-prem relays (anonymous, Basic, or NTLM auth).</p>
           </div>
         </div>
         <form className="settingsGrid" onSubmit={(event) => void submit(event)}>
           <label className="settingsField">
-            <span>Default Certificate Lifetime (hours)</span>
+            <span>Notifications enabled</span>
             <input
-              type="number"
-              min={minHours}
-              max={maxHours}
-              value={hours}
-              onChange={(e) => setHours(clamp(Number(e.target.value)))}
+              type="checkbox"
+              checked={draft.enabled}
+              onChange={(e) => update('enabled', e.target.checked)}
+            />
+            <small>Master switch. When off, no emails are sent regardless of event toggles.</small>
+          </label>
+
+          <label className="settingsField">
+            <span>SMTP host</span>
+            <input
+              type="text"
+              value={draft.smtpHost}
+              onChange={(e) => update('smtpHost', e.target.value)}
+              placeholder="smtp.hospital.local"
               required
             />
-            <small>
-              {formatLifetime(hours)} &middot; range {formatLifetime(minHours)} to {formatLifetime(maxHours)}
-            </small>
           </label>
+
           <label className="settingsField">
-            <span>Quick presets</span>
-            <select value={lifetimePresetsHours.find((p) => p.hours === hours)?.hours ?? ''} onChange={(e) => setHours(Number(e.target.value))}>
-              <option value="">Custom</option>
-              {lifetimePresetsHours.map((preset) => (
-                <option key={preset.hours} value={preset.hours}>{preset.label}</option>
-              ))}
-            </select>
-            <small>Choose a common lifetime or enter a custom hour value.</small>
+            <span>SMTP port</span>
+            <input
+              type="number"
+              min={1}
+              max={65535}
+              value={draft.smtpPort}
+              onChange={(e) => update('smtpPort', Number(e.target.value))}
+            />
+            <small>587 (STARTTLS) · 465 (Implicit TLS) · 25 (plain)</small>
           </label>
+
+          <label className="settingsField">
+            <span>TLS mode</span>
+            <select
+              value={draft.tlsMode}
+              onChange={(e) => update('tlsMode', e.target.value as SmtpTlsMode)}
+            >
+              <option value="starttls">STARTTLS</option>
+              <option value="implicit">Implicit TLS</option>
+              <option value="none">None (plain)</option>
+            </select>
+          </label>
+
+          <label className="settingsField">
+            <span>Authentication</span>
+            <select
+              value={draft.authMode}
+              onChange={(e) => update('authMode', e.target.value as SmtpAuthMode)}
+            >
+              <option value="none">None (anonymous relay)</option>
+              <option value="basic">Basic (username + password)</option>
+              <option value="ntlm">NTLM (on-prem Exchange)</option>
+            </select>
+          </label>
+
+          {draft.authMode !== 'none' && (
+            <>
+              <label className="settingsField">
+                <span>Username</span>
+                <input
+                  type="text"
+                  value={draft.username ?? ''}
+                  onChange={(e) => update('username', e.target.value)}
+                  required
+                />
+              </label>
+
+              <label className="settingsField">
+                <span>Password</span>
+                <input
+                  type="password"
+                  value={passwordDraft ?? ''}
+                  onChange={(e) => setPasswordDraft(e.target.value)}
+                  placeholder={passwordPlaceholder}
+                />
+                <small>
+                  Stored encrypted via ASP.NET Data Protection.{' '}
+                  {settings?.hasPassword && (
+                    <button
+                      type="button"
+                      onClick={() => setPasswordDraft('')}
+                      style={{ background: 'none', border: 'none', padding: 0, marginLeft: 6, color: '#5b8ef7', cursor: 'pointer', font: 'inherit' }}
+                    >
+                      Clear stored password
+                    </button>
+                  )}
+                </small>
+              </label>
+            </>
+          )}
+
+          <label className="settingsField">
+            <span>From address</span>
+            <input
+              type="email"
+              value={draft.fromAddress}
+              onChange={(e) => update('fromAddress', e.target.value)}
+              placeholder="kryptonian@hospital.local"
+              required
+            />
+          </label>
+
+          <label className="settingsField">
+            <span>From display name</span>
+            <input
+              type="text"
+              value={draft.fromDisplayName ?? ''}
+              onChange={(e) => update('fromDisplayName', e.target.value)}
+              placeholder="Kryptonian Gateway"
+            />
+          </label>
+
+          <label className="settingsField">
+            <span>Trust SMTP server certificate</span>
+            <input
+              type="checkbox"
+              checked={draft.trustServerCertificate}
+              onChange={(e) => update('trustServerCertificate', e.target.checked)}
+            />
+            <small>Skip TLS chain validation for internal-CA or self-signed SMTP servers. Off by default.</small>
+          </label>
+
+          <label className="settingsField">
+            <span>Notify on enrollment rejection</span>
+            <input
+              type="checkbox"
+              checked={draft.notifyOnEnrollmentRejected}
+              onChange={(e) => update('notifyOnEnrollmentRejected', e.target.checked)}
+            />
+          </label>
+
+          <label className="settingsField">
+            <span>Notify on certificate near expiry</span>
+            <input
+              type="checkbox"
+              checked={draft.notifyOnCertificateNearExpiry}
+              onChange={(e) => update('notifyOnCertificateNearExpiry', e.target.checked)}
+            />
+          </label>
+
+          <label className="settingsField">
+            <span>Expiry warning window (days)</span>
+            <input
+              type="number"
+              min={1}
+              max={365}
+              value={draft.expiryWarningDays}
+              onChange={(e) => update('expiryWarningDays', Number(e.target.value))}
+            />
+            <small>Alert when a device certificate is within this many days of expiry and no renewal has been requested.</small>
+          </label>
+
           <div className="settingsActions">
             <button className="primary" type="submit">Save Settings</button>
+            <input
+              type="email"
+              value={testRecipient}
+              onChange={(e) => setTestRecipient(e.target.value)}
+              placeholder="test recipient email"
+              style={{ marginLeft: 12, minWidth: 220 }}
+            />
+            <button type="button" onClick={() => void sendTest()} disabled={!testRecipient.trim()}>
+              Send test email
+            </button>
           </div>
         </form>
       </section>
-    </div>
+
+      <section className="panel">
+        <div className="panelHeader">
+          <div>
+            <h2>Notification Recipients</h2>
+            <p>Each address subscribes independently per event type. Common pattern: security team for rejections, ops for expiry warnings.</p>
+          </div>
+        </div>
+        <table className="table">
+          <thead>
+            <tr>
+              <th>Email</th>
+              <th>Name</th>
+              <th style={{ textAlign: 'center' }}>Rejections</th>
+              <th style={{ textAlign: 'center' }}>Expiry</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {recipients.length === 0 ? (
+              <EmptyRow columns={5} text="No recipients configured. Add one below to start receiving notifications." />
+            ) : (
+              recipients.map((r) => (
+                <tr key={r.id}>
+                  <td>{r.email}</td>
+                  <td>{r.displayName ?? <span className="muted">—</span>}</td>
+                  <td style={{ textAlign: 'center' }}>
+                    <input
+                      type="checkbox"
+                      checked={r.notifyOnEnrollmentRejected}
+                      onChange={() => void toggleRecipient(r, 'notifyOnEnrollmentRejected')}
+                    />
+                  </td>
+                  <td style={{ textAlign: 'center' }}>
+                    <input
+                      type="checkbox"
+                      checked={r.notifyOnCertificateNearExpiry}
+                      onChange={() => void toggleRecipient(r, 'notifyOnCertificateNearExpiry')}
+                    />
+                  </td>
+                  <td>
+                    <button type="button" onClick={() => void deleteRecipient(r.id)}>
+                      <Trash2 size={14} /> Remove
+                    </button>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+
+        <form className="settingsGrid" onSubmit={(event) => void addRecipient(event)} style={{ marginTop: 16 }}>
+          <label className="settingsField">
+            <span>Email</span>
+            <input
+              type="email"
+              value={newRecipient.email}
+              onChange={(e) => setNewRecipient({ ...newRecipient, email: e.target.value })}
+              placeholder="security@hospital.local"
+              required
+            />
+          </label>
+          <label className="settingsField">
+            <span>Display name</span>
+            <input
+              type="text"
+              value={newRecipient.displayName}
+              onChange={(e) => setNewRecipient({ ...newRecipient, displayName: e.target.value })}
+              placeholder="Security team"
+            />
+          </label>
+          <label className="settingsField">
+            <span>Enrollment rejections</span>
+            <input
+              type="checkbox"
+              checked={newRecipient.notifyOnEnrollmentRejected}
+              onChange={(e) => setNewRecipient({ ...newRecipient, notifyOnEnrollmentRejected: e.target.checked })}
+            />
+          </label>
+          <label className="settingsField">
+            <span>Cert near expiry</span>
+            <input
+              type="checkbox"
+              checked={newRecipient.notifyOnCertificateNearExpiry}
+              onChange={(e) => setNewRecipient({ ...newRecipient, notifyOnCertificateNearExpiry: e.target.checked })}
+            />
+          </label>
+          <div className="settingsActions">
+            <button className="primary" type="submit"><Plus size={14} /> Add recipient</button>
+          </div>
+        </form>
+      </section>
+    </>
   );
+}
+
+function toInput(s: NotificationSettings): NotificationSettingsInput {
+  return {
+    enabled: s.enabled,
+    smtpHost: s.smtpHost,
+    smtpPort: s.smtpPort,
+    tlsMode: s.tlsMode,
+    authMode: s.authMode,
+    username: s.username ?? '',
+    password: null,
+    fromAddress: s.fromAddress,
+    fromDisplayName: s.fromDisplayName ?? '',
+    trustServerCertificate: s.trustServerCertificate,
+    notifyOnEnrollmentRejected: s.notifyOnEnrollmentRejected,
+    notifyOnCertificateNearExpiry: s.notifyOnCertificateNearExpiry,
+    expiryWarningDays: s.expiryWarningDays,
+  };
 }
 
 function Dashboard({ snapshot }: { snapshot: Snapshot }) {
