@@ -1,6 +1,8 @@
 using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text;
+using Org.BouncyCastle.Asn1;
+using Org.BouncyCastle.Asn1.Pkcs;
 using Org.BouncyCastle.Asn1.X509;
 using Org.BouncyCastle.Crypto;
 using Org.BouncyCastle.Crypto.Generators;
@@ -112,6 +114,17 @@ public sealed class InMemoryCaEngine
             certGen.AddExtension(X509Extensions.KeyUsage, true,
                 new KeyUsage(KeyUsage.DigitalSignature | KeyUsage.KeyEncipherment));
 
+            // EKU with both serverAuth and clientAuth so the same issued cert works
+            // for TLS clients (devices) and TLS servers (e.g. Orthanc DICOMweb).
+            certGen.AddExtension(X509Extensions.ExtendedKeyUsage, false,
+                new ExtendedKeyUsage(KeyPurposeID.id_kp_serverAuth, KeyPurposeID.id_kp_clientAuth));
+
+            // Honor SubjectAlternativeName from the CSR's extensionRequest attribute.
+            // Required for TLS server certs — modern clients reject CN-only name matching.
+            var requestedSan = ExtractRequestedSan(csrInfo.Attributes);
+            if (requestedSan is not null)
+                certGen.AddExtension(X509Extensions.SubjectAlternativeName, false, requestedSan);
+
             var ski = SHA1.HashData(csrInfo.SubjectPublicKeyInfo.PublicKey.GetBytes());
             certGen.AddExtension(X509Extensions.SubjectKeyIdentifier, false, new SubjectKeyIdentifier(ski));
             certGen.AddExtension(X509Extensions.AuthorityKeyIdentifier, false,
@@ -177,6 +190,36 @@ public sealed class InMemoryCaEngine
     }
 
     public IReadOnlyList<IssuedCertRecord> GetIssued() => _issued.Values.ToList();
+
+    // Pulls the SubjectAlternativeName extension out of a PKCS#10 extensionRequest
+    // attribute, if present. Returns null when the CSR has no SAN.
+    private static GeneralNames? ExtractRequestedSan(Asn1Set? attributes)
+    {
+        if (attributes is null) return null;
+
+        foreach (var entry in attributes)
+        {
+            AttributePkcs attr;
+            try { attr = AttributePkcs.GetInstance(entry); }
+            catch { continue; }
+
+            if (!attr.AttrType.Equals(PkcsObjectIdentifiers.Pkcs9AtExtensionRequest))
+                continue;
+
+            if (attr.AttrValues.Count == 0) continue;
+
+            X509Extensions extensions;
+            try { extensions = X509Extensions.GetInstance(attr.AttrValues[0]); }
+            catch { continue; }
+
+            var sanExt = extensions.GetExtension(X509Extensions.SubjectAlternativeName);
+            if (sanExt is null) continue;
+
+            return GeneralNames.GetInstance(sanExt.GetParsedValue());
+        }
+
+        return null;
+    }
 
     private CaState BuildCa()
     {

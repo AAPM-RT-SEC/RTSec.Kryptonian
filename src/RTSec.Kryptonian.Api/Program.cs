@@ -1,9 +1,13 @@
 using AspNetCoreRateLimit;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.Server.Kestrel.Https;
+using System.Security.Cryptography.X509Certificates;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.OpenApi.Models;
 using RTSec.Kryptonian.Api.Authentication;
+using RTSec.Kryptonian.Api.Logging;
 using RTSec.Kryptonian.Api.Middleware;
 using RTSec.Kryptonian.Application;
 using RTSec.Kryptonian.Domain.Interfaces;
@@ -27,6 +31,37 @@ try
     Log.Information("Starting RTSec.Kryptonian API");
 
     var builder = WebApplication.CreateBuilder(args);
+    builder.WebHost.ConfigureKestrel(options =>
+    {
+        options.ConfigureHttpsDefaults(httpsOptions =>
+        {
+            httpsOptions.ClientCertificateMode = ClientCertificateMode.AllowCertificate;
+        });
+    });
+    builder.Services.AddCertificateForwarding(options =>
+    {
+        // ACA's Envoy ingress (clientCertificateMode: accept) forwards the
+        // presented client cert in the structured Envoy XFCC format, not
+        // plain base64-DER. Shape: Hash=<sha256>;Cert="<URL-encoded PEM>"[;Chain="..."]
+        options.CertificateHeader = "X-Forwarded-Client-Cert";
+        options.HeaderConverter = headerValue =>
+        {
+            if (string.IsNullOrWhiteSpace(headerValue)) { return null; }
+            const string CertKey = "Cert=\"";
+            var start = headerValue.IndexOf(CertKey, StringComparison.Ordinal);
+            if (start < 0) { return null; }
+            start += CertKey.Length;
+            var end = headerValue.IndexOf('"', start);
+            if (end < 0) { return null; }
+            var pem = Uri.UnescapeDataString(headerValue[start..end]);
+            try { return X509Certificate2.CreateFromPem(pem); }
+            catch { return null; }
+        };
+    });
+
+    // Live-log ring buffer powering the admin Events page's live activity panel.
+    // Must be registered before UseSerilog so the sink can resolve it.
+    builder.Services.AddSingleton<LiveLogBroadcaster>();
 
     // Configure Serilog from appsettings
     // Note: CorrelationId and RequestId are pushed to LogContext by RequestIdMiddleware
@@ -40,7 +75,8 @@ try
         .WriteTo.File(
             "logs/kryptonian-.log",
             rollingInterval: RollingInterval.Day,
-            outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] [{CorrelationId}] [{RequestId}] {ClientIp} {Message:lj}{NewLine}{Exception}"));
+            outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] [{CorrelationId}] [{RequestId}] {ClientIp} {Message:lj}{NewLine}{Exception}")
+        .WriteTo.Sink(new LiveLogSink(services.GetRequiredService<LiveLogBroadcaster>()), Serilog.Events.LogEventLevel.Information));
 
     // Add services to the container
     builder.Services.AddControllers();
@@ -211,6 +247,7 @@ try
         options.MinIdLength = 8;
         options.MaxIdLength = 128;
     });
+    app.UseCertificateForwarding();
 
     // Rate limiting for EST endpoints (must come before controller routing)
     app.UseIpRateLimiting();

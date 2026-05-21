@@ -13,5 +13,10 @@
     "StowMaxInstances": 0,
     "StowMaxSize": 0
   },
-  "RemoteAccessAllowed": true
+  "RemoteAccessAllowed": true,
+  "SslEnabled": true,
+  "SslCertificate": "/etc/orthanc/tls/server.pem",
+  "SslVerifyPeers": true,
+  "SslTrustedClientCertificates": "/etc/orthanc/tls/ca-root.pem",
+  "SslMinimumProtocolVersion": 4
 }

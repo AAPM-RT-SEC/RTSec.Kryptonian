@@ -1,13 +1,89 @@
 @page "/events"
 @inject IKryptonianApiClient ApiClient
 @inject ISnackbar Snackbar
-@implements IDisposable
+@implements IAsyncDisposable
 
 
 <PageTitle>Enrollment Events - Kryptonian Admin</PageTitle>
 
 <MudText Typo="Typo.h4" Class="mb-4">Enrollment Events</MudText>
 
+@* ============================================================
+   Top half: live gateway activity (polls /api/status/logs/recent)
+   ============================================================ *@
+<MudPaper Class="pa-3 mb-4" Elevation="2">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-2">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudIcon Icon="@Icons.Material.Filled.Bolt" Color="@(_streaming ? Color.Success : Color.Default)" />
+            <MudText Typo="Typo.h6">Live Gateway Activity</MudText>
+            @if (_streaming)
+            {
+                <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Outlined">Streaming</MudChip>
+            }
+            else
+            {
+                <MudChip T="string" Size="Size.Small" Color="Color.Default" Variant="Variant.Outlined">Paused</MudChip>
+            }
+            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                @_logEntries.Count entries @(_lastPollAt.HasValue ? $" • updated {(_lastPollAt.Value).ToString("HH:mm:ss")}" : "")
+            </MudText>
+        </MudStack>
+        <MudStack Row="true" Spacing="1">
+            <MudSelect T="string" @bind-Value="_levelFilter" Dense="true" Style="min-width: 120px;" Label="Min level">
+                <MudSelectItem Value="@("Verbose")">Verbose</MudSelectItem>
+                <MudSelectItem Value="@("Debug")">Debug</MudSelectItem>
+                <MudSelectItem Value="@("Information")">Information</MudSelectItem>
+                <MudSelectItem Value="@("Warning")">Warning</MudSelectItem>
+                <MudSelectItem Value="@("Error")">Error</MudSelectItem>
+                <MudSelectItem Value="@("Fatal")">Fatal</MudSelectItem>
+            </MudSelect>
+            <MudTooltip Text="@(_streaming ? "Pause polling" : "Resume polling")">
+                <MudIconButton Icon="@(_streaming ? Icons.Material.Filled.Pause : Icons.Material.Filled.PlayArrow)"
+                               Color="Color.Primary"
+                               OnClick="@TogglePolling" />
+            </MudTooltip>
+            <MudTooltip Text="Clear log panel">
+                <MudIconButton Icon="@Icons.Material.Filled.ClearAll" OnClick="@ClearLog" />
+            </MudTooltip>
+        </MudStack>
+    </MudStack>
+
+    <div style="height: 360px; overflow-y: auto; background: #0f1419; color: #e8e8e8;
+                font-family: 'Cascadia Mono', 'Consolas', 'Menlo', monospace; font-size: 12.5px;
+                border-radius: 4px; padding: 8px;">
+        @if (!_logEntries.Any())
+        {
+            <div style="color: #888; padding: 8px;">Waiting for gateway activity…</div>
+        }
+        else
+        {
+            @foreach (var entry in FilteredLogEntries)
+            {
+                <div style="white-space: pre-wrap; line-height: 1.45; padding: 2px 4px; border-bottom: 1px solid #1c232b;">
+                    <span style="color: #6c7680;">@entry.Timestamp.ToLocalTime().ToString("HH:mm:ss.fff")</span>
+                    <span style="color: @LevelColor(entry.Level); font-weight: 600; margin-left: 8px; display: inline-block; width: 38px;">@LevelAbbrev(entry.Level)</span>
+                    @if (!string.IsNullOrEmpty(entry.CorrelationId))
+                    {
+                        <span style="color: #5a8c9b; margin-left: 4px;">[@entry.CorrelationId]</span>
+                    }
+                    @if (!string.IsNullOrEmpty(entry.ClientIp) && entry.ClientIp != "::1")
+                    {
+                        <span style="color: #8c7a5a; margin-left: 4px;">@entry.ClientIp</span>
+                    }
+                    <span style="margin-left: 6px;">@entry.Message</span>
+                    @if (!string.IsNullOrEmpty(entry.Exception))
+                    {
+                        <div style="color: #d96e6e; margin-left: 56px; white-space: pre-wrap;">@entry.Exception</div>
+                    }
+                </div>
+            }
+        }
+    </div>
+</MudPaper>
+
+@* ============================================================
+   Bottom half: filtered enrollment-events table (existing UX)
+   ============================================================ *@
 <MudPaper Class="pa-4 mb-4" Elevation="2">
     <MudStack Row="true" AlignItems="AlignItems.End" Spacing="4">
         <MudSelect @bind-Value="_selectedProfileId"
@@ -140,9 +216,41 @@ else
     private string? _selectedStatus;
     private int _limit = 100;
 
+    // --- Live-log panel state ---
+    private readonly List<LiveLogEntryDto> _logEntries = new();
+    private const int LogPanelCapacity = 500;
+    private long _lastSeenSeq = 0;
+    private bool _streaming = true;
+    private string _levelFilter = "Information";
+    private DateTime? _lastPollAt;
+    private CancellationTokenSource? _pollCts;
+    private Task? _pollLoop;
+
+    private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(1500);
+
+    private static readonly Dictionary<string, int> LevelRank = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["Verbose"] = 0,
+        ["Debug"] = 1,
+        ["Information"] = 2,
+        ["Warning"] = 3,
+        ["Error"] = 4,
+        ["Fatal"] = 5,
+    };
+
     private IEnumerable<EnrollmentEventDto> FilteredEvents =>
         _events.Where(e =>
             (string.IsNullOrEmpty(_selectedStatus) || e.Status == _selectedStatus));
+
+    private IEnumerable<LiveLogEntryDto> FilteredLogEntries
+    {
+        get
+        {
+            var threshold = LevelRank.TryGetValue(_levelFilter, out var r) ? r : 2;
+            return _logEntries.Where(e =>
+                LevelRank.TryGetValue(e.Level, out var er) ? er >= threshold : true);
+        }
+    }
 
     protected override void OnInitialized()
     {
@@ -152,6 +260,7 @@ else
     protected override async Task OnInitializedAsync()
     {
         await LoadInitialDataAsync();
+        StartPolling();
     }
 
     private void HandleApiError(object? sender, ApiErrorEventArgs e)
@@ -231,8 +340,128 @@ else
         _ => Color.Default
     };
 
-    public void Dispose()
+    // ---- Live-log polling ----
+
+    private void StartPolling()
+    {
+        if (_pollLoop != null) return;
+        _pollCts = new CancellationTokenSource();
+        _pollLoop = Task.Run(() => PollLoopAsync(_pollCts.Token));
+    }
+
+    private async Task PollLoopAsync(CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
+        {
+            try
+            {
+                if (_streaming)
+                {
+                    var result = await ApiClient.GetRecentLogsAsync(_lastSeenSeq, 500, ct);
+                    if (result.Success && result.Data != null)
+                    {
+                        await InvokeAsync(() => MergeLogEntries(result.Data));
+                    }
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+            catch
+            {
+                // Swallow transient errors; the API client already surfaces them via OnApiError.
+            }
+
+            try
+            {
+                await Task.Delay(PollInterval, ct);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+        }
+    }
+
+    private void MergeLogEntries(LiveLogPageDto page)
+    {
+        if (page.Entries.Count > 0)
+        {
+            // Newest at top: insert in reverse-seq order at index 0.
+            foreach (var entry in page.Entries.OrderBy(e => e.Seq))
+            {
+                _logEntries.Insert(0, entry);
+                if (entry.Seq > _lastSeenSeq) _lastSeenSeq = entry.Seq;
+            }
+            if (_logEntries.Count > LogPanelCapacity)
+            {
+                _logEntries.RemoveRange(LogPanelCapacity, _logEntries.Count - LogPanelCapacity);
+            }
+        }
+        else if (page.CurrentSeq > _lastSeenSeq)
+        {
+            // No matching entries returned (e.g. ring buffer rolled past us) — fast-forward
+            // so we don't keep re-requesting the same lost window.
+            _lastSeenSeq = page.CurrentSeq;
+        }
+
+        _lastPollAt = DateTime.Now;
+        StateHasChanged();
+    }
+
+    private void TogglePolling()
+    {
+        _streaming = !_streaming;
+    }
+
+    private void ClearLog()
+    {
+        _logEntries.Clear();
+    }
+
+    private static string LevelAbbrev(string level) => level switch
+    {
+        "Verbose" => "VRB",
+        "Debug" => "DBG",
+        "Information" => "INF",
+        "Warning" => "WRN",
+        "Error" => "ERR",
+        "Fatal" => "FTL",
+        _ => level
+    };
+
+    private static string LevelColor(string level) => level switch
+    {
+        "Verbose" => "#7a8590",
+        "Debug" => "#8aa9c9",
+        "Information" => "#7ec97e",
+        "Warning" => "#e8c468",
+        "Error" => "#e87575",
+        "Fatal" => "#ff5577",
+        _ => "#cccccc"
+    };
+
+    public async ValueTask DisposeAsync()
     {
         ApiClient.OnApiError -= HandleApiError;
+        try
+        {
+            _pollCts?.Cancel();
+            if (_pollLoop != null)
+            {
+                await _pollLoop;
+            }
+        }
+        catch
+        {
+            // ignore
+        }
+        finally
+        {
+            _pollCts?.Dispose();
+            _pollCts = null;
+            _pollLoop = null;
+        }
     }
 }

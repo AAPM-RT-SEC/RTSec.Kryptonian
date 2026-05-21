@@ -203,6 +203,15 @@ public class KryptonianApiClient : IKryptonianApiClient
             ct);
     }
 
+    public async Task<ApiResult<LiveLogPageDto>> GetRecentLogsAsync(long sinceSeq = 0, int limit = 200, CancellationToken ct = default)
+    {
+        var url = $"/api/status/logs/recent?sinceSeq={sinceSeq}&limit={limit}";
+        return await ExecuteAsync<LiveLogPageDto>(
+            () => _http.GetFromJsonAsync<LiveLogPageDto>(url, ct),
+            "Failed to get recent gateway logs",
+            ct);
+    }
+
     #endregion
 
     #region Dashboard

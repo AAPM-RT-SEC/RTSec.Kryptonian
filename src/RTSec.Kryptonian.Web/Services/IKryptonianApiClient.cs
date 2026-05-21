@@ -39,6 +39,9 @@ public interface IKryptonianApiClient
     // Enrollment Events
     Task<ApiResult<IEnumerable<EnrollmentEventDto>>> GetEnrollmentEventsAsync(string? profileId = null, int limit = 50, CancellationToken ct = default);
 
+    // Live gateway logs (in-memory ring buffer surfaced via /api/status/logs/recent)
+    Task<ApiResult<LiveLogPageDto>> GetRecentLogsAsync(long sinceSeq = 0, int limit = 200, CancellationToken ct = default);
+
     // Dashboard Statistics
     Task<DashboardStats> GetDashboardStatsAsync(CancellationToken ct = default);
 }
