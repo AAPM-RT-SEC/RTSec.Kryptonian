@@ -182,23 +182,18 @@ try
 
     var app = builder.Build();
 
-    // Initialize the database. Postgres uses the migration history; SQLite uses
-    // EnsureCreated since our migrations are Postgres-specific; in-memory needs no
-    // setup. Applies on every environment so deployments don't ship without a schema.
+    // Build the schema directly from the EF model. Both Postgres and SQLite
+    // use EnsureCreated — versioned migrations were removed when we switched
+    // storage backends and have not yet been re-introduced. In-memory needs
+    // no setup.
     using (var scope = app.Services.CreateScope())
     {
         var dbContext = scope.ServiceProvider.GetRequiredService<KryptonianDbContext>();
-        if (dbContext.Database.IsNpgsql())
+        if (!dbContext.Database.IsInMemory())
         {
-            Log.Information("Applying database migrations...");
-            dbContext.Database.Migrate();
-            Log.Information("Database migrations applied successfully");
-        }
-        else if (dbContext.Database.IsSqlite())
-        {
-            Log.Information("Ensuring SQLite database schema...");
+            Log.Information("Ensuring database schema...");
             dbContext.Database.EnsureCreated();
-            Log.Information("SQLite schema ready");
+            Log.Information("Schema ready");
         }
     }
 

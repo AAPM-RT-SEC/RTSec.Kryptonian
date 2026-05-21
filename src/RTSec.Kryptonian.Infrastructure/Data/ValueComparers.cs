@@ -1,4 +1,3 @@
-using System.Collections.ObjectModel;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 
@@ -13,13 +12,14 @@ public static class ValueComparers
     private static readonly JsonSerializerOptions JsonOptions = new();
 
     /// <summary>
-    /// Value comparer for Collection&lt;string&gt; properties.
-    /// Compares by sequence equality rather than reference equality.
+    /// Value comparer for List&lt;string&gt; properties.
+    /// Compares by sequence equality rather than reference equality so in-place
+    /// mutations are detected by the change tracker.
     /// </summary>
-    public static ValueComparer<Collection<string>> StringCollectionComparer { get; } = new(
+    public static ValueComparer<List<string>> StringCollectionComparer { get; } = new(
         (c1, c2) => c1 != null && c2 != null && c1.SequenceEqual(c2) || c1 == null && c2 == null,
         c => c == null ? 0 : c.Aggregate(0, (a, v) => HashCode.Combine(a, v.GetHashCode())),
-        c => c == null ? null! : new Collection<string>(c.ToList()));
+        c => c == null ? null! : new List<string>(c));
 
     /// <summary>
     /// Value comparer for Dictionary&lt;string, object&gt; properties.
