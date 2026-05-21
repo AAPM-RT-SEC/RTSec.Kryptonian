@@ -62,6 +62,7 @@
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <ProgressBar Grid.Column="0"
                                  x:Name="BusyBar"
@@ -71,12 +72,25 @@
                                  Height="6"
                                  Margin="0,0,16,0"/>
                     <Button Grid.Column="1"
+                            x:Name="RenewButton"
+                            Content="Renew..."
+                            Style="{StaticResource PrimaryButton}"
+                            Margin="0,0,8,0"
+                            Click="OnRenewClicked"
+                            IsEnabled="False"/>
+                    <Button Grid.Column="2"
                             x:Name="EnrollButton"
                             Content="Enroll"
                             Style="{StaticResource PrimaryButton}"
                             Click="OnEnrollClicked"
                             IsEnabled="False"/>
                 </Grid>
+
+                <TextBlock Text="Renew uses an existing .pfx (mTLS to /simplereenroll). The Activation Code field doubles as the PFX password if one is set."
+                           TextWrapping="Wrap"
+                           Foreground="#888888"
+                           FontSize="11"
+                           Margin="0,8,0,0"/>
             </StackPanel>
         </ScrollViewer>
     </Border>
