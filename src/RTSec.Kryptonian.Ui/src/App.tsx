@@ -280,8 +280,8 @@ function SettingsPage({ settings, run }: { settings: GatewaySettings | null; run
           </div>
         </div>
         <form className="settingsGrid" onSubmit={(event) => void submit(event)}>
-          <label>
-            Default Certificate Lifetime (hours)
+          <label className="settingsField">
+            <span>Default Certificate Lifetime (hours)</span>
             <input
               type="number"
               min={minHours}
@@ -294,14 +294,15 @@ function SettingsPage({ settings, run }: { settings: GatewaySettings | null; run
               {formatLifetime(hours)} &middot; range {formatLifetime(minHours)} to {formatLifetime(maxHours)}
             </small>
           </label>
-          <label>
-            Quick presets
+          <label className="settingsField">
+            <span>Quick presets</span>
             <select value={lifetimePresetsHours.find((p) => p.hours === hours)?.hours ?? ''} onChange={(e) => setHours(Number(e.target.value))}>
               <option value="">Custom</option>
               {lifetimePresetsHours.map((preset) => (
                 <option key={preset.hours} value={preset.hours}>{preset.label}</option>
               ))}
             </select>
+            <small>Choose a common lifetime or enter a custom hour value.</small>
           </label>
           <div className="settingsActions">
             <button className="primary" type="submit">Save Settings</button>

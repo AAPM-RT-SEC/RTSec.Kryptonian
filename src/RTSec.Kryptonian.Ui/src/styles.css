@@ -526,11 +526,29 @@ th {
 .form input,
 .form select,
 .form textarea,
-.settingsGrid input {
+.settingsGrid input,
+.settingsGrid select {
+  appearance: none;
+  background: #ffffff;
   border: 1px solid #cbd8dc;
   border-radius: 6px;
+  color: #102428;
+  font: inherit;
+  min-height: 40px;
   padding: 8px 10px;
   width: 100%;
+}
+
+.settingsGrid select {
+  background-image:
+    linear-gradient(45deg, transparent 50%, #52686e 50%),
+    linear-gradient(135deg, #52686e 50%, transparent 50%);
+  background-position:
+    calc(100% - 16px) 17px,
+    calc(100% - 11px) 17px;
+  background-repeat: no-repeat;
+  background-size: 5px 5px;
+  padding-right: 32px;
 }
 
 .form textarea {
@@ -591,20 +609,32 @@ th {
 
 .settingsGrid {
   display: grid;
-  gap: 14px;
+  align-items: start;
+  gap: 16px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.settingsGrid label {
+.settingsField {
   color: #435b61;
   display: grid;
-  gap: 5px;
+  gap: 7px;
+}
+
+.settingsField span {
+  line-height: 1.2;
+}
+
+.settingsField small {
+  color: #607479;
+  min-height: 18px;
 }
 
 .settingsActions {
   align-items: end;
   display: flex;
   justify-content: flex-end;
+  grid-column: 1 / -1;
+  padding-top: 4px;
 }
 
 .jsonPreview {
