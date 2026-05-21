@@ -8,7 +8,7 @@
       1. POST /api/device-requests to register a pending device.
       2. Admin: POST /api/devices/{id}/approve.
       3. Admin: POST /api/devices/{id}/activation-code (returns an activation code).
-      4. Build an RSA-2048 CSR with the device's CN.
+      4. Build an RSA-4096 CSR with the device's CN.
       5. POST /.well-known/est/simpleenroll with X-Activation-Code header.
       6. Decode the PKCS#7 response, print the leaf cert's subject and issuer.
 
@@ -64,10 +64,10 @@ $activationCode = $codeResp.activationCode
 Write-Host "      activation code prefix: $($activationCode.Substring(0, 8))..."
 Write-Host "      expires: $($codeResp.expiresAt)"
 
-# 3. Build an RSA-2048 CSR with the device's CN
+# 3. Build an RSA-4096 CSR with the device's CN
 Write-Host "[3/5] Generating key pair and CSR..."
 Add-Type -AssemblyName System.Security
-$rsa = [System.Security.Cryptography.RSA]::Create(2048)
+$rsa = [System.Security.Cryptography.RSA]::Create(4096)
 $subject = [System.Security.Cryptography.X509Certificates.X500DistinguishedName]::new("CN=$CommonName")
 $req = [System.Security.Cryptography.X509Certificates.CertificateRequest]::new(
     $subject,
