@@ -455,6 +455,10 @@ table {
   width: 100%;
 }
 
+.tableScroller {
+  overflow-x: auto;
+}
+
 th,
 td {
   border-bottom: 1px solid #e4eef1;

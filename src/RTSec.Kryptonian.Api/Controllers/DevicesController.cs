@@ -2,6 +2,8 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using RTSec.Kryptonian.Application.DTOs;
 using RTSec.Kryptonian.Application.Services;
+using RTSec.Kryptonian.Domain.Enums;
+using RTSec.Kryptonian.Domain.Interfaces;
 
 namespace RTSec.Kryptonian.Api.Controllers;
 
@@ -13,15 +15,18 @@ public class DevicesController : ControllerBase
 {
     private readonly IDeviceService _deviceService;
     private readonly IEstProfileService _estProfileService;
+    private readonly IUnitOfWork _unitOfWork;
     private readonly ILogger<DevicesController> _logger;
 
     public DevicesController(
         IDeviceService deviceService,
         IEstProfileService estProfileService,
+        IUnitOfWork unitOfWork,
         ILogger<DevicesController> logger)
     {
         _deviceService = deviceService;
         _estProfileService = estProfileService;
+        _unitOfWork = unitOfWork;
         _logger = logger;
     }
 
@@ -204,6 +209,49 @@ public class DevicesController : ControllerBase
         return Ok(certificates);
     }
 
+    [HttpGet("{id}/events")]
+    [Authorize(Policy = "DeviceAdmin")]
+    [ProducesResponseType(typeof(IEnumerable<DeviceEventDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> Events(string id, CancellationToken ct)
+    {
+        if (!Guid.TryParse(id, out var guid))
+            return NotFound();
+
+        var device = await _unitOfWork.Devices.GetByIdAsync(guid, ct);
+        if (device == null)
+            return NotFound();
+
+        var events = new List<DeviceEventDto>();
+        AddLifecycleEvent(events, device.CreatedAt, "Created");
+        AddLifecycleEvent(events, device.ApprovedAt, "Approved");
+        AddLifecycleEvent(events, device.ActivationCodeUsedAt, "ActivationCodeUsed");
+        AddLifecycleEvent(events, device.RemovedAt, "Removed");
+
+        var enrollmentEvents = await _unitOfWork.EnrollmentEvents.GetByDeviceIdAsync(guid, ct);
+        var issuedCount = 0;
+        foreach (var enrollmentEvent in enrollmentEvents.OrderBy(e => e.Timestamp))
+        {
+            var isIssued = enrollmentEvent.Status == EnrollmentStatus.Issued;
+            var eventType = isIssued
+                ? (issuedCount++ == 0 ? "Enrolled" : "ReEnrolled")
+                : "Enrollment";
+
+            events.Add(new DeviceEventDto
+            {
+                Id = enrollmentEvent.Id,
+                Timestamp = enrollmentEvent.Timestamp,
+                EventType = eventType,
+                Status = enrollmentEvent.Status.ToString(),
+                Detail = enrollmentEvent.IssuedCertificate?.SerialNumber ?? enrollmentEvent.ErrorMessage,
+                IpAddress = enrollmentEvent.RequestorIpAddress,
+                CertificateId = enrollmentEvent.IssuedCertificateId
+            });
+        }
+
+        return Ok(events.OrderByDescending(e => e.Timestamp));
+    }
+
     /// <summary>
     /// Returns every certificate across every device in one response, ordered newest
     /// first. The dashboard groups by <c>deviceId</c> client-side to avoid an N+1
@@ -249,5 +297,18 @@ public class DevicesController : ControllerBase
         var profiles = await _estProfileService.GetAllAsync(ct);
         var profile = profiles.FirstOrDefault(p => p.IsEnabled);
         return profile == null || !Guid.TryParse(profile.Id, out var profileId) ? null : profileId;
+    }
+
+    private static void AddLifecycleEvent(List<DeviceEventDto> events, DateTime? timestamp, string eventType)
+    {
+        if (timestamp == null || timestamp.Value == default)
+            return;
+
+        events.Add(new DeviceEventDto
+        {
+            Id = Guid.NewGuid(),
+            Timestamp = timestamp.Value,
+            EventType = eventType
+        });
     }
 }

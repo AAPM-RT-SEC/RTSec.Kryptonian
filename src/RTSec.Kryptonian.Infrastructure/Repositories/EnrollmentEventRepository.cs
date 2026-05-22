@@ -27,4 +27,13 @@ public class EnrollmentEventRepository : BaseRepository<EnrollmentEvent>, IEnrol
             .Take(limit)
             .ToListAsync(ct);
     }
+
+    public async Task<IEnumerable<EnrollmentEvent>> GetByDeviceIdAsync(Guid deviceId, CancellationToken ct = default)
+    {
+        return await _dbSet
+            .Include(e => e.IssuedCertificate)
+            .Where(e => e.DeviceRecordId == deviceId)
+            .OrderByDescending(e => e.Timestamp)
+            .ToListAsync(ct);
+    }
 }
