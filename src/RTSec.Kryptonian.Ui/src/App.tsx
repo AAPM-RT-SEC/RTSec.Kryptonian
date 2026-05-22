@@ -445,176 +445,216 @@ function NotificationsSection({ run }: { run: Runner }) {
         <div className="panelHeader">
           <div>
             <h2>Email Notifications</h2>
-            <p>SMTP server for outbound alerts. Designed for on-prem relays (anonymous, Basic, or NTLM auth).</p>
+            <p>Alert admins when enrollments are rejected or device certificates need attention before they expire.</p>
           </div>
         </div>
-        <form className="settingsGrid" onSubmit={(event) => void submit(event)}>
-          <label className="settingsField">
-            <span>Notifications enabled</span>
-            <input
-              type="checkbox"
-              checked={draft.enabled}
-              onChange={(e) => update('enabled', e.target.checked)}
-            />
-            <small>Master switch. When off, no emails are sent regardless of event toggles.</small>
-          </label>
 
-          <label className="settingsField">
-            <span>SMTP host</span>
-            <input
-              type="text"
-              value={draft.smtpHost}
-              onChange={(e) => update('smtpHost', e.target.value)}
-              placeholder="smtp.hospital.local"
-              required
-            />
-          </label>
+        <form className="notificationSettings" onSubmit={(event) => void submit(event)}>
+          <div className="notificationStatusRow">
+            <label className="switchField">
+              <input
+                className="switchInput"
+                type="checkbox"
+                checked={draft.enabled}
+                onChange={(e) => update('enabled', e.target.checked)}
+              />
+              <span className="toggleSwitch" aria-hidden="true" />
+              <span>
+                <strong>Notifications {draft.enabled ? 'enabled' : 'disabled'}</strong>
+                <small>Master switch for every outbound email alert.</small>
+              </span>
+            </label>
+            <span className={`badge ${draft.enabled ? 'success' : 'warn'}`}>
+              {draft.enabled ? 'Active' : 'Paused'}
+            </span>
+          </div>
 
-          <label className="settingsField">
-            <span>SMTP port</span>
-            <input
-              type="number"
-              min={1}
-              max={65535}
-              value={draft.smtpPort}
-              onChange={(e) => update('smtpPort', Number(e.target.value))}
-            />
-            <small>587 (STARTTLS) · 465 (Implicit TLS) · 25 (plain)</small>
-          </label>
+          <div className="notificationSubsection">
+            <div className="subsectionHeader">
+              <h3>Alert Triggers</h3>
+              <p>Choose which gateway events should generate email notifications.</p>
+            </div>
+            <div className="notificationTriggerGrid">
+              <label className="switchField">
+                <input
+                  className="switchInput"
+                  type="checkbox"
+                  checked={draft.notifyOnEnrollmentRejected}
+                  onChange={(e) => update('notifyOnEnrollmentRejected', e.target.checked)}
+                />
+                <span className="toggleSwitch" aria-hidden="true" />
+                <span>
+                  <strong>Enrollment rejected</strong>
+                  <small>Notify admins when a device tries to enroll and is rejected so they can investigate.</small>
+                </span>
+              </label>
 
-          <label className="settingsField">
-            <span>TLS mode</span>
-            <select
-              value={draft.tlsMode}
-              onChange={(e) => update('tlsMode', e.target.value as SmtpTlsMode)}
-            >
-              <option value="starttls">STARTTLS</option>
-              <option value="implicit">Implicit TLS</option>
-              <option value="none">None (plain)</option>
-            </select>
-          </label>
+              <label className="switchField">
+                <input
+                  className="switchInput"
+                  type="checkbox"
+                  checked={draft.notifyOnCertificateNearExpiry}
+                  onChange={(e) => update('notifyOnCertificateNearExpiry', e.target.checked)}
+                />
+                <span className="toggleSwitch" aria-hidden="true" />
+                <span>
+                  <strong>Certificate near expiry</strong>
+                  <small>Notify admins when a device certificate is nearing expiry and no newer renewal certificate has been recorded.</small>
+                </span>
+              </label>
 
-          <label className="settingsField">
-            <span>Authentication</span>
-            <select
-              value={draft.authMode}
-              onChange={(e) => update('authMode', e.target.value as SmtpAuthMode)}
-            >
-              <option value="none">None (anonymous relay)</option>
-              <option value="basic">Basic (username + password)</option>
-              <option value="ntlm">NTLM (on-prem Exchange)</option>
-            </select>
-          </label>
-
-          {draft.authMode !== 'none' && (
-            <>
               <label className="settingsField">
-                <span>Username</span>
+                <span>Expiry warning window (days)</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={365}
+                  value={draft.expiryWarningDays}
+                  onChange={(e) => update('expiryWarningDays', Number(e.target.value))}
+                />
+                <small>Alert when a valid certificate is within this many days of expiry.</small>
+              </label>
+            </div>
+          </div>
+
+          <div className="notificationSubsection">
+            <div className="subsectionHeader">
+              <h3>SMTP Delivery</h3>
+              <p>Configure the on-prem relay used to send notification emails.</p>
+            </div>
+            <div className="settingsGrid">
+              <label className="settingsField">
+                <span>SMTP host</span>
                 <input
                   type="text"
-                  value={draft.username ?? ''}
-                  onChange={(e) => update('username', e.target.value)}
+                  value={draft.smtpHost}
+                  onChange={(e) => update('smtpHost', e.target.value)}
+                  placeholder="smtp.hospital.local"
                   required
                 />
               </label>
 
               <label className="settingsField">
-                <span>Password</span>
+                <span>SMTP port</span>
                 <input
-                  type="password"
-                  value={passwordDraft ?? ''}
-                  onChange={(e) => setPasswordDraft(e.target.value)}
-                  placeholder={passwordPlaceholder}
+                  type="number"
+                  min={1}
+                  max={65535}
+                  value={draft.smtpPort}
+                  onChange={(e) => update('smtpPort', Number(e.target.value))}
                 />
-                <small>
-                  Stored encrypted via ASP.NET Data Protection.{' '}
-                  {settings?.hasPassword && (
-                    <button
-                      type="button"
-                      onClick={() => setPasswordDraft('')}
-                      style={{ background: 'none', border: 'none', padding: 0, marginLeft: 6, color: '#5b8ef7', cursor: 'pointer', font: 'inherit' }}
-                    >
-                      Clear stored password
-                    </button>
-                  )}
-                </small>
+                <small>587 (STARTTLS) · 465 (Implicit TLS) · 25 (plain)</small>
               </label>
-            </>
-          )}
 
-          <label className="settingsField">
-            <span>From address</span>
-            <input
-              type="email"
-              value={draft.fromAddress}
-              onChange={(e) => update('fromAddress', e.target.value)}
-              placeholder="kryptonian@hospital.local"
-              required
-            />
-          </label>
+              <label className="settingsField">
+                <span>TLS mode</span>
+                <select
+                  value={draft.tlsMode}
+                  onChange={(e) => update('tlsMode', e.target.value as SmtpTlsMode)}
+                >
+                  <option value="starttls">STARTTLS</option>
+                  <option value="implicit">Implicit TLS</option>
+                  <option value="none">None (plain)</option>
+                </select>
+              </label>
 
-          <label className="settingsField">
-            <span>From display name</span>
-            <input
-              type="text"
-              value={draft.fromDisplayName ?? ''}
-              onChange={(e) => update('fromDisplayName', e.target.value)}
-              placeholder="Kryptonian Gateway"
-            />
-          </label>
+              <label className="settingsField">
+                <span>Authentication</span>
+                <select
+                  value={draft.authMode}
+                  onChange={(e) => update('authMode', e.target.value as SmtpAuthMode)}
+                >
+                  <option value="none">None (anonymous relay)</option>
+                  <option value="basic">Basic (username + password)</option>
+                  <option value="ntlm">NTLM (on-prem Exchange)</option>
+                </select>
+              </label>
 
-          <label className="settingsField">
-            <span>Trust SMTP server certificate</span>
-            <input
-              type="checkbox"
-              checked={draft.trustServerCertificate}
-              onChange={(e) => update('trustServerCertificate', e.target.checked)}
-            />
-            <small>Skip TLS chain validation for internal-CA or self-signed SMTP servers. Off by default.</small>
-          </label>
+              {draft.authMode !== 'none' && (
+                <>
+                  <label className="settingsField">
+                    <span>Username</span>
+                    <input
+                      type="text"
+                      value={draft.username ?? ''}
+                      onChange={(e) => update('username', e.target.value)}
+                      required
+                    />
+                  </label>
 
-          <label className="settingsField">
-            <span>Notify on enrollment rejection</span>
-            <input
-              type="checkbox"
-              checked={draft.notifyOnEnrollmentRejected}
-              onChange={(e) => update('notifyOnEnrollmentRejected', e.target.checked)}
-            />
-          </label>
+                  <label className="settingsField">
+                    <span>Password</span>
+                    <input
+                      type="password"
+                      value={passwordDraft ?? ''}
+                      onChange={(e) => setPasswordDraft(e.target.value)}
+                      placeholder={passwordPlaceholder}
+                    />
+                    <small>
+                      Stored encrypted via ASP.NET Data Protection.{' '}
+                      {settings?.hasPassword && (
+                        <button className="linkButton" type="button" onClick={() => setPasswordDraft('')}>
+                          Clear stored password
+                        </button>
+                      )}
+                    </small>
+                  </label>
+                </>
+              )}
 
-          <label className="settingsField">
-            <span>Notify on certificate near expiry</span>
-            <input
-              type="checkbox"
-              checked={draft.notifyOnCertificateNearExpiry}
-              onChange={(e) => update('notifyOnCertificateNearExpiry', e.target.checked)}
-            />
-          </label>
+              <label className="settingsField">
+                <span>From address</span>
+                <input
+                  type="email"
+                  value={draft.fromAddress}
+                  onChange={(e) => update('fromAddress', e.target.value)}
+                  placeholder="kryptonian@hospital.local"
+                  required
+                />
+              </label>
 
-          <label className="settingsField">
-            <span>Expiry warning window (days)</span>
-            <input
-              type="number"
-              min={1}
-              max={365}
-              value={draft.expiryWarningDays}
-              onChange={(e) => update('expiryWarningDays', Number(e.target.value))}
-            />
-            <small>Alert when a device certificate is within this many days of expiry and no renewal has been requested.</small>
-          </label>
+              <label className="settingsField">
+                <span>From display name</span>
+                <input
+                  type="text"
+                  value={draft.fromDisplayName ?? ''}
+                  onChange={(e) => update('fromDisplayName', e.target.value)}
+                  placeholder="Kryptonian Gateway"
+                />
+              </label>
 
-          <div className="settingsActions">
+              <label className="switchField settingsGridSpan">
+                <input
+                  className="switchInput"
+                  type="checkbox"
+                  checked={draft.trustServerCertificate}
+                  onChange={(e) => update('trustServerCertificate', e.target.checked)}
+                />
+                <span className="toggleSwitch" aria-hidden="true" />
+                <span>
+                  <strong>Trust SMTP server certificate</strong>
+                  <small>Skip TLS chain validation for internal-CA or self-signed SMTP servers. Off by default.</small>
+                </span>
+              </label>
+            </div>
+          </div>
+
+          <div className="notificationActionRow">
+            <div className="testEmailBox">
+              <label className="settingsField">
+                <span>Test current draft settings</span>
+                <input
+                  type="email"
+                  value={testRecipient}
+                  onChange={(e) => setTestRecipient(e.target.value)}
+                  placeholder="test recipient email"
+                />
+              </label>
+              <button type="button" onClick={() => void sendTest()} disabled={!testRecipient.trim()}>
+                Send test email
+              </button>
+            </div>
             <button className="primary" type="submit">Save Settings</button>
-            <input
-              type="email"
-              value={testRecipient}
-              onChange={(e) => setTestRecipient(e.target.value)}
-              placeholder="test recipient email"
-              style={{ marginLeft: 12, minWidth: 220 }}
-            />
-            <button type="button" onClick={() => void sendTest()} disabled={!testRecipient.trim()}>
-              Send test email
-            </button>
           </div>
         </form>
       </section>
@@ -623,7 +663,7 @@ function NotificationsSection({ run }: { run: Runner }) {
         <div className="panelHeader">
           <div>
             <h2>Notification Recipients</h2>
-            <p>Each address subscribes independently per event type. Common pattern: security team for rejections, ops for expiry warnings.</p>
+            <p>Add the admins or teams who should receive each alert type.</p>
           </div>
         </div>
         <table className="table">
@@ -631,8 +671,8 @@ function NotificationsSection({ run }: { run: Runner }) {
             <tr>
               <th>Email</th>
               <th>Name</th>
-              <th style={{ textAlign: 'center' }}>Rejections</th>
-              <th style={{ textAlign: 'center' }}>Expiry</th>
+              <th>Enrollment rejected</th>
+              <th>Certificate expiry</th>
               <th />
             </tr>
           </thead>
@@ -644,19 +684,29 @@ function NotificationsSection({ run }: { run: Runner }) {
                 <tr key={r.id}>
                   <td>{r.email}</td>
                   <td>{r.displayName ?? <span className="muted">—</span>}</td>
-                  <td style={{ textAlign: 'center' }}>
-                    <input
-                      type="checkbox"
-                      checked={r.notifyOnEnrollmentRejected}
-                      onChange={() => void toggleRecipient(r, 'notifyOnEnrollmentRejected')}
-                    />
+                  <td>
+                    <label className="compactSwitch">
+                      <input
+                        className="switchInput"
+                        type="checkbox"
+                        checked={r.notifyOnEnrollmentRejected}
+                        onChange={() => void toggleRecipient(r, 'notifyOnEnrollmentRejected')}
+                      />
+                      <span className="toggleSwitch" aria-hidden="true" />
+                      <span>{r.notifyOnEnrollmentRejected ? 'On' : 'Off'}</span>
+                    </label>
                   </td>
-                  <td style={{ textAlign: 'center' }}>
-                    <input
-                      type="checkbox"
-                      checked={r.notifyOnCertificateNearExpiry}
-                      onChange={() => void toggleRecipient(r, 'notifyOnCertificateNearExpiry')}
-                    />
+                  <td>
+                    <label className="compactSwitch">
+                      <input
+                        className="switchInput"
+                        type="checkbox"
+                        checked={r.notifyOnCertificateNearExpiry}
+                        onChange={() => void toggleRecipient(r, 'notifyOnCertificateNearExpiry')}
+                      />
+                      <span className="toggleSwitch" aria-hidden="true" />
+                      <span>{r.notifyOnCertificateNearExpiry ? 'On' : 'Off'}</span>
+                    </label>
                   </td>
                   <td>
                     <button type="button" onClick={() => void deleteRecipient(r.id)}>
@@ -669,42 +719,58 @@ function NotificationsSection({ run }: { run: Runner }) {
           </tbody>
         </table>
 
-        <form className="settingsGrid" onSubmit={(event) => void addRecipient(event)} style={{ marginTop: 16 }}>
-          <label className="settingsField">
-            <span>Email</span>
-            <input
-              type="email"
-              value={newRecipient.email}
-              onChange={(e) => setNewRecipient({ ...newRecipient, email: e.target.value })}
-              placeholder="security@hospital.local"
-              required
-            />
-          </label>
-          <label className="settingsField">
-            <span>Display name</span>
-            <input
-              type="text"
-              value={newRecipient.displayName}
-              onChange={(e) => setNewRecipient({ ...newRecipient, displayName: e.target.value })}
-              placeholder="Security team"
-            />
-          </label>
-          <label className="settingsField">
-            <span>Enrollment rejections</span>
-            <input
-              type="checkbox"
-              checked={newRecipient.notifyOnEnrollmentRejected}
-              onChange={(e) => setNewRecipient({ ...newRecipient, notifyOnEnrollmentRejected: e.target.checked })}
-            />
-          </label>
-          <label className="settingsField">
-            <span>Cert near expiry</span>
-            <input
-              type="checkbox"
-              checked={newRecipient.notifyOnCertificateNearExpiry}
-              onChange={(e) => setNewRecipient({ ...newRecipient, notifyOnCertificateNearExpiry: e.target.checked })}
-            />
-          </label>
+        <form className="addRecipientForm" onSubmit={(event) => void addRecipient(event)}>
+          <div className="subsectionHeader">
+            <h3>Add recipient</h3>
+            <p>Choose who receives enrollment rejection and certificate expiry alerts.</p>
+          </div>
+          <div className="settingsGrid">
+            <label className="settingsField">
+              <span>Email</span>
+              <input
+                type="email"
+                value={newRecipient.email}
+                onChange={(e) => setNewRecipient({ ...newRecipient, email: e.target.value })}
+                placeholder="security@hospital.local"
+                required
+              />
+            </label>
+            <label className="settingsField">
+              <span>Display name</span>
+              <input
+                type="text"
+                value={newRecipient.displayName}
+                onChange={(e) => setNewRecipient({ ...newRecipient, displayName: e.target.value })}
+                placeholder="Security team"
+              />
+            </label>
+            <label className="switchField">
+              <input
+                className="switchInput"
+                type="checkbox"
+                checked={newRecipient.notifyOnEnrollmentRejected}
+                onChange={(e) => setNewRecipient({ ...newRecipient, notifyOnEnrollmentRejected: e.target.checked })}
+              />
+              <span className="toggleSwitch" aria-hidden="true" />
+              <span>
+                <strong>Enrollment rejections</strong>
+                <small>Device enrollment attempts that were rejected.</small>
+              </span>
+            </label>
+            <label className="switchField">
+              <input
+                className="switchInput"
+                type="checkbox"
+                checked={newRecipient.notifyOnCertificateNearExpiry}
+                onChange={(e) => setNewRecipient({ ...newRecipient, notifyOnCertificateNearExpiry: e.target.checked })}
+              />
+              <span className="toggleSwitch" aria-hidden="true" />
+              <span>
+                <strong>Certificate near expiry</strong>
+                <small>Certificates approaching expiry without recorded renewal.</small>
+              </span>
+            </label>
+          </div>
           <div className="settingsActions">
             <button className="primary" type="submit"><Plus size={14} /> Add recipient</button>
           </div>

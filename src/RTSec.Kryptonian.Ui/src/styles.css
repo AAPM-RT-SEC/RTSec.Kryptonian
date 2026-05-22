@@ -523,10 +523,10 @@ th {
   margin-top: 10px;
 }
 
-.form input,
+.form input:not([type="checkbox"]),
 .form select,
 .form textarea,
-.settingsGrid input,
+.settingsGrid input:not([type="checkbox"]),
 .settingsGrid select {
   appearance: none;
   background: #ffffff;
@@ -637,6 +637,172 @@ th {
   padding-top: 4px;
 }
 
+.linkButton {
+  background: none;
+  border: 0;
+  color: #0f6971;
+  min-height: 0;
+  padding: 0;
+}
+
+.notificationSettings {
+  display: grid;
+  gap: 22px;
+}
+
+.notificationStatusRow {
+  align-items: center;
+  background: #f7fafb;
+  border: 1px solid #dce7ea;
+  border-radius: 8px;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  padding: 14px;
+}
+
+.notificationSubsection {
+  border-top: 1px solid #e4ecee;
+  display: grid;
+  gap: 14px;
+  padding-top: 18px;
+}
+
+.subsectionHeader h3 {
+  font-size: 1rem;
+  margin: 0 0 4px;
+}
+
+.subsectionHeader p {
+  color: #607479;
+  margin: 0;
+}
+
+.notificationTriggerGrid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.settingsGridSpan {
+  grid-column: 1 / -1;
+}
+
+.switchField,
+.compactSwitch {
+  align-items: center;
+  color: #435b61;
+  cursor: pointer;
+  display: flex;
+  gap: 12px;
+}
+
+.switchField {
+  border: 1px solid #dce7ea;
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.switchField strong {
+  color: #213a40;
+  display: block;
+}
+
+.switchField small {
+  color: #607479;
+  display: block;
+  margin-top: 3px;
+}
+
+.switchInput {
+  height: 1px;
+  opacity: 0;
+  position: absolute;
+  width: 1px;
+}
+
+.toggleSwitch {
+  background: #b7c6ca;
+  border-radius: 999px;
+  display: inline-flex;
+  flex: 0 0 auto;
+  height: 24px;
+  position: relative;
+  transition: background 0.16s ease, box-shadow 0.16s ease;
+  width: 44px;
+}
+
+.toggleSwitch::after {
+  background: #ffffff;
+  border-radius: 999px;
+  box-shadow: 0 1px 2px rgba(16, 36, 42, 0.22);
+  content: "";
+  height: 18px;
+  left: 3px;
+  position: absolute;
+  top: 3px;
+  transition: transform 0.16s ease;
+  width: 18px;
+}
+
+.switchInput:checked + .toggleSwitch {
+  background: #0f6971;
+}
+
+.switchInput:checked + .toggleSwitch::after {
+  transform: translateX(20px);
+}
+
+.switchInput:focus-visible + .toggleSwitch {
+  box-shadow: 0 0 0 3px rgba(15, 105, 113, 0.22);
+}
+
+.compactSwitch {
+  color: #52686e;
+  justify-content: flex-start;
+}
+
+.compactSwitch .toggleSwitch {
+  height: 20px;
+  width: 36px;
+}
+
+.compactSwitch .toggleSwitch::after {
+  height: 14px;
+  width: 14px;
+}
+
+.compactSwitch .switchInput:checked + .toggleSwitch::after {
+  transform: translateX(16px);
+}
+
+.notificationActionRow {
+  align-items: end;
+  border-top: 1px solid #e4ecee;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  padding-top: 18px;
+}
+
+.testEmailBox {
+  align-items: end;
+  display: flex;
+  gap: 10px;
+}
+
+.testEmailBox .settingsField {
+  min-width: min(320px, 48vw);
+}
+
+.addRecipientForm {
+  border-top: 1px solid #e4ecee;
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+  padding-top: 18px;
+}
+
 .jsonPreview {
   background: #102428;
   border-radius: 8px;
@@ -661,6 +827,7 @@ th {
   nav,
   .metrics,
   .backendGrid,
+  .notificationTriggerGrid,
   .settingsGrid {
     grid-template-columns: 1fr;
   }
@@ -678,5 +845,16 @@ th {
 
   .searchBox {
     width: 100%;
+  }
+
+  .notificationStatusRow,
+  .notificationActionRow,
+  .testEmailBox {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .testEmailBox .settingsField {
+    min-width: 0;
   }
 }
