@@ -215,21 +215,52 @@ export class ApiError extends Error {
 }
 
 const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, '') ?? '';
-const apiKey = import.meta.env.VITE_API_KEY as string | undefined;
+const staticApiKey = import.meta.env.VITE_API_KEY as string | undefined;
+
+const TOKEN_KEY = 'kry_token';
+
+export function getStoredToken(): string | null {
+  return localStorage.getItem(TOKEN_KEY);
+}
+
+export function setStoredToken(token: string): void {
+  localStorage.setItem(TOKEN_KEY, token);
+}
+
+export function clearStoredToken(): void {
+  localStorage.removeItem(TOKEN_KEY);
+}
+
+type UnauthorizedCallback = () => void;
+let onUnauthorized: UnauthorizedCallback | null = null;
+export function setUnauthorizedHandler(cb: UnauthorizedCallback): void {
+  onUnauthorized = cb;
+}
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   if (!headers.has('Content-Type') && init.body) {
     headers.set('Content-Type', 'application/json');
   }
-  if (apiKey) {
-    headers.set('X-API-Key', apiKey);
+
+  const token = getStoredToken();
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`);
+  } else if (staticApiKey) {
+    headers.set('X-API-Key', staticApiKey);
   }
 
   const response = await fetch(`${apiBaseUrl}${path}`, {
     ...init,
     headers,
   });
+
+  if (response.status === 401) {
+    clearStoredToken();
+    onUnauthorized?.();
+    const body = await readJsonOrText(response);
+    throw new ApiError('Session expired. Please log in again.', 401, body);
+  }
 
   if (!response.ok) {
     const body = await readJsonOrText(response);
@@ -260,7 +291,78 @@ const jsonBody = (value: unknown): RequestInit => ({
   body: JSON.stringify(value),
 });
 
+export type AuthMode = 'setup' | 'login' | 'ok';
+
+export interface AuthStatus {
+  mode: AuthMode;
+  username?: string | null;
+  role?: string | null;
+  userId?: string | null;
+}
+
+export interface AuthResponse {
+  token: string;
+  expiresAt: string;
+  role: string;
+  username: string;
+  userId: string;
+}
+
+export interface UserProfile {
+  id: string;
+  username: string;
+  email: string;
+  role: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ApiKeyRecord {
+  id: string;
+  name: string;
+  prefix: string;
+  role: string;
+  ownerId: string;
+  ownerUsername: string;
+  expiresAt?: string | null;
+  lastUsedAt?: string | null;
+  revokedAt?: string | null;
+  createdAt: string;
+}
+
+export interface GenerateApiKeyResponse {
+  id: string;
+  name: string;
+  prefix: string;
+  rawKey: string;
+  role: string;
+  expiresAt?: string | null;
+  createdAt: string;
+}
+
 export const api = {
+  getAuthStatus: () => request<AuthStatus>('/api/auth/status'),
+  setup: (username: string, email: string, password: string) =>
+    request<AuthResponse>('/api/auth/setup', jsonBody({ username, email, password })),
+  login: (username: string, password: string) =>
+    request<AuthResponse>('/api/auth/login', jsonBody({ username, password })),
+  logout: () => request<void>('/api/auth/logout', { method: 'POST' }),
+  getMe: () => request<{ id: string; username: string; role: string }>('/api/auth/me'),
+
+  getUsers: () => request<UserProfile[]>('/api/users'),
+  createUser: (username: string, email: string, password: string, role: string) =>
+    request<UserProfile>('/api/users', jsonBody({ username, email, password, role })),
+  updateUser: (id: string, update: { role?: string; isActive?: boolean; newPassword?: string }) =>
+    request<UserProfile>(`/api/users/${id}`, { method: 'PUT', body: JSON.stringify(update) }),
+  deleteUser: (id: string) => request<void>(`/api/users/${id}`, { method: 'DELETE' }),
+
+  getApiKeys: (userId: string) => request<ApiKeyRecord[]>(`/api/users/${userId}/api-keys`),
+  generateApiKey: (userId: string, name: string, expiresAt?: string | null) =>
+    request<GenerateApiKeyResponse>(`/api/users/${userId}/api-keys`, jsonBody({ name, expiresAt })),
+  revokeApiKey: (userId: string, keyId: string) =>
+    request<void>(`/api/users/${userId}/api-keys/${keyId}`, { method: 'DELETE' }),
+
   getCaBackends: () => request<CaBackend[]>('/api/cas'),
   getActiveCaBackend: () => request<CaBackend>('/api/cas/active'),
   createCaBackend: (input: CaBackendInput) => request<CaBackend>('/api/cas', jsonBody(input)),

@@ -1,15 +1,22 @@
+using System.Security.Claims;
+using System.Text;
 using AspNetCoreRateLimit;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Server.Kestrel.Https;
 using System.Security.Cryptography.X509Certificates;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
+using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using RTSec.Kryptonian.Api.Authentication;
 using RTSec.Kryptonian.Api.Logging;
 using RTSec.Kryptonian.Api.Middleware;
 using RTSec.Kryptonian.Application;
+using RTSec.Kryptonian.Application.DTOs;
+using RTSec.Kryptonian.Application.Services;
 using RTSec.Kryptonian.Domain.Interfaces;
 using RTSec.Kryptonian.Infrastructure.Acme;
 using RTSec.Kryptonian.Infrastructure.Crypto;
@@ -126,8 +133,69 @@ try
         });
     });
 
-    // Add API key authentication (passes isDevelopment to allow dev bypass if configured)
-    builder.Services.AddApiKeyAuthentication(builder.Configuration, builder.Environment.IsDevelopment());
+    // JWT + API Key dual-scheme authentication.
+    // UI uses JWT Bearer (Authorization: Bearer <token>).
+    // REST clients use X-API-Key (static config keys or DB-stored user keys).
+    var jwtSecret = builder.Configuration["Kryptonian:Auth:JwtSecret"]
+        ?? Environment.GetEnvironmentVariable("KRYPTONIAN__AUTH__JWTSECRET")
+        ?? "kryptonian-dev-secret-not-for-production-32chars";
+
+    builder.Services.AddAuthentication(options =>
+    {
+        options.DefaultAuthenticateScheme = "PolicyScheme";
+        options.DefaultChallengeScheme = "PolicyScheme";
+        options.DefaultForbidScheme = "PolicyScheme";
+    })
+    .AddPolicyScheme("PolicyScheme", "JWT or ApiKey", options =>
+    {
+        options.ForwardDefaultSelector = context =>
+            context.Request.Headers.ContainsKey("Authorization") ? "Jwt" : "ApiKey";
+    })
+    .AddJwtBearer("Jwt", options =>
+    {
+        options.MapInboundClaims = false;
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidIssuer = "kryptonian",
+            ValidateAudience = true,
+            ValidAudience = "kryptonian-ui",
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret)),
+            RoleClaimType = "role",
+            NameClaimType = "name",
+            ClockSkew = TimeSpan.FromMinutes(5)
+        };
+    })
+    .AddApiKeyAuthentication(builder.Configuration, builder.Environment.IsDevelopment());
+
+    builder.Services.AddAuthorization(options =>
+    {
+        var defaultSchemes = new[] { "Jwt", "ApiKey" };
+        options.DefaultPolicy = new AuthorizationPolicyBuilder(defaultSchemes)
+            .RequireAuthenticatedUser()
+            .Build();
+        options.AddPolicy("StandardOrAbove", policy =>
+            policy.AddAuthenticationSchemes(defaultSchemes)
+                  .RequireAuthenticatedUser());
+        options.AddPolicy("DeviceAdmin", policy =>
+            policy.AddAuthenticationSchemes(defaultSchemes)
+                  .RequireAuthenticatedUser()
+                  .RequireAssertion(ctx =>
+                  {
+                      var role = ctx.User.FindFirstValue("role") ?? ctx.User.FindFirstValue(ClaimTypes.Role);
+                      return role is "DeviceAdmin" or "SystemAdmin";
+                  }));
+        options.AddPolicy("SystemAdmin", policy =>
+            policy.AddAuthenticationSchemes(defaultSchemes)
+                  .RequireAuthenticatedUser()
+                  .RequireAssertion(ctx =>
+                  {
+                      var role = ctx.User.FindFirstValue("role") ?? ctx.User.FindFirstValue(ClaimTypes.Role);
+                      return role is "SystemAdmin";
+                  }));
+    });
 
     // Configure DbContext. Provider is selected by Kryptonian:Database:Provider
     // (Sqlite | PostgreSQL | InMemory); when unset it falls back to PostgreSQL if a
@@ -237,6 +305,39 @@ try
             Log.Information("Ensuring database schema...");
             dbContext.Database.EnsureCreated();
             Log.Information("Schema ready");
+        }
+
+        // Seed initial admin account from environment variables (optional, for automated deployments)
+        var authService = scope.ServiceProvider.GetRequiredService<IAuthService>();
+        if (await authService.IsSetupRequiredAsync())
+        {
+            var seedUsername = app.Configuration["Kryptonian:Auth:InitialAdminUsername"]
+                ?? Environment.GetEnvironmentVariable("KRYPTONIAN__AUTH__INITIAL_ADMIN_USERNAME");
+            var seedPassword = app.Configuration["Kryptonian:Auth:InitialAdminPassword"]
+                ?? Environment.GetEnvironmentVariable("KRYPTONIAN__AUTH__INITIAL_ADMIN_PASSWORD");
+            var seedEmail = app.Configuration["Kryptonian:Auth:InitialAdminEmail"]
+                ?? Environment.GetEnvironmentVariable("KRYPTONIAN__AUTH__INITIAL_ADMIN_EMAIL")
+                ?? "admin@kryptonian.local";
+
+            if (!string.IsNullOrEmpty(seedUsername) && !string.IsNullOrEmpty(seedPassword))
+            {
+                try
+                {
+                    await authService.BootstrapAsync(new SetupRequestDto(seedUsername, seedEmail, seedPassword));
+                    Log.Information("Seeded initial admin account: {Username}", seedUsername);
+                }
+                catch (Exception ex)
+                {
+                    Log.Warning(ex, "Failed to seed initial admin account");
+                }
+            }
+            else
+            {
+                Log.Information(
+                    "No initial admin credentials configured. " +
+                    "Navigate to the gateway UI to complete setup, or set " +
+                    "KRYPTONIAN__AUTH__INITIAL_ADMIN_USERNAME and KRYPTONIAN__AUTH__INITIAL_ADMIN_PASSWORD.");
+            }
         }
     }
 

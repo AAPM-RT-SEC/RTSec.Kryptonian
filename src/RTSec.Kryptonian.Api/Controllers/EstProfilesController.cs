@@ -39,6 +39,7 @@ public class EstProfilesController : ControllerBase
     /// Create a new EST profile.
     /// </summary>
     [HttpPost]
+    [Authorize(Policy = "SystemAdmin")]
     [ProducesResponseType(typeof(EstProfileDto), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Create([FromBody] EstProfileCreateDto dto, CancellationToken ct)
@@ -82,6 +83,7 @@ public class EstProfilesController : ControllerBase
     /// Update EST profile.
     /// </summary>
     [HttpPut("{id}")]
+    [Authorize(Policy = "SystemAdmin")]
     [ProducesResponseType(typeof(EstProfileDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -114,6 +116,7 @@ public class EstProfilesController : ControllerBase
     /// Delete EST profile.
     /// </summary>
     [HttpDelete("{id}")]
+    [Authorize(Policy = "SystemAdmin")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Delete(string id, CancellationToken ct)

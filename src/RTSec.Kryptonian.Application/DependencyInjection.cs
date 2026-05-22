@@ -24,6 +24,8 @@ public static class ApplicationServiceExtensions
         services.AddScoped<IGatewaySettingsService, GatewaySettingsService>();
         services.AddScoped<INotificationSettingsService, NotificationSettingsService>();
         services.AddScoped<INotificationDispatcher, NotificationDispatcher>();
+        services.AddScoped<IAuthService, AuthService>();
+        services.AddScoped<IUserService, UserService>();
 
         return services;
     }

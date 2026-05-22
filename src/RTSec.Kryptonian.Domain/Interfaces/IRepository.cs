@@ -17,6 +17,8 @@ public interface IUnitOfWork : IDisposable
     IGatewaySettingsRepository GatewaySettings { get; }
     INotificationSettingsRepository NotificationSettings { get; }
     INotificationRecipientRepository NotificationRecipients { get; }
+    IUserRepository Users { get; }
+    IApiKeyRepository ApiKeys { get; }
 
     /// <summary>
     /// Saves all pending changes to the database.
@@ -130,4 +132,18 @@ public interface INotificationRecipientRepository : IRepository<NotificationReci
     Task<IEnumerable<NotificationRecipient>> GetSubscribedToAsync(
         Domain.Enums.NotificationEventType eventType,
         CancellationToken ct = default);
+}
+
+public interface IUserRepository : IRepository<User>
+{
+    Task<User?> GetByUsernameAsync(string username, CancellationToken ct = default);
+    Task<User?> GetByEmailAsync(string email, CancellationToken ct = default);
+    Task<bool> AnyAsync(CancellationToken ct = default);
+}
+
+public interface IApiKeyRepository : IRepository<ApiKey>
+{
+    Task<ApiKey?> GetByHashAsync(string keyHash, CancellationToken ct = default);
+    Task<IEnumerable<ApiKey>> GetByUserIdAsync(Guid userId, CancellationToken ct = default);
+    Task<IEnumerable<ApiKey>> GetAllActiveAsync(CancellationToken ct = default);
 }

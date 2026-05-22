@@ -4,7 +4,9 @@ import {
   Archive,
   CheckCircle2,
   Download,
+  Key,
   KeyRound,
+  LogOut,
   MonitorCheck,
   Plus,
   RefreshCw,
@@ -14,13 +16,16 @@ import {
   ShieldCheck,
   Trash2,
   UserCheck,
+  Users,
 } from 'lucide-react';
 import {
   api,
   ApiError,
+  AuthResponse,
   CaBackend,
   CaBackendInput,
   Certificate,
+  clearStoredToken,
   Device,
   DeviceActivationCode,
   DeviceInput,
@@ -29,14 +34,27 @@ import {
   EstProfileInput,
   GatewaySettings,
   GatewaySettingsInput,
+  getStoredToken,
   NotificationRecipient,
   NotificationSettings,
   NotificationSettingsInput,
+  setUnauthorizedHandler,
   SmtpAuthMode,
   SmtpTlsMode,
 } from './api';
+import { LoginPage } from './LoginPage';
+import { SetupPage } from './SetupPage';
+import { UsersPage } from './UsersPage';
+import { ApiKeysPage } from './ApiKeysPage';
 
-type Page = 'dashboard' | 'settings' | 'cas' | 'devices' | 'profiles' | 'events';
+type Page = 'dashboard' | 'settings' | 'cas' | 'devices' | 'profiles' | 'events' | 'users' | 'apikeys';
+type AuthMode = 'loading' | 'setup' | 'login' | 'ok';
+
+interface CurrentUser {
+  id: string;
+  username: string;
+  role: string;
+}
 
 interface Flash {
   kind: 'success' | 'error' | 'info';
@@ -102,6 +120,25 @@ export function App() {
   const [snapshot, setSnapshot] = useState<Snapshot>(emptySnapshot);
   const [loading, setLoading] = useState(true);
   const [flash, setFlash] = useState<Flash | null>(null);
+  const [authMode, setAuthMode] = useState<AuthMode>('loading');
+  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
+
+  const handleAuthSuccess = (auth: AuthResponse) => {
+    setCurrentUser({ id: auth.userId, username: auth.username, role: auth.role });
+    setAuthMode('ok');
+    void refresh();
+  };
+
+  const handleLogout = () => {
+    clearStoredToken();
+    setCurrentUser(null);
+    setSnapshot(emptySnapshot);
+    setAuthMode('login');
+    setPage('dashboard');
+  };
+
+  // Wire up 401 handler so expired tokens force re-login
+  setUnauthorizedHandler(handleLogout);
 
   const refresh = async () => {
     setLoading(true);
@@ -141,7 +178,34 @@ export function App() {
   };
 
   useEffect(() => {
-    void refresh();
+    const init = async () => {
+      const status = await api.getAuthStatus();
+      if (status.mode === 'setup') {
+        setAuthMode('setup');
+        setLoading(false);
+      } else if (status.mode === 'ok' && status.username && status.role && status.userId) {
+        setCurrentUser({ id: status.userId, username: status.username, role: status.role });
+        setAuthMode('ok');
+        await refresh();
+      } else {
+        // Check if we have a stored token that's still valid
+        const token = getStoredToken();
+        if (token) {
+          try {
+            const me = await api.getMe();
+            setCurrentUser({ id: me.id, username: me.username, role: me.role });
+            setAuthMode('ok');
+            await refresh();
+            return;
+          } catch {
+            clearStoredToken();
+          }
+        }
+        setAuthMode('login');
+        setLoading(false);
+      }
+    };
+    void init();
   }, []);
 
   const run = async <T,>(
@@ -163,6 +227,21 @@ export function App() {
   };
 
   const activeBackend = snapshot.backends.find((backend) => backend.isActive);
+  const role = currentUser?.role ?? '';
+  const isSystemAdmin = role === 'SystemAdmin';
+  const isDeviceAdmin = role === 'DeviceAdmin' || isSystemAdmin;
+
+  if (authMode === 'loading') {
+    return <div className="authPage"><div className="authCard"><p>Loading…</p></div></div>;
+  }
+
+  if (authMode === 'setup') {
+    return <SetupPage onSetupComplete={handleAuthSuccess} />;
+  }
+
+  if (authMode === 'login') {
+    return <LoginPage onLoginSuccess={handleAuthSuccess} />;
+  }
 
   return (
     <div className="shell">
@@ -178,14 +257,11 @@ export function App() {
           <NavButton icon={<MonitorCheck />} active={page === 'dashboard'} onClick={() => setPage('dashboard')}>
             Dashboard
           </NavButton>
-          <NavButton icon={<Settings />} active={page === 'settings'} onClick={() => setPage('settings')}>
-            Settings
+          <NavButton icon={<UserCheck />} active={page === 'devices'} onClick={() => setPage('devices')}>
+            Devices
           </NavButton>
           <NavButton icon={<ServerCog />} active={page === 'cas'} onClick={() => setPage('cas')}>
             CA Backends
-          </NavButton>
-          <NavButton icon={<UserCheck />} active={page === 'devices'} onClick={() => setPage('devices')}>
-            Devices
           </NavButton>
           <NavButton icon={<KeyRound />} active={page === 'profiles'} onClick={() => setPage('profiles')}>
             EST Profiles
@@ -193,7 +269,31 @@ export function App() {
           <NavButton icon={<Activity />} active={page === 'events'} onClick={() => setPage('events')}>
             Events
           </NavButton>
+          {isSystemAdmin && (
+            <NavButton icon={<Settings />} active={page === 'settings'} onClick={() => setPage('settings')}>
+              Settings
+            </NavButton>
+          )}
+          {isSystemAdmin && (
+            <NavButton icon={<Users />} active={page === 'users'} onClick={() => setPage('users')}>
+              Users
+            </NavButton>
+          )}
+          {isDeviceAdmin && (
+            <NavButton icon={<Key />} active={page === 'apikeys'} onClick={() => setPage('apikeys')}>
+              API Keys
+            </NavButton>
+          )}
         </nav>
+        <div className="sidebarFooter">
+          <div className="sidebarUser">
+            <span>{currentUser?.username ?? ''}</span>
+            <span className="sidebarRole">{role}</span>
+          </div>
+          <button className="sidebarLogout" onClick={handleLogout} title="Sign out">
+            <LogOut size={14} /> Sign out
+          </button>
+        </div>
       </aside>
 
       <main>
@@ -219,7 +319,7 @@ export function App() {
         ) : (
           <>
             {page === 'dashboard' && <Dashboard snapshot={snapshot} />}
-            {page === 'settings' && (
+            {page === 'settings' && isSystemAdmin && (
               <SettingsPage settings={snapshot.settings} run={run} />
             )}
             {page === 'cas' && <CaBackendsPage backends={snapshot.backends} run={run} />}
@@ -235,6 +335,12 @@ export function App() {
               <ProfilesPage profiles={snapshot.profiles} backends={snapshot.backends} run={run} />
             )}
             {page === 'events' && <EventsPage events={snapshot.events} />}
+            {page === 'users' && isSystemAdmin && currentUser && (
+              <UsersPage run={run} currentUserId={currentUser.id} />
+            )}
+            {page === 'apikeys' && isDeviceAdmin && currentUser && (
+              <ApiKeysPage run={run} currentUserId={currentUser.id} isSystemAdmin={isSystemAdmin} />
+            )}
           </>
         )}
       </main>
