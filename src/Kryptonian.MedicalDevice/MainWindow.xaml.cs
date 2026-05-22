@@ -1,21 +1,17 @@
 using System;
 using System.IO;
-using System.Net.Http;
-using System.Net.Http.Headers;
-using System.Security.Cryptography;
-using System.Security.Cryptography.Pkcs;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
-using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using Kryptonian.MedicalDevice.Enrollment;
 using Microsoft.Win32;
 
 namespace Kryptonian.MedicalDevice;
 
 public partial class MainWindow : Window
 {
-    private static readonly HttpClient Http = new();
+    private readonly EstEnrollmentClient _estEnrollment = new();
 
     public MainWindow()
     {
@@ -76,11 +72,12 @@ public partial class MainWindow : Window
         try
         {
             SetStatus("Generating key pair and submitting CSR...");
-            using var rsa = RSA.Create(4096);
-            var csrDer = BuildCsr(rsa, commonName);
 
             SetStatus("Enrolling with activation code...");
-            var certificate = await EnrollAsync(gatewayUri, rsa, csrDer, activationCode, manufacturer, model, serial);
+            var result = await _estEnrollment.EnrollAsync(
+                gatewayUri,
+                new DeviceEnrollmentRequest(commonName, manufacturer, model, serial, activationCode));
+            var certificate = result.Certificate;
 
             if (install)
             {
@@ -129,7 +126,7 @@ public partial class MainWindow : Window
         X509Certificate2? existing = null;
         try
         {
-            existing = LoadPfx(dialog.FileName, ActivationCodeBox.Password);
+            existing = EstEnrollmentClient.LoadPfx(dialog.FileName, ActivationCodeBox.Password);
         }
         catch (Exception ex)
         {
@@ -148,12 +145,11 @@ public partial class MainWindow : Window
         SetBusy(true);
         try
         {
-            var commonName = ExtractCommonName(existing.SubjectName) ?? existing.Subject;
+            var commonName = EstEnrollmentClient.ExtractCommonName(existing.SubjectName) ?? existing.Subject;
             SetStatus($"Generating new key pair for {commonName} and submitting re-enrollment CSR...");
-            using var newRsa = RSA.Create(4096);
-            var csrDer = BuildCsr(newRsa, commonName);
 
-            var renewed = await ReenrollAsync(gatewayUri, existing, newRsa, csrDer);
+            var result = await EstEnrollmentClient.ReenrollAsync(gatewayUri, existing, commonName);
+            var renewed = result.Certificate;
 
             if (install)
             {
@@ -183,163 +179,8 @@ public partial class MainWindow : Window
         }
     }
 
-    private static X509Certificate2 LoadPfx(string path, string activationCodePassword)
-    {
-        var bytes = File.ReadAllBytes(path);
-        try
-        {
-            return new X509Certificate2(bytes, "", X509KeyStorageFlags.Exportable);
-        }
-        catch (CryptographicException)
-        {
-            if (string.IsNullOrEmpty(activationCodePassword)) { throw; }
-            return new X509Certificate2(bytes, activationCodePassword, X509KeyStorageFlags.Exportable);
-        }
-    }
-
-    private static string? ExtractCommonName(X500DistinguishedName subject)
-    {
-        foreach (var part in subject.Format(true).Split('\n', StringSplitOptions.RemoveEmptyEntries))
-        {
-            var trimmed = part.Trim();
-            if (trimmed.StartsWith("CN=", StringComparison.OrdinalIgnoreCase))
-            {
-                return trimmed.Substring(3).Trim();
-            }
-        }
-        return null;
-    }
-
-    private static async Task<X509Certificate2> ReenrollAsync(
-        Uri gateway,
-        X509Certificate2 existingClientCert,
-        RSA newPrivateKey,
-        byte[] csrDer)
-    {
-        using var handler = new HttpClientHandler
-        {
-            ClientCertificateOptions = ClientCertificateOption.Manual
-        };
-        handler.ClientCertificates.Add(existingClientCert);
-        using var http = new HttpClient(handler);
-
-        using var request = new HttpRequestMessage(HttpMethod.Post, BuildEstUri(gateway, "simplereenroll"));
-        request.Headers.Add("Content-Transfer-Encoding", "base64");
-        request.Content = new StringContent(Convert.ToBase64String(csrDer), Encoding.ASCII);
-        request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/pkcs10");
-
-        using var response = await http.SendAsync(request);
-        var body = await response.Content.ReadAsStringAsync();
-        if (!response.IsSuccessStatusCode)
-        {
-            throw new InvalidOperationException($"EST re-enrollment failed ({(int)response.StatusCode}): {body}");
-        }
-
-        var pkcs7Der = Convert.FromBase64String(body.Trim());
-        var signedCms = new SignedCms();
-        signedCms.Decode(pkcs7Der);
-        if (signedCms.Certificates.Count == 0)
-        {
-            throw new InvalidOperationException("Gateway response did not contain any certificates.");
-        }
-
-        var leaf = FindLeafCertificate(signedCms.Certificates);
-        return leaf.CopyWithPrivateKey(newPrivateKey);
-    }
-
-    private static async Task<X509Certificate2> EnrollAsync(
-        Uri gateway,
-        RSA privateKey,
-        byte[] csrDer,
-        string activationCode,
-        string manufacturer,
-        string model,
-        string serial)
-    {
-        using var request = new HttpRequestMessage(HttpMethod.Post, BuildEstUri(gateway, "simpleenroll"));
-        request.Headers.Add("X-Activation-Code", activationCode);
-        request.Headers.Add("X-Device-Manufacturer", manufacturer);
-        request.Headers.Add("X-Device-Model", model);
-        request.Headers.Add("X-Device-Serial-Number", serial);
-        request.Headers.Add("Content-Transfer-Encoding", "base64");
-        request.Content = new StringContent(Convert.ToBase64String(csrDer), Encoding.ASCII);
-        request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/pkcs10");
-
-        using var response = await Http.SendAsync(request);
-        var body = await response.Content.ReadAsStringAsync();
-        if (!response.IsSuccessStatusCode)
-        {
-            throw new InvalidOperationException($"EST enrollment failed ({(int)response.StatusCode}): {body}");
-        }
-
-        var pkcs7Der = Convert.FromBase64String(body.Trim());
-        var signedCms = new SignedCms();
-        signedCms.Decode(pkcs7Der);
-        if (signedCms.Certificates.Count == 0)
-        {
-            throw new InvalidOperationException("Gateway response did not contain any certificates.");
-        }
-
-        var leaf = FindLeafCertificate(signedCms.Certificates);
-        return leaf.CopyWithPrivateKey(privateKey);
-    }
-
-    private static X509Certificate2 FindLeafCertificate(X509Certificate2Collection certs)
-    {
-        // Prefer end-entity certs (BasicConstraints CA=false / not a CA). Fall back to the first.
-        foreach (var cert in certs)
-        {
-            foreach (var ext in cert.Extensions)
-            {
-                if (ext is X509BasicConstraintsExtension bc && !bc.CertificateAuthority)
-                {
-                    return cert;
-                }
-            }
-        }
-        return certs[0];
-    }
-
-    private static byte[] BuildCsr(RSA rsa, string commonName)
-    {
-        var subject = new X500DistinguishedName($"CN={commonName}");
-        var request = new CertificateRequest(subject, rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
-        return request.CreateSigningRequest();
-    }
-
-    private static Uri BuildEstUri(Uri gateway, string operation)
-    {
-        var basePath = gateway.AbsolutePath;
-        if (string.IsNullOrWhiteSpace(basePath) || basePath == "/")
-        {
-            basePath = "/.well-known/est";
-        }
-
-        basePath = basePath.TrimEnd('/');
-        if (basePath.EndsWith("/simpleenroll", StringComparison.OrdinalIgnoreCase)
-            || basePath.EndsWith("/simplereenroll", StringComparison.OrdinalIgnoreCase))
-        {
-            var lastSlash = basePath.LastIndexOf('/');
-            basePath = lastSlash <= 0 ? "/.well-known/est" : basePath[..lastSlash];
-        }
-
-        var builder = new UriBuilder(gateway)
-        {
-            Path = $"{basePath}/{operation}",
-            Query = string.Empty,
-            Fragment = string.Empty
-        };
-
-        return builder.Uri;
-    }
-
     private static string NormalizeCommonName(string value)
-    {
-        var trimmed = value.Trim();
-        return trimmed.StartsWith("CN=", StringComparison.OrdinalIgnoreCase)
-            ? trimmed[3..].Trim()
-            : trimmed;
-    }
+        => EstEnrollmentClient.NormalizeCommonName(value);
 
     private static void InstallCertificate(X509Certificate2 certificate)
     {

@@ -1,419 +1,197 @@
-# RTSec.Kryptonian
+# Kryptonian Gateway
 
-A unified certificate-management gateway implementing the EST protocol (RFC 7030) for medical device certificate enrollment. Built with .NET 8 and ASP.NET Core.
+<p align="center">
+  <img src="docs/screenshots/kryptonian-gateway-logo.png" alt="Kryptonian Gateway logo" width="560" />
+</p>
+
+A reference implementation of **MEDIATE** (Medical Device Identity, Enrollment, and Trust Exchange) — a framework proposed by the [AAPM RT-SEC](https://www.aapm.org/) working group as a mechanism to remove the burden of network security from individual medical devices.
+
+> **Note:** This is a proof-of-concept created at the AAPM RT-SEC annual meeting in Trento, Italy (2026). It has not been reviewed by security experts outside of the RT-SEC working group and is **not intended for clinical deployment**. Its primary purpose is to serve as a reference implementation for the MEDIATE specification.
+
+---
+
+## Overview
+
+Medical device network security today requires each device and each vendor to independently negotiate trust with a hospital's certificate infrastructure — a fragmented, error-prone process. Kryptonian abstracts that complexity by establishing a single protocol that all devices must speak: **EST (Enrollment over Secure Transport, RFC 7030)**.
+
+The gateway sits between medical devices and one or more certificate authority backends, providing:
+
+- **Device enrollment** — Devices register with an activation code, are reviewed and approved by an administrator, then automatically receive certificates.
+- **Automatic certificate renewal** — Approved devices renew certificates without administrator intervention unless their privileges are revoked.
+- **Renewal monitoring** — Administrators receive notifications when certificates are not being renewed as expected, signaling potential device problems.
+- **Multi-CA abstraction** — A single EST interface for devices regardless of which CA backend the institution uses.
+
+---
+
+## What It Looks Like
+
+Kryptonian Gateway includes a branded administrator portal for device registration, certificate lifecycle operations, CA backend configuration, EST profile management, user administration, and audit review.
+
+### Login portal
+
+The login experience introduces the gateway as a medical device trust portal and keeps the operational form immediately accessible.
+
+![Kryptonian Gateway login portal](docs/screenshots/kryptonian-login.png)
+
+### Device Registration Center
+
+The Devices page is the primary operating surface. Administrators can register devices, issue one-time activation codes, inspect device identity, track pending activations, and monitor certificate expiry.
+
+![Kryptonian Gateway Device Registration Center](docs/screenshots/kryptonian-device-registration.png)
+
+### Activation code workflow
+
+Device onboarding produces a short-lived activation code that can be handed to the device. During activation, the device presents its common name, manufacturer, model, and serial number for registry binding.
+
+![Kryptonian Gateway activation code workflow](docs/screenshots/kryptonian-activation-code.png)
+
+### Gateway dashboard
+
+The dashboard summarizes CA backend state, registered device counts, enrollment outcomes, and backend evidence so administrators can quickly understand gateway health.
+
+![Kryptonian Gateway dashboard](docs/screenshots/kryptonian-dashboard.png)
+
+### Responsive portal
+
+The portal is responsive for smaller operational screens while preserving the same branding and device-registration workflow.
+
+![Kryptonian Gateway mobile login](docs/screenshots/kryptonian-mobile-login.png)
+
+---
+
+## CA Backends
+
+| Backend | Status | Description |
+|---|---|---|
+| **Self-Signed** | Supported | Local certificate authority; suitable for development and isolated networks |
+| **ACME** | Supported | Compatible with Let's Encrypt, ZeroSSL, and any ACME-compliant CA |
+| **ADCS** | Implemented (harness) | Microsoft Active Directory Certificate Services via SCEP |
+| **EJBCA** | Implemented (harness) | Enterprise Java Beans CA via REST |
+| **CloudFlare CFSSL** | Planned | — |
+| **HashiCorp Vault** | Planned | PKI Secrets Engine |
+| **Smallstep** | Planned | Modern open-source CA |
+| **OpenXPKI** | Planned | Open-source enterprise PKI |
+
+The CA harness (`RTSec.Kryptonian.CaHarness`) emulates the above backends locally so the full enrollment flow can be exercised without external CA infrastructure.
+
+---
 
 ## Features
 
-- **EST Protocol (RFC 7030)**: Full implementation of `/cacerts`, `/simpleenroll`, and `/simplereenroll` endpoints
-- **Multiple CA Backends**: Self-Signed CA, ACME (Let's Encrypt, ZeroSSL), with extensible architecture for ADCS/EJBCA
-- **Admin REST API**: Manage CA backends, EST profiles, and view enrollment events
-- **Blazor Admin UI**: Web-based management interface with MudBlazor components
-- **Audit Trail**: All enrollment events logged with device ID, client IP, and status
-- **Docker Ready**: Multi-stage Docker builds with Docker Compose orchestration
+- EST protocol endpoints (`/simpleenroll`, `/simplereenroll`, `/cacerts`)
+- Admin REST API with JWT authentication
+- Role-based access control (SystemAdmin, Admin, Viewer)
+- Blazor Server admin dashboard with React/TypeScript frontend
+- Full audit trail for all enrollment and revocation events
+- Email notifications for certificate expiry and renewal anomalies
+- Docker-ready with a single `docker compose up`
 
-## How It Works
+---
 
-Kryptonian acts as a middleman between medical devices and Certificate Authorities (CAs). Devices never talk directly to the CA - they only talk to Kryptonian, which handles all the complexity behind the scenes.
-
-```
-┌─────────────────┐         ┌─────────────────┐         ┌─────────────────┐
-│  Medical Device │         │   Kryptonian    │         │  CA Backend     │
-│  (CT Scanner,   │  ────►  │   (This App)    │  ────►  │  (Self-Signed,  │
-│   MRI, etc.)    │         │                 │         │   ACME, ADCS)   │
-└─────────────────┘         └─────────────────┘         └─────────────────┘
-     Only talks to              The Hub                   Device never
-     Kryptonian                                           sees this
-```
-
-### The Enrollment Flow (Plain English)
-
-When a medical device needs a certificate, here's what happens:
-
-| Step | Device Asks | Kryptonian Does | Component |
-|------|-------------|-----------------|-----------|
-| **1. Get CA Info** | "Who will be signing my certificate?" | Returns the CA certificate so the device knows who to trust | `EstController` → `EnrollmentOrchestrator` |
-| **2. Request Certificate** | "Here's my identity info (CSR). Can I get a certificate?" | Validates the request, asks the CA backend to sign it, returns the signed certificate | `EstController` → `CaConnectorFactory` → `SelfSignedCaConnector` or `AcmeCaConnector` |
-| **3. Renew Certificate** | "My certificate is expiring. Here's my current cert and a new request." | Verifies the device's existing certificate, issues a fresh one | `EstController` → `EnrollmentOrchestrator` (with mTLS validation) |
-
-### Why This Matters
-
-**Without Kryptonian:** Every device vendor implements their own certificate logic. Hospitals manage dozens of different CA integrations. Certificates expire unexpectedly. It's a mess.
-
-**With Kryptonian:** Devices implement one simple protocol (EST). Hospitals configure one gateway. Kryptonian handles the rest - whether the backend is a simple self-signed CA, Let's Encrypt, Microsoft ADCS, or anything else.
-
-### Key Components
-
-| Component | What It Does |
-|-----------|--------------|
-| **EST Controller** (`RTSec.Kryptonian.Api`) | Receives device requests at `/.well-known/est/*` endpoints |
-| **Enrollment Orchestrator** (`RTSec.Kryptonian.Application`) | Coordinates the enrollment flow, applies policies, logs events |
-| **CA Connectors** (`RTSec.Kryptonian.Infrastructure`) | Talks to actual CAs (self-signed, ACME, etc.) |
-| **Admin API** (`RTSec.Kryptonian.Api`) | Lets administrators configure CA backends and EST profiles |
-| **Database** (PostgreSQL) | Stores configuration, certificates, and audit logs |
-
-## Quick Start
-
-Use the helper scripts for the easiest local startup/shutdown flow:
-
-```bash
-# Start backend + frontend (web profile)
-./start-up.sh
-
-# Stop services and clean up containers/networks
-./tear-down.sh
-
-# Optional: also remove DB volume/data
-./tear-down.sh --volumes
-```
-
-Manual startup (equivalent low-level commands):
-
-```bash
-# Generate test certificates
-chmod +x scripts/generate-test-certs.sh
-./scripts/generate-test-certs.sh
-
-# Start with Docker Compose
-docker compose up -d
-
-# Verify health
-curl http://localhost:5000/api/status/health
-```
-
-## Development Container (VS Code)
-
-This repository includes a VS Code dev container configuration under `.devcontainer/`.
-
-### Included Tools
-
-- .NET 8 SDK
-- OpenSSL
-- PostgreSQL client tools (`psql`)
-- Docker CLI access from inside the container (via dev container feature)
-
-### Open In Dev Container
-
-1. Install Docker Desktop and the VS Code Dev Containers extension.
-2. Open this repository in VS Code.
-3. Run: `Dev Containers: Reopen in Container`.
-
-The dev container starts a dedicated `devcontainer` service and the existing `postgres` service from Compose.
-
-### First Run Behavior
-
-- `dotnet restore RTSec.Kryptonian.sln` runs automatically.
-- `dotnet-ef` is installed or updated as a global tool.
-- Ports `5000`, `5001`, and `5432` are forwarded.
-
-### Typical Commands Inside Container
-
-```bash
-dotnet build RTSec.Kryptonian.sln
-dotnet test RTSec.Kryptonian.sln
-docker compose up -d
-```
-
-## Blazor Admin Portal
-
-The project includes a web-based admin interface built with Blazor Server and MudBlazor components. The admin portal is **optional** and runs as a separate Docker profile.
-
-### Starting the Admin Portal
-
-```bash
-# Start all services INCLUDING the admin portal
-docker compose --profile web up -d
-```
-
-### Services Overview
-
-| Service | Container | Port | URL |
-|---------|-----------|------|-----|
-| PostgreSQL | `kryptonian-db` | 5432 | - |
-| API Server | `kryptonian-api` | 5000 | http://localhost:5000 |
-| Admin Portal | `kryptonian-web` | 5001 | http://localhost:5001 |
-
-### Accessing the Admin Portal
-
-Once running, open your browser to: **http://localhost:5001**
-
-The admin portal provides:
-- **CA Backends** - Configure certificate authorities (Self-Signed, ACME, etc.)
-- **EST Profiles** - Manage enrollment profiles for devices
-- **Events** - View enrollment audit logs and history
-- **Dashboard** - System status overview
-
-### Admin Portal Commands
-
-```bash
-# Start with admin portal
-docker compose --profile web up -d
-
-# View logs
-docker compose --profile web logs -f kryptonian-web
-
-# Rebuild after code changes
-docker compose --profile web up -d --build
-
-# Stop all services
-docker compose --profile web down
-```
-
-### Running Without the Admin Portal
-
-If you only need the API (headless mode):
-```bash
-docker compose up -d
-```
-
-This starts only the database and API server, without the web UI.
-
-## Demo - Device Enrollment
-
-We provide an interactive demo script that walks through the complete enrollment flow. The script pauses at each step so you can explain what's happening.
+## Getting Started
 
 ### Prerequisites
 
-- **Docker Desktop** (Windows/Mac) or **Docker Engine** (Linux) - [Install Docker](https://docs.docker.com/get-docker/)
-- **OpenSSL** - Pre-installed on Mac/Linux. For Windows: `winget install OpenSSL.Light`
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/)
 
-### First-Time Setup
-
-**Step 1: Generate Test Certificates**
-
-The demo needs test CA certificates. Run this once from the `scripts/` folder:
-
-Windows (PowerShell):
-```powershell
-cd scripts
-.\generate-test-certs.ps1
-```
-
-Linux/Mac:
-```bash
-cd scripts
-chmod +x generate-test-certs.sh
-./generate-test-certs.sh
-```
-
-This creates a `certs/` folder with test CA, server, and client certificates.
-
-**Step 2: Build and Start Services**
-
-From the **project root directory** (not scripts/):
+### Run the stack
 
 ```bash
-cd ..
-docker compose build
-docker compose up -d
+docker compose up
 ```
 
-Wait about 15 seconds for the database to initialize. Check status with:
-```bash
-docker compose ps
-```
+This starts three services:
 
-Both `kryptonian-api` and `kryptonian-db` should show as "running" or "healthy".
+| Service | URL | Description |
+|---|---|---|
+| **API** | `http://localhost:5000` | EST + Admin REST API |
+| **Web UI** | `http://localhost:5001` | Blazor admin dashboard |
+| **PostgreSQL** | `localhost:5432` | Database |
 
-**Step 3: Run the Demo**
-
-Once the services are running, run the demo from the `scripts/` folder:
-
-Windows (PowerShell):
-```powershell
-cd scripts
-.\demo-enrollment.ps1
-```
-
-Linux/Mac:
-```bash
-cd scripts
-./demo-enrollment.sh
-```
-
-The demo will walk you through each step, pausing for you to read what's happening.
-
-**Stopping the Services**
-
-When finished, stop the services from the project root:
-```bash
-cd ..
-docker compose down
-```
-
-### What the Demo Shows
-
-| Step | Who | What Happens |
-|------|-----|--------------|
-| 1 | Admin | Configures a CA backend (tells Kryptonian which CA to use) |
-| 2 | Admin | Creates an EST profile (sets up the enrollment endpoint) |
-| 3 | Device | Asks "Who will sign my certificate?" and gets the CA cert |
-| 4 | Device | Generates a private key and certificate request (CSR) |
-| 5 | Device | Sends request to hub, receives signed certificate |
-| 6 | Device | Installs the certificate for secure communication |
-| 7 | Admin | Views the enrollment in the audit log |
-
-### Demo Options
-
-```powershell
-# Start services automatically and use a custom device name
-.\scripts\demo-enrollment.ps1 -StartServices -DeviceName "MRI-Scanner-002"
-```
+To also start the optional CA harness (emulates ADCS, EJBCA, Self-Signed, and ACME via step-ca):
 
 ```bash
-# Same options for bash
-./scripts/demo-enrollment.sh --start-services --device-name "MRI-Scanner-002"
+docker compose -f docker-compose.yml -f docker-compose.hackathon.yml up
 ```
 
-### Demo Output
+### Pre-seeded demo account
 
-The script creates files in `demo-output/`:
-- `device.key` - Device's private key (secret)
-- `device_cert.pem` - Issued certificate (public)
-- `device.pfx` - Combined bundle for the device
+| Field | Value |
+|---|---|
+| Username | `admin` |
+| Password | `rtsec2026` |
+| Email | `demo@email.com` |
+| Role | `SystemAdmin` |
+
+---
+
+## Demo Walkthrough
+
+### 1. Register a device
+
+1. Log in to the admin dashboard at `http://localhost:5001`.
+2. Navigate to **Devices** and create a new device registration.
+3. Copy the **device activation code** generated for that device.
+
+### 2. Enroll a device
+
+Open the `Kryptonian.MedicalDevice` WPF application (Windows). This is a simulated medical device that demonstrates how a real device would:
+
+1. Submit a Certificate Signing Request (CSR) using the activation code.
+2. Receive and install the issued certificate.
+3. Automatically renew the certificate on schedule using EST `simplereenroll`.
+
+See [`src/Kryptonian.MedicalDevice`](src/Kryptonian.MedicalDevice/) for the enrollment implementation, which can be adapted for other device platforms.
+
+### 3. DICOM TLS demo
+
+[`src/Kryptonian.DICOMTls`](src/Kryptonian.DICOMTls/) demonstrates how two medical devices can establish a **mutually authenticated TLS (mTLS)** DICOM connection using gateway-issued certificates. It shows the gateway governing trust end-to-end — from certificate issuance through connection validation — across the supported CA backends.
+
+```bash
+# Run from the src/Kryptonian.DICOMTls directory
+dotnet run
+```
+
+---
+
+## Documentation
+
+| Document | Description |
+|---|---|
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | System design, Clean Architecture layers, and data flow |
+| [`docs/API-GUIDE.md`](docs/API-GUIDE.md) | REST API reference with authentication and examples |
+| [`docs/device-enrollment.md`](docs/device-enrollment.md) | EST enrollment flow in detail |
+| [`docs/ca-backend-configuration.md`](docs/ca-backend-configuration.md) | Configuration guide for each CA backend |
+| [`docs/user-management.md`](docs/user-management.md) | User accounts, roles, and access control |
+| [`docs/email-notifications.md`](docs/email-notifications.md) | Notification configuration |
+| [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) | Production deployment guidance |
+| [`docs/admin-setup.md`](docs/admin-setup.md) | Initial administrator setup |
+
+---
 
 ## Project Structure
 
 ```
-RTSec.Kryptonian/
-├── src/
-│   ├── RTSec.Kryptonian.Domain/           # Entities, interfaces, value objects
-│   ├── RTSec.Kryptonian.Application/      # Services, DTOs, validators
-│   ├── RTSec.Kryptonian.Infrastructure/   # EF Core, CA connectors, cryptography
-│   ├── RTSec.Kryptonian.Api/              # ASP.NET Core Web API (EST + Admin)
-│   ├── RTSec.Kryptonian.Web/              # Blazor Server admin UI
-│   └── RTSec.Kryptonian.Shared/           # Constants, extensions
-├── tests/
-│   ├── RTSec.Kryptonian.Domain.Tests/
-│   ├── RTSec.Kryptonian.Application.Tests/
-│   ├── RTSec.Kryptonian.Infrastructure.Tests/
-│   └── RTSec.Kryptonian.Api.Tests/
-├── docs/                                    # OpenAPI specs and documentation
-├── scripts/                                 # Utility scripts
-├── docker-compose.yml                       # Container orchestration
-└── RTSec.Kryptonian.sln
+src/
+├── RTSec.Kryptonian.Api          # ASP.NET Core REST API (EST + Admin endpoints)
+├── RTSec.Kryptonian.Web          # Blazor Server admin dashboard
+├── RTSec.Kryptonian.Ui           # React/TypeScript frontend (embedded in Web)
+├── RTSec.Kryptonian.Domain       # Core entities, interfaces, value objects
+├── RTSec.Kryptonian.Application  # Business logic, services, DTOs
+├── RTSec.Kryptonian.Infrastructure # EF Core, CA connectors, cryptography
+├── RTSec.Kryptonian.CaHarness   # Local CA emulator for development
+├── Kryptonian.MedicalDevice      # WPF device simulator (Windows)
+└── Kryptonian.DICOMTls           # DICOM mTLS demonstration
 ```
 
-## Configuration
+---
 
-### Environment Variables
+## Contributing
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `ConnectionStrings__DefaultConnection` | PostgreSQL connection string | - |
-| `ADMIN_API_KEYS` | Comma-separated API keys | `dev-api-key-change-in-production` |
-| `CA_PFX_PASSWORD` | Password for CA PFX file | `TestPassword123!` |
-| `ASPNETCORE_ENVIRONMENT` | Environment name | `Development` |
+This project is maintained by the AAPM RT-SEC working group. Issues and pull requests are welcome.
 
-### CA Backend Support
+---
 
-Kryptonian is designed to support multiple Certificate Authority backends. The hub abstracts the CA implementation, so devices use the same EST protocol regardless of which CA is behind it.
+## Disclaimer
 
-| CA Backend | Status | Description | Use Case |
-|------------|--------|-------------|----------|
-| **Self-Signed** | Done | Local CA certificate for signing | Development, testing, isolated networks |
-| **ACME** | Done | Let's Encrypt, ZeroSSL, other ACME CAs | Public certificates, automated issuance |
-| **Microsoft ADCS** | Planned | Active Directory Certificate Services | Enterprise Windows environments, hospitals |
-| **EJBCA** | Planned | Enterprise Java Beans CA | Large organizations, open-source enterprise PKI |
-| **CFSSL** | Planned | CloudFlare's PKI toolkit | Kubernetes, microservices |
-| **HashiCorp Vault** | Planned | PKI secrets engine | DevOps, cloud-native, secrets management |
-| **Smallstep** | Planned | Modern open-source CA | Internal PKI, zero-trust environments |
-| **OpenXPKI** | Planned | Open-source enterprise PKI | Government, healthcare, high compliance |
-
-To implement a new CA backend, create a class that implements `ICaConnector` and register it in `CaConnectorFactory`.
-
-## API Endpoints
-
-### Admin API (`/api/*`)
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/status/health` | Health check |
-| GET/POST | `/api/cas` | List/create CA backends |
-| GET/PUT/DELETE | `/api/cas/{id}` | Manage CA backend |
-| GET/POST | `/api/est-profiles` | List/create EST profiles |
-| GET/PUT/DELETE | `/api/est-profiles/{id}` | Manage EST profile |
-| GET | `/api/status/enrollments` | List enrollment events |
-
-### EST Protocol (`/.well-known/est/*`)
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/.well-known/est/{profile}/cacerts` | Get CA certificates |
-| POST | `/.well-known/est/{profile}/simpleenroll` | Simple enrollment |
-| POST | `/.well-known/est/{profile}/simplereenroll` | Certificate renewal |
-
-## Development
-
-### Prerequisites
-
-- .NET 8.0 SDK
-- PostgreSQL 16+ (or Docker)
-- OpenSSL
-
-### Build and Test
-
-```bash
-# Restore and build
-dotnet restore
-dotnet build
-
-# Run tests
-dotnet test
-
-# Run locally
-dotnet run --project src/RTSec.Kryptonian.Api
-```
-
-### Docker Build
-
-```bash
-# Build images
-docker compose build
-
-# Run with PostgreSQL
-docker compose up -d
-
-# Include admin UI
-docker compose --profile web up -d
-```
-
-## Documentation
-
-- **[API Guide](docs/API-GUIDE.md)** - Complete API usage guide with C# examples and enrollment flow
-- **[Architecture](docs/ARCHITECTURE.md)** - System design, components, and data flow diagrams
-- **[Deployment Guide](docs/DEPLOYMENT.md)** - Production deployment and security configuration
-
-### OpenAPI Specifications
-
-The API is documented with OpenAPI specifications in the repository root:
-
-| File | Description |
-|------|-------------|
-| [OpenAPI.Admin.yaml](OpenAPI.Admin.yaml) | CA Backend management (`/api/cas`) |
-| [OpenAPI.ESTProfiles.yaml](OpenAPI.ESTProfiles.yaml) | EST Profile management (`/api/est-profiles`) |
-| [OpenAPI.StatusObserve.yaml](OpenAPI.StatusObserve.yaml) | Health and enrollment events (`/api/status/*`) |
-| [OpenAPI.Schema.yaml](OpenAPI.Schema.yaml) | Shared data type definitions |
-
-Swagger UI is available at `http://localhost:5000/swagger` when running in Development mode.
-
-## Architecture
-
-Built with Clean Architecture principles:
-
-- **Domain**: Core business entities and interfaces
-- **Application**: Use cases, DTOs, and service implementations
-- **Infrastructure**: Database access, CA connectors, cryptography
-- **API**: REST controllers and EST protocol handlers
-- **Web**: Blazor Server admin interface
-
-## Security
-
-- TLS 1.2+ required for EST endpoints
-- API key authentication for admin endpoints
-- mTLS support for client certificate authentication
-- Non-root container execution
-- Rate limiting on EST endpoints
-
-## License
-
-See LICENSE file
+This software is a research prototype. It has not undergone formal security review and must not be used in clinical or production environments without independent security assessment.
