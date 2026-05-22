@@ -37,8 +37,16 @@ services:
       ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
       ASPNETCORE_URLS: http://+:5000
 
-      # Admin API keys (comma-separated)
-      Kryptonian__AdminApi__ApiKeys: ${ADMIN_API_KEYS:-dev-api-key-change-in-production}
+      # Admin API keys (comma-separated) — legacy backward compat, still honored as SystemAdmin
+      Kryptonian__AdminApi__ApiKeys: ${ADMIN_API_KEYS:-}
+
+      # JWT authentication secret (must be ≥32 chars in production)
+      Kryptonian__Auth__JwtSecret: ${KRYPTONIAN_JWT_SECRET:-}
+
+      # Optional: seed the first admin account on first start (UI wizard if omitted)
+      # Kryptonian__Auth__InitialAdminUsername: ${KRYPTONIAN_ADMIN_USERNAME:-}
+      # Kryptonian__Auth__InitialAdminPassword: ${KRYPTONIAN_ADMIN_PASSWORD:-}
+      # Kryptonian__Auth__InitialAdminEmail: ${KRYPTONIAN_ADMIN_EMAIL:-}
 
       # Self-signed CA configuration (optional, paths inside container)
       KRYPTONIAN__CA__SELFSIGNED__PFXPATH: /app/certs/ca.pfx

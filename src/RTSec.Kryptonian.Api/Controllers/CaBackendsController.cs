@@ -48,6 +48,7 @@ public class CaBackendsController : ControllerBase
     /// Create a new CA backend configuration.
     /// </summary>
     [HttpPost]
+    [Authorize(Policy = "SystemAdmin")]
     [ProducesResponseType(typeof(CaBackendDto), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Create([FromBody] CaBackendCreateDto dto, CancellationToken ct)
@@ -86,6 +87,7 @@ public class CaBackendsController : ControllerBase
     /// Update CA backend config.
     /// </summary>
     [HttpPut("{id}")]
+    [Authorize(Policy = "SystemAdmin")]
     [ProducesResponseType(typeof(CaBackendDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -113,6 +115,7 @@ public class CaBackendsController : ControllerBase
     /// Delete CA backend.
     /// </summary>
     [HttpDelete("{id}")]
+    [Authorize(Policy = "SystemAdmin")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -152,6 +155,7 @@ public class CaBackendsController : ControllerBase
     }
 
     [HttpPost("{id}/activate")]
+    [Authorize(Policy = "SystemAdmin")]
     [ProducesResponseType(typeof(CaBackendDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]

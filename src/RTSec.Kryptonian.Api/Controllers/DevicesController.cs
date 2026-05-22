@@ -34,6 +34,7 @@ public class DevicesController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(Policy = "DeviceAdmin")]
     [ProducesResponseType(typeof(DeviceDto), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Create([FromBody] DeviceCreateDto dto, CancellationToken ct)
@@ -81,6 +82,7 @@ public class DevicesController : ControllerBase
     }
 
     [HttpPost("{id}/approve")]
+    [Authorize(Policy = "DeviceAdmin")]
     [ProducesResponseType(typeof(DeviceDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Approve(string id, CancellationToken ct)
@@ -93,6 +95,7 @@ public class DevicesController : ControllerBase
     }
 
     [HttpPost("{id}/activation-code")]
+    [Authorize(Policy = "DeviceAdmin")]
     [ProducesResponseType(typeof(DeviceActivationCodeDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -122,6 +125,7 @@ public class DevicesController : ControllerBase
     }
 
     [HttpPost("{id}/activation-code/reactivate")]
+    [Authorize(Policy = "DeviceAdmin")]
     [ProducesResponseType(typeof(DeviceActivationCodeDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -151,6 +155,7 @@ public class DevicesController : ControllerBase
     }
 
     [HttpPost("{id}/remove")]
+    [Authorize(Policy = "DeviceAdmin")]
     [ProducesResponseType(typeof(DeviceDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Remove(string id, CancellationToken ct)
@@ -163,6 +168,7 @@ public class DevicesController : ControllerBase
     }
 
     [HttpDelete("{id}")]
+    [Authorize(Policy = "DeviceAdmin")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]

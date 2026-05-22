@@ -21,6 +21,8 @@ public class UnitOfWork : IUnitOfWork
     private IGatewaySettingsRepository? _gatewaySettings;
     private INotificationSettingsRepository? _notificationSettings;
     private INotificationRecipientRepository? _notificationRecipients;
+    private IUserRepository? _users;
+    private IApiKeyRepository? _apiKeys;
 
     public UnitOfWork(KryptonianDbContext context)
     {
@@ -53,6 +55,12 @@ public class UnitOfWork : IUnitOfWork
 
     public INotificationRecipientRepository NotificationRecipients =>
         _notificationRecipients ??= new NotificationRecipientRepository(_context);
+
+    public IUserRepository Users =>
+        _users ??= new UserRepository(_context);
+
+    public IApiKeyRepository ApiKeys =>
+        _apiKeys ??= new ApiKeyRepository(_context);
 
     public async Task<int> SaveChangesAsync(CancellationToken ct = default)
     {

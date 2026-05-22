@@ -30,6 +30,7 @@ public class NotificationSettingsController : ControllerBase
     }
 
     [HttpPut]
+    [Authorize(Policy = "SystemAdmin")]
     [ProducesResponseType(typeof(NotificationSettingsDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Update([FromBody] NotificationSettingsUpdateDto dto, CancellationToken ct)
@@ -53,6 +54,7 @@ public class NotificationSettingsController : ControllerBase
     }
 
     [HttpPost("recipients")]
+    [Authorize(Policy = "SystemAdmin")]
     [ProducesResponseType(typeof(NotificationRecipientDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> UpsertRecipient(
@@ -69,6 +71,7 @@ public class NotificationSettingsController : ControllerBase
     }
 
     [HttpDelete("recipients/{id:guid}")]
+    [Authorize(Policy = "SystemAdmin")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> DeleteRecipient(Guid id, CancellationToken ct)
@@ -77,6 +80,7 @@ public class NotificationSettingsController : ControllerBase
     }
 
     [HttpPost("test")]
+    [Authorize(Policy = "SystemAdmin")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Test([FromBody] NotificationTestRequestDto request, CancellationToken ct)

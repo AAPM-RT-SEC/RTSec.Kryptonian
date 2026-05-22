@@ -1,160 +1,161 @@
 using System.Security.Claims;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Encodings.Web;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using RTSec.Kryptonian.Infrastructure.Data;
 
 namespace RTSec.Kryptonian.Api.Authentication;
 
-/// <summary>
-/// Options for API key authentication.
-/// </summary>
 public class ApiKeyAuthenticationOptions : AuthenticationSchemeOptions
 {
     public const string DefaultScheme = "ApiKey";
     public const string HeaderName = "X-API-Key";
 
-    /// <summary>
-    /// Valid API keys (comma-separated in configuration).
-    /// </summary>
     public HashSet<string> ApiKeys { get; set; } = new();
-
-    /// <summary>
-    /// If true, allows running without API keys in development mode.
-    /// Default is false - API keys are required.
-    /// </summary>
     public bool AllowAnonymousInDevelopment { get; set; } = false;
 }
 
 /// <summary>
-/// Authentication handler for API key-based authentication.
-/// Keys are read from environment variables or configuration.
+/// Validates X-API-Key requests. Checks config-based static keys (SystemAdmin)
+/// then DB-stored user keys (role from record). Returns NoResult when header absent,
+/// allowing JWT Bearer to handle Authorization header requests.
 /// </summary>
 public class ApiKeyAuthenticationHandler : AuthenticationHandler<ApiKeyAuthenticationOptions>
 {
+    private readonly KryptonianDbContext _dbContext;
+
     public ApiKeyAuthenticationHandler(
         IOptionsMonitor<ApiKeyAuthenticationOptions> options,
         ILoggerFactory logger,
-        UrlEncoder encoder) : base(options, logger, encoder)
+        UrlEncoder encoder,
+        KryptonianDbContext dbContext)
+        : base(options, logger, encoder)
     {
+        _dbContext = dbContext;
     }
 
-    protected override Task<AuthenticateResult> HandleAuthenticateAsync()
+    protected override async Task<AuthenticateResult> HandleAuthenticateAsync()
     {
-        // Allow anonymous access in development mode if configured
+        // Dev bypass — only when no static keys configured and dev mode enabled
         if (Options.AllowAnonymousInDevelopment && Options.ApiKeys.Count == 0)
         {
             Logger.LogDebug("Bypassing API key authentication in development mode");
-            var devClaims = new[]
-            {
-                new Claim(ClaimTypes.Name, "DevelopmentUser"),
-                new Claim(ClaimTypes.AuthenticationMethod, "DevBypass")
-            };
-            var devIdentity = new ClaimsIdentity(devClaims, Scheme.Name);
-            var devPrincipal = new ClaimsPrincipal(devIdentity);
-            var devTicket = new AuthenticationTicket(devPrincipal, Scheme.Name);
-            return Task.FromResult(AuthenticateResult.Success(devTicket));
+            return AuthenticateResult.Success(BuildTicket("DevelopmentUser", null, "SystemAdmin", "DevBypass"));
         }
 
-        // Check if API key header is present
         if (!Request.Headers.TryGetValue(ApiKeyAuthenticationOptions.HeaderName, out var apiKeyHeader))
+            return AuthenticateResult.NoResult();
+
+        var rawKey = apiKeyHeader.ToString();
+        if (string.IsNullOrEmpty(rawKey))
+            return AuthenticateResult.Fail("API key is empty");
+
+        // Config-based static keys → SystemAdmin (backward compat)
+        if (Options.ApiKeys.Contains(rawKey))
+            return AuthenticateResult.Success(BuildTicket("ApiKeyUser", null, "SystemAdmin", "ApiKey"));
+
+        // DB-stored user API keys (prefixed kry_)
+        if (rawKey.StartsWith("kry_", StringComparison.Ordinal))
         {
-            return Task.FromResult(AuthenticateResult.Fail("API key header is missing"));
+            var keyHash = ComputeSha256(rawKey);
+            var apiKey = await _dbContext.ApiKeys
+                .Include(k => k.User)
+                .FirstOrDefaultAsync(k =>
+                    k.KeyHash == keyHash &&
+                    k.RevokedAt == null &&
+                    (k.ExpiresAt == null || k.ExpiresAt > DateTimeOffset.UtcNow),
+                    Context.RequestAborted);
+
+            if (apiKey != null && apiKey.User?.IsActive == true)
+            {
+                // Best-effort update of LastUsedAt — don't fail the request if it errors
+                try
+                {
+                    apiKey.LastUsedAt = DateTimeOffset.UtcNow;
+                    await _dbContext.SaveChangesAsync(Context.RequestAborted);
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogWarning(ex, "Failed to update LastUsedAt for API key {Prefix}", apiKey.Prefix);
+                }
+
+                return AuthenticateResult.Success(
+                    BuildTicket(apiKey.User.Username, apiKey.UserId.ToString(), apiKey.Role.ToString(), "ApiKey"));
+            }
         }
 
-        var apiKey = apiKeyHeader.ToString();
-
-        if (string.IsNullOrEmpty(apiKey))
-        {
-            return Task.FromResult(AuthenticateResult.Fail("API key is empty"));
-        }
-
-        // Validate API key
-        if (!Options.ApiKeys.Contains(apiKey))
-        {
-            Logger.LogWarning("Invalid API key attempted: {KeyPrefix}...", apiKey.Length > 8 ? apiKey[..8] : apiKey);
-            return Task.FromResult(AuthenticateResult.Fail("Invalid API key"));
-        }
-
-        // Create claims identity for authenticated request
-        var claims = new[]
-        {
-            new Claim(ClaimTypes.Name, "ApiKeyUser"),
-            new Claim(ClaimTypes.AuthenticationMethod, "ApiKey")
-        };
-
-        var identity = new ClaimsIdentity(claims, Scheme.Name);
-        var principal = new ClaimsPrincipal(identity);
-        var ticket = new AuthenticationTicket(principal, Scheme.Name);
-
-        return Task.FromResult(AuthenticateResult.Success(ticket));
+        Logger.LogWarning("Invalid API key attempted: {KeyPrefix}...",
+            rawKey.Length > 8 ? rawKey[..8] : rawKey);
+        return AuthenticateResult.Fail("Invalid API key");
     }
 
     protected override Task HandleChallengeAsync(AuthenticationProperties properties)
     {
         Response.StatusCode = StatusCodes.Status401Unauthorized;
-        Response.Headers.WWWAuthenticate = $"ApiKey realm=\"Kryptonian Admin API\"";
+        Response.Headers.WWWAuthenticate = "ApiKey realm=\"Kryptonian Admin API\"";
         return Task.CompletedTask;
+    }
+
+    private AuthenticationTicket BuildTicket(string name, string? userId, string role, string method)
+    {
+        var claims = new List<Claim>
+        {
+            new(ClaimTypes.Name, name),
+            new(ClaimTypes.AuthenticationMethod, method),
+            new("role", role),
+        };
+        if (userId != null)
+            claims.Add(new Claim(ClaimTypes.NameIdentifier, userId));
+
+        return new AuthenticationTicket(
+            new ClaimsPrincipal(new ClaimsIdentity(claims, Scheme.Name)),
+            Scheme.Name);
+    }
+
+    private static string ComputeSha256(string input)
+    {
+        using var sha = SHA256.Create();
+        var hash = sha.ComputeHash(Encoding.UTF8.GetBytes(input));
+        return BitConverter.ToString(hash).Replace("-", "").ToLowerInvariant();
     }
 }
 
-/// <summary>
-/// Extension methods for configuring API key authentication.
-/// </summary>
 public static class ApiKeyAuthenticationExtensions
 {
-    /// <summary>
-    /// Adds API key authentication to the service collection.
-    /// </summary>
-    /// <param name="services">The service collection.</param>
-    /// <param name="configuration">The configuration.</param>
-    /// <param name="isDevelopment">Whether the application is running in development mode.</param>
-    /// <returns>The authentication builder.</returns>
-    /// <exception cref="InvalidOperationException">Thrown when no API keys are configured and not in development mode with bypass enabled.</exception>
     public static AuthenticationBuilder AddApiKeyAuthentication(
-        this IServiceCollection services,
+        this AuthenticationBuilder builder,
         IConfiguration configuration,
         bool isDevelopment = false)
     {
-        // Load API keys from configuration/environment
         var apiKeysConfig = configuration["Kryptonian:AdminApi:ApiKeys"]
             ?? Environment.GetEnvironmentVariable("KRYPTONIAN__ADMINAPI__APIKEYS");
-
-        var allowAnonymousDev = configuration.GetValue<bool>("Kryptonian:AdminApi:AllowAnonymousInDevelopment", false);
+        var allowAnonymousDev = bool.TryParse(
+            configuration["Kryptonian:AdminApi:AllowAnonymousInDevelopment"], out var v) && v;
 
         var apiKeys = new HashSet<string>();
         if (!string.IsNullOrEmpty(apiKeysConfig))
         {
-            var keys = apiKeysConfig.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            foreach (var key in keys)
-            {
+            foreach (var key in apiKeysConfig.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
                 apiKeys.Add(key);
-            }
         }
 
-        // Fail fast if no API keys are configured (unless in dev mode with bypass)
         if (apiKeys.Count == 0)
         {
-            if (isDevelopment && allowAnonymousDev)
-            {
-                // Log warning but allow startup in dev mode
-                Console.WriteLine("WARNING: No API keys configured. Admin API authentication is bypassed in development mode.");
-            }
-            else
-            {
-                throw new InvalidOperationException(
-                    "No API keys configured. Set KRYPTONIAN__ADMINAPI__APIKEYS environment variable or " +
-                    "Kryptonian:AdminApi:ApiKeys in configuration. " +
-                    "For development, set Kryptonian:AdminApi:AllowAnonymousInDevelopment=true to bypass.");
-            }
+            Console.WriteLine("INFO: No static API keys configured (KRYPTONIAN__ADMINAPI__APIKEYS). " +
+                "Users will authenticate via JWT or DB-stored API keys.");
         }
 
-        return services.AddAuthentication(ApiKeyAuthenticationOptions.DefaultScheme)
-            .AddScheme<ApiKeyAuthenticationOptions, ApiKeyAuthenticationHandler>(
-                ApiKeyAuthenticationOptions.DefaultScheme,
-                options =>
-                {
-                    options.ApiKeys = apiKeys;
-                    options.AllowAnonymousInDevelopment = allowAnonymousDev && isDevelopment;
-                });
+        builder.AddScheme<ApiKeyAuthenticationOptions, ApiKeyAuthenticationHandler>(
+            ApiKeyAuthenticationOptions.DefaultScheme,
+            options =>
+            {
+                options.ApiKeys = apiKeys;
+                options.AllowAnonymousInDevelopment = allowAnonymousDev && isDevelopment;
+            });
+
+        return builder;
     }
 }

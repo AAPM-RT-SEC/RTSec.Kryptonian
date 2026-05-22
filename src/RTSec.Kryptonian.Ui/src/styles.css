@@ -68,6 +68,8 @@ code {
 .sidebar {
   background: #14272b;
   color: #ecf4f5;
+  display: flex;
+  flex-direction: column;
   padding: 22px 16px;
 }
 
@@ -90,7 +92,9 @@ code {
 
 nav {
   display: grid;
+  flex: 1;
   gap: 8px;
+  align-content: start;
 }
 
 nav button {
@@ -523,10 +527,10 @@ th {
   margin-top: 10px;
 }
 
-.form input,
+.form input:not([type="checkbox"]),
 .form select,
 .form textarea,
-.settingsGrid input,
+.settingsGrid input:not([type="checkbox"]),
 .settingsGrid select {
   appearance: none;
   background: #ffffff;
@@ -637,6 +641,172 @@ th {
   padding-top: 4px;
 }
 
+.linkButton {
+  background: none;
+  border: 0;
+  color: #0f6971;
+  min-height: 0;
+  padding: 0;
+}
+
+.notificationSettings {
+  display: grid;
+  gap: 22px;
+}
+
+.notificationStatusRow {
+  align-items: center;
+  background: #f7fafb;
+  border: 1px solid #dce7ea;
+  border-radius: 8px;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  padding: 14px;
+}
+
+.notificationSubsection {
+  border-top: 1px solid #e4ecee;
+  display: grid;
+  gap: 14px;
+  padding-top: 18px;
+}
+
+.subsectionHeader h3 {
+  font-size: 1rem;
+  margin: 0 0 4px;
+}
+
+.subsectionHeader p {
+  color: #607479;
+  margin: 0;
+}
+
+.notificationTriggerGrid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.settingsGridSpan {
+  grid-column: 1 / -1;
+}
+
+.switchField,
+.compactSwitch {
+  align-items: center;
+  color: #435b61;
+  cursor: pointer;
+  display: flex;
+  gap: 12px;
+}
+
+.switchField {
+  border: 1px solid #dce7ea;
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.switchField strong {
+  color: #213a40;
+  display: block;
+}
+
+.switchField small {
+  color: #607479;
+  display: block;
+  margin-top: 3px;
+}
+
+.switchInput {
+  height: 1px;
+  opacity: 0;
+  position: absolute;
+  width: 1px;
+}
+
+.toggleSwitch {
+  background: #b7c6ca;
+  border-radius: 999px;
+  display: inline-flex;
+  flex: 0 0 auto;
+  height: 24px;
+  position: relative;
+  transition: background 0.16s ease, box-shadow 0.16s ease;
+  width: 44px;
+}
+
+.toggleSwitch::after {
+  background: #ffffff;
+  border-radius: 999px;
+  box-shadow: 0 1px 2px rgba(16, 36, 42, 0.22);
+  content: "";
+  height: 18px;
+  left: 3px;
+  position: absolute;
+  top: 3px;
+  transition: transform 0.16s ease;
+  width: 18px;
+}
+
+.switchInput:checked + .toggleSwitch {
+  background: #0f6971;
+}
+
+.switchInput:checked + .toggleSwitch::after {
+  transform: translateX(20px);
+}
+
+.switchInput:focus-visible + .toggleSwitch {
+  box-shadow: 0 0 0 3px rgba(15, 105, 113, 0.22);
+}
+
+.compactSwitch {
+  color: #52686e;
+  justify-content: flex-start;
+}
+
+.compactSwitch .toggleSwitch {
+  height: 20px;
+  width: 36px;
+}
+
+.compactSwitch .toggleSwitch::after {
+  height: 14px;
+  width: 14px;
+}
+
+.compactSwitch .switchInput:checked + .toggleSwitch::after {
+  transform: translateX(16px);
+}
+
+.notificationActionRow {
+  align-items: end;
+  border-top: 1px solid #e4ecee;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  padding-top: 18px;
+}
+
+.testEmailBox {
+  align-items: end;
+  display: flex;
+  gap: 10px;
+}
+
+.testEmailBox .settingsField {
+  min-width: min(320px, 48vw);
+}
+
+.addRecipientForm {
+  border-top: 1px solid #e4ecee;
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+  padding-top: 18px;
+}
+
 .jsonPreview {
   background: #102428;
   border-radius: 8px;
@@ -647,6 +817,234 @@ th {
   max-height: 420px;
   overflow: auto;
   padding: 14px;
+}
+
+/* ── Auth pages (login / setup) ─────────────────────────────────────── */
+
+.authPage {
+  align-items: center;
+  background: #0f2327;
+  display: flex;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 24px;
+}
+
+.authCard {
+  background: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.38);
+  max-width: 420px;
+  padding: 32px;
+  width: 100%;
+}
+
+.authBrand {
+  align-items: center;
+  color: #0f6971;
+  display: flex;
+  gap: 12px;
+  margin-bottom: 28px;
+}
+
+.authBrand strong {
+  display: block;
+  font-size: 1.15rem;
+}
+
+.authBrand span {
+  color: #597176;
+  display: block;
+  font-size: 0.82rem;
+}
+
+.authCard h2 {
+  margin: 0 0 6px;
+}
+
+.authSubtitle {
+  color: #607479;
+  margin: 0 0 18px;
+}
+
+.authError {
+  background: #fdecec;
+  border-radius: 6px;
+  color: #8c1f1f;
+  margin-bottom: 14px;
+  padding: 10px 12px;
+}
+
+.authCard form {
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.authCard label {
+  color: #435b61;
+  display: grid;
+  gap: 5px;
+}
+
+.authCard input {
+  appearance: none;
+  background: #ffffff;
+  border: 1px solid #cbd8dc;
+  border-radius: 6px;
+  color: #102428;
+  font: inherit;
+  min-height: 40px;
+  padding: 8px 10px;
+  width: 100%;
+}
+
+.authSubmit {
+  margin-top: 4px;
+  width: 100%;
+  justify-content: center;
+}
+
+/* ── Sidebar footer (user chip + logout) ────────────────────────────── */
+
+.sidebarFooter {
+  border-top: 1px solid #24434a;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: auto;
+  padding-top: 14px;
+}
+
+.sidebarUser {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.sidebarUser span {
+  color: #d4e5e8;
+  font-size: 0.9rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebarRole {
+  color: #7ba8af;
+  font-size: 0.74rem;
+}
+
+.sidebarLogout {
+  background: transparent;
+  border-color: transparent;
+  color: #7ba8af;
+  flex-shrink: 0;
+  min-height: 30px;
+  padding: 5px 7px;
+}
+
+.sidebarLogout:hover {
+  background: #204047;
+  border-color: #3b6870;
+  color: #ffffff;
+}
+
+/* ── Role badges ────────────────────────────────────────────────────── */
+
+.badge-teal {
+  background: #d4f0f0;
+  color: #0d5a60;
+}
+
+.badge-blue {
+  background: #dceefb;
+  color: #1a4e7a;
+}
+
+.badge-gray {
+  background: #eef3f4;
+  color: #425a60;
+}
+
+/* ── Data table (users / api keys) ──────────────────────────────────── */
+
+.dataTable {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+/* ── Misc helpers ───────────────────────────────────────────────────── */
+
+.hint {
+  color: #607479;
+  font-size: 0.88rem;
+  margin: 0 0 14px;
+}
+
+.selfTag {
+  color: #7ba8af;
+  font-size: 0.82rem;
+}
+
+/* ── API key display (one-time reveal) ──────────────────────────────── */
+
+.newKeyWarning {
+  background: #fff4db;
+  border-radius: 6px;
+  color: #7a4a00;
+  margin-bottom: 14px;
+  padding: 10px 12px;
+}
+
+.keyDisplay {
+  align-items: center;
+  background: #edf2f4;
+  border: 1px solid #d0dfe3;
+  border-radius: 6px;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  margin-bottom: 14px;
+  padding: 8px 10px;
+}
+
+.keyValue {
+  background: none;
+  border: 0;
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 0.88rem;
+  overflow: hidden;
+  padding: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Modal form inputs (shared by UsersPage / ApiKeysPage modals) ───── */
+
+.modal form {
+  display: grid;
+  gap: 14px;
+  margin-top: 6px;
+}
+
+.modal label {
+  color: #435b61;
+  display: grid;
+  gap: 5px;
+}
+
+.modal input:not([type="checkbox"]),
+.modal select {
+  appearance: none;
+  background: #ffffff;
+  border: 1px solid #cbd8dc;
+  border-radius: 6px;
+  color: #102428;
+  font: inherit;
+  min-height: 40px;
+  padding: 8px 10px;
+  width: 100%;
 }
 
 @media (max-width: 960px) {
@@ -661,6 +1059,7 @@ th {
   nav,
   .metrics,
   .backendGrid,
+  .notificationTriggerGrid,
   .settingsGrid {
     grid-template-columns: 1fr;
   }
@@ -678,5 +1077,16 @@ th {
 
   .searchBox {
     width: 100%;
+  }
+
+  .notificationStatusRow,
+  .notificationActionRow,
+  .testEmailBox {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .testEmailBox .settingsField {
+    min-width: 0;
   }
 }

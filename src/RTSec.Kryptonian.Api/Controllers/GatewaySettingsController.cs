@@ -30,6 +30,7 @@ public class GatewaySettingsController : ControllerBase
     }
 
     [HttpPut]
+    [Authorize(Policy = "SystemAdmin")]
     [ProducesResponseType(typeof(GatewaySettingsDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Update([FromBody] GatewaySettingsUpdateDto dto, CancellationToken ct)
