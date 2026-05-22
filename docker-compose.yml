@@ -44,9 +44,9 @@ services:
       Kryptonian__Auth__JwtSecret: ${KRYPTONIAN_JWT_SECRET:-}
 
       # Optional: seed the first admin account on first start (UI wizard if omitted)
-      # Kryptonian__Auth__InitialAdminUsername: ${KRYPTONIAN_ADMIN_USERNAME:-}
-      # Kryptonian__Auth__InitialAdminPassword: ${KRYPTONIAN_ADMIN_PASSWORD:-}
-      # Kryptonian__Auth__InitialAdminEmail: ${KRYPTONIAN_ADMIN_EMAIL:-}
+      Kryptonian__Auth__InitialAdminUsername: admin
+      Kryptonian__Auth__InitialAdminPassword: rtsec2026
+      Kryptonian__Auth__InitialAdminEmail: demo@email.com
 
       # Self-signed CA configuration (optional, paths inside container)
       KRYPTONIAN__CA__SELFSIGNED__PFXPATH: /app/certs/ca.pfx
