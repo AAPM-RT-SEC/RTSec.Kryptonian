@@ -13,9 +13,11 @@ import {
   Search,
   ServerCog,
   Settings,
+  ScrollText,
   Trash2,
   UserCheck,
   Users,
+  X,
 } from 'lucide-react';
 import {
   api,
@@ -27,6 +29,7 @@ import {
   clearStoredToken,
   Device,
   DeviceActivationCode,
+  DeviceEvent,
   DeviceInput,
   EnrollmentEvent,
   EstProfile,
@@ -1040,6 +1043,7 @@ function DevicesPage({
   const [archiveSearch, setArchiveSearch] = useState('');
   const [now, setNow] = useState(() => Date.now());
   const [reactivatedCode, setReactivatedCode] = useState<DeviceActivationCode | null>(null);
+  const [logDevice, setLogDevice] = useState<Device | null>(null);
   const registryDevices = useMemo(() => devices.filter((device) => device.status !== 'removed'), [devices]);
   const archivedDevices = useMemo(() => devices.filter((device) => device.status === 'removed'), [devices]);
   const search = tab === 'registry' ? registrySearch : archiveSearch;
@@ -1193,6 +1197,13 @@ function DevicesPage({
                 <td>{latest ? <RenewedAt certificate={latest} /> : <span className="muted">No certificate</span>}</td>
                 <td><ExpiryCountdown certificate={latest} now={now} /></td>
                 <td className="actions">
+                  <button
+                    onClick={() => setLogDevice(device)}
+                    title="Device Log"
+                    aria-label={`Open device log for ${device.displayName}`}
+                  >
+                    <ScrollText size={15} />
+                  </button>
                   {latest && (
                     <button
                       onClick={() => downloadCertificate(device, latest)}
@@ -1237,6 +1248,12 @@ function DevicesPage({
           title="Device Reactivated"
           activation={reactivatedCode}
           onClose={() => void closeReactivatedCode()}
+        />
+      )}
+      {logDevice && (
+        <DeviceLogModal
+          device={logDevice}
+          onClose={() => setLogDevice(null)}
         />
       )}
     </section>
@@ -1719,6 +1736,76 @@ function ActivationCodeModal({
   );
 }
 
+function DeviceLogModal({ device, onClose }: { device: Device; onClose: () => void }) {
+  const [events, setEvents] = useState<DeviceEvent[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const load = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const result = await api.getDeviceEvents(device.id);
+        if (!cancelled) {
+          setEvents(result);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(describeError(err));
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [device.id]);
+
+  return (
+    <Modal title={`Device Log - ${device.displayName}`} onClose={onClose}>
+      {loading ? (
+        <section className="loading">Loading device log...</section>
+      ) : error ? (
+        <p className="formError">{error}</p>
+      ) : (
+        <div className="tableScroller">
+          <table>
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Event</th>
+                <th>Status</th>
+                <th>Detail</th>
+                <th>IP Address</th>
+              </tr>
+            </thead>
+            <tbody>
+              {events.map((event) => (
+                <tr key={event.id}>
+                  <td>{formatDate(event.timestamp)}</td>
+                  <td>{event.eventType}</td>
+                  <td>{event.status ? <Badge tone={deviceEventStatusTone(event.status)}>{event.status}</Badge> : '-'}</td>
+                  <td>{event.detail ?? (event.certificateId ? shortId(event.certificateId) : '-')}</td>
+                  <td>{event.ipAddress ?? '-'}</td>
+                </tr>
+              ))}
+              {!events.length && <EmptyRow columns={5} text="No events recorded" />}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
 function ProfileModal({
   profile,
   backends,
@@ -1788,9 +1875,22 @@ type Runner = <T>(
 
 function Modal({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) {
   return (
-    <div className="modalBackdrop" role="presentation">
+    <div
+      className="modalBackdrop"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) {
+          onClose();
+        }
+      }}
+    >
       <div className="modal" role="dialog" aria-modal="true" aria-label={title}>
-        <div className="modalHeader"><h2>{title}</h2><button onClick={onClose}>Close</button></div>
+        <div className="modalHeader">
+          <h2>{title}</h2>
+          <button onClick={onClose} title="Close" aria-label="Close">
+            <X size={16} />
+          </button>
+        </div>
         {children}
       </div>
     </div>
@@ -1860,6 +1960,20 @@ function canReactivateActivationCode(device: Device, now: number) {
 
   const expiresAt = new Date(device.activationCodeExpiresAt).getTime();
   return Number.isFinite(expiresAt) && expiresAt <= now;
+}
+
+function deviceEventStatusTone(status: string): 'neutral' | 'success' | 'warn' | 'danger' {
+  switch (status.toLowerCase()) {
+    case 'issued':
+      return 'success';
+    case 'error':
+      return 'danger';
+    case 'rejected':
+      return 'warn';
+    case 'pending':
+    default:
+      return 'neutral';
+  }
 }
 
 function describeError(error: unknown) {

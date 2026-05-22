@@ -98,6 +98,7 @@ public interface IEnrollmentEventRepository : IRepository<EnrollmentEvent>
 {
     Task<IEnumerable<EnrollmentEvent>> GetByProfileIdAsync(Guid profileId, int limit = 50, CancellationToken ct = default);
     Task<IEnumerable<EnrollmentEvent>> GetRecentAsync(int limit = 50, CancellationToken ct = default);
+    Task<IEnumerable<EnrollmentEvent>> GetByDeviceIdAsync(Guid deviceId, CancellationToken ct = default);
 }
 
 /// <summary>

@@ -56,6 +56,16 @@ export interface DeviceActivationCode {
   expiresAt: string;
 }
 
+export interface DeviceEvent {
+  id: string;
+  timestamp: string;
+  eventType: string;
+  status?: string | null;
+  detail?: string | null;
+  ipAddress?: string | null;
+  certificateId?: string | null;
+}
+
 export interface Certificate {
   id: string;
   /**
@@ -390,6 +400,7 @@ export const api = {
   removeDevice: (id: string) => request<Device>(`/api/devices/${id}/remove`, { method: 'POST' }),
   deleteDevice: (id: string) => request<void>(`/api/devices/${id}`, { method: 'DELETE' }),
   getDeviceCertificates: (id: string) => request<Certificate[]>(`/api/devices/${id}/certificates`),
+  getDeviceEvents: (id: string) => request<DeviceEvent[]>(`/api/devices/${id}/events`),
   // Batch: one DB query for every cert in the system; the dashboard groups by deviceId
   // client-side instead of firing a /api/devices/{id}/certificates per row.
   getAllCertificates: () => request<Certificate[]>(`/api/devices/certificates`),
