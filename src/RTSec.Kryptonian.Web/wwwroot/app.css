@@ -6,6 +6,16 @@ html, body {
     padding: 0;
 }
 
+.appbar-logo {
+    background: white;
+    border-radius: 6px;
+    height: 32px;
+    margin-left: 0.75rem;
+    object-fit: contain;
+    padding: 2px;
+    width: 32px;
+}
+
 .text-truncate {
     overflow: hidden;
     text-overflow: ellipsis;

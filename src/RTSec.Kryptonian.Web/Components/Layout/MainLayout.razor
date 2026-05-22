@@ -8,7 +8,8 @@
 <MudLayout>
     <MudAppBar Elevation="1">
         <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" OnClick="@ToggleDrawer" />
-        <MudText Typo="Typo.h6" Class="ml-3">Kryptonian Admin</MudText>
+        <img src="img/kryptonian-mark.png" alt="" class="appbar-logo" />
+        <MudText Typo="Typo.h6" Class="ml-2">Kryptonian Gateway</MudText>
         <MudSpacer />
         <MudTooltip Text="@(_isDarkMode ? "Switch to Light Mode" : "Switch to Dark Mode")">
             <MudIconButton Icon="@(_isDarkMode ? Icons.Material.Filled.LightMode : Icons.Material.Filled.DarkMode)"
@@ -34,15 +35,21 @@
     {
         PaletteLight = new PaletteLight
         {
-            Primary = "#1976d2",
-            Secondary = "#9c27b0",
-            AppbarBackground = "#1976d2",
+            Primary = "#003070",
+            Secondary = "#0080A0",
+            AppbarBackground = "#002060",
+            DrawerBackground = "#F5F9FB",
+            Surface = "#FFFFFF",
+            Background = "#F5F9FB",
         },
         PaletteDark = new PaletteDark
         {
-            Primary = "#90caf9",
-            Secondary = "#ce93d8",
-            AppbarBackground = "#1e1e2e",
+            Primary = "#8ADEEC",
+            Secondary = "#00A0C4",
+            AppbarBackground = "#002060",
+            DrawerBackground = "#071B35",
+            Surface = "#0D2442",
+            Background = "#06172E",
         }
     };
 

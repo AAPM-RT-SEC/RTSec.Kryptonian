@@ -13,7 +13,6 @@ import {
   Search,
   ServerCog,
   Settings,
-  ShieldCheck,
   Trash2,
   UserCheck,
   Users,
@@ -42,6 +41,7 @@ import {
   SmtpAuthMode,
   SmtpTlsMode,
 } from './api';
+import { BrandMark } from './BrandMark';
 import { LoginPage } from './LoginPage';
 import { SetupPage } from './SetupPage';
 import { UsersPage } from './UsersPage';
@@ -232,7 +232,16 @@ export function App() {
   const isDeviceAdmin = role === 'DeviceAdmin' || isSystemAdmin;
 
   if (authMode === 'loading') {
-    return <div className="authPage"><div className="authCard"><p>Loading…</p></div></div>;
+    return (
+      <div className="authPage">
+        <div className="authStage authStage--loading">
+          <div className="authCard authCard--loading">
+            <BrandMark variant="compact" />
+            <p>Loading Kryptonian Gateway...</p>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   if (authMode === 'setup') {
@@ -246,13 +255,7 @@ export function App() {
   return (
     <div className="shell">
       <aside className="sidebar">
-        <div className="brand">
-          <ShieldCheck size={28} />
-          <div>
-            <strong>Kryptonian</strong>
-            <span>MEDIATE Gateway</span>
-          </div>
-        </div>
+        <BrandMark variant="sidebar" />
         <nav>
           <NavButton icon={<MonitorCheck />} active={page === 'dashboard'} onClick={() => setPage('dashboard')}>
             Dashboard
@@ -1044,6 +1047,21 @@ function DevicesPage({
     () => filterDevices(tab === 'registry' ? registryDevices : archivedDevices, certificatesByDevice, search),
     [archivedDevices, certificatesByDevice, registryDevices, search, tab],
   );
+  const certificateCount = useMemo(
+    () => Object.values(certificatesByDevice).reduce((total, certs) => total + certs.length, 0),
+    [certificatesByDevice],
+  );
+  const pendingDevices = registryDevices.filter((device) => device.status === 'pending').length;
+  const activeDevices = registryDevices.filter((device) => device.status === 'active').length;
+  const expiringSoon = useMemo(() => {
+    const soon = now + 7 * 24 * 60 * 60 * 1000;
+    return Object.values(certificatesByDevice)
+      .flat()
+      .filter((certificate) => {
+        const expires = new Date(certificate.notAfter).getTime();
+        return Number.isFinite(expires) && expires > now && expires <= soon;
+      }).length;
+  }, [certificatesByDevice, now]);
 
   const deleteArchivedDevice = (device: Device) => {
     const confirmed = window.confirm(
@@ -1082,11 +1100,38 @@ function DevicesPage({
       <div className="panelHeader">
         <div>
           <h2>Devices</h2>
-          <p>Register an alias to issue a one-time activation code; the device supplies its identity during activation.</p>
+          <p>Register medical devices, issue activation codes, and monitor certificate lifecycle health.</p>
         </div>
         <button className="primary" onClick={() => setCreating(true)}>
           <Plus size={16} /> Register Device
         </button>
+      </div>
+      <div className="registrationCenter">
+        <div className="registrationCopy">
+          <p className="eyebrow">Device Registration Center</p>
+          <h3>Controlled onboarding for certificate-backed medical devices</h3>
+          <p>
+            Create an alias, hand the one-time activation code to the device, and let Kryptonian Gateway bind the reported identity to issued certificates.
+          </p>
+        </div>
+        <div className="registrationStats" aria-label="Device registration summary">
+          <div>
+            <span>Active</span>
+            <strong>{activeDevices}</strong>
+          </div>
+          <div>
+            <span>Pending</span>
+            <strong>{pendingDevices}</strong>
+          </div>
+          <div>
+            <span>Certificates</span>
+            <strong>{certificateCount}</strong>
+          </div>
+          <div className={expiringSoon ? 'attention' : ''}>
+            <span>Expiring 7d</span>
+            <strong>{expiringSoon}</strong>
+          </div>
+        </div>
       </div>
       <div className="deviceToolbar">
         <div className="segmented" aria-label="Device views">
@@ -1604,12 +1649,15 @@ function DeviceModal({ onClose, run, refresh }: { onClose: () => void; run: Runn
     <Modal title="Register Device" onClose={onClose}>
       {activation ? (
         <div className="activationResult">
-          <label>
-            Activation code
+          <div className="activationHero">
+            <span>Activation code</span>
             <code>{activation.activationCode}</code>
-          </label>
+          </div>
           {copyStatus && <p className="copyStatus">{copyStatus}</p>}
-          <p>Expires {formatDate(activation.expiresAt)}. Give this code to the device; it will present its CN, manufacturer, model, and serial during activation.</p>
+          <div className="activationGuidance">
+            <span className="activationExpiry">Expires {formatDate(activation.expiresAt)}</span>
+            <p>Give this code to the device. During activation, the device presents its common name, manufacturer, model, and serial number for registry binding.</p>
+          </div>
           <div className="modalActions">
             <button type="button" onClick={() => void copyActivationCode(activation.activationCode)}>Copy Code</button>
             <button className="primary" type="button" onClick={() => void closeAfterRefresh()}>Done</button>
@@ -1653,12 +1701,15 @@ function ActivationCodeModal({
   return (
     <Modal title={title} onClose={onClose}>
       <div className="activationResult">
-        <label>
-          Activation code
+        <div className="activationHero">
+          <span>Activation code</span>
           <code>{activation.activationCode}</code>
-        </label>
+        </div>
         {copyStatus && <p className="copyStatus">{copyStatus}</p>}
-        <p>Expires {formatDate(activation.expiresAt)}.</p>
+        <div className="activationGuidance">
+          <span className="activationExpiry">Expires {formatDate(activation.expiresAt)}</span>
+          <p>Use this one-time code to bring the device back into the registration flow.</p>
+        </div>
         <div className="modalActions">
           <button type="button" onClick={() => void copyActivationCode()}>Copy Code</button>
           <button className="primary" type="button" onClick={onClose}>Done</button>
