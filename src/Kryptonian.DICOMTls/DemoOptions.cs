@@ -132,32 +132,8 @@ internal sealed class DemoOptions
 
         if (HasManagementCommand)
         {
-            if (string.IsNullOrWhiteSpace(AdminApiKey))
-            {
-                error = "Direct device management commands require --admin-api-key or KRYPTONIAN_ADMIN_API_KEY.";
-                return false;
-            }
-
             error = string.Empty;
             return true;
-        }
-
-        if (string.IsNullOrWhiteSpace(ActivationCodeA) && string.IsNullOrWhiteSpace(AdminApiKey))
-        {
-            error = "Activation token for Device A is required unless an admin API key is provided. Use --activation-code-a, KRYPTONIAN_ACTIVATION_CODE_A, --admin-api-key, or KRYPTONIAN_ADMIN_API_KEY.";
-            return false;
-        }
-
-        if (string.IsNullOrWhiteSpace(ActivationCodeB) && string.IsNullOrWhiteSpace(AdminApiKey))
-        {
-            error = "Activation token for Device B is required unless an admin API key is provided. Use --activation-code-b, KRYPTONIAN_ACTIVATION_CODE_B, --admin-api-key, or KRYPTONIAN_ADMIN_API_KEY.";
-            return false;
-        }
-
-        if ((ArchiveCreatedDevices || DeleteCreatedDevices) && string.IsNullOrWhiteSpace(AdminApiKey))
-        {
-            error = "Cleanup flags require --admin-api-key or KRYPTONIAN_ADMIN_API_KEY.";
-            return false;
         }
 
         if (Port is < 1 or > 65535)
@@ -186,6 +162,7 @@ internal sealed class DemoOptions
         Console.WriteLine("Kryptonian DICOM TLS demo");
         Console.WriteLine();
         Console.WriteLine("Usage:");
+        Console.WriteLine("  dotnet run --project src/Kryptonian.DICOMTls");
         Console.WriteLine("  dotnet run --project src/Kryptonian.DICOMTls -- --activation-code-a <token> --activation-code-b <token> [options]");
         Console.WriteLine();
         Console.WriteLine("Options:");

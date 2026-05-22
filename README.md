@@ -147,9 +147,28 @@ See [`src/Kryptonian.MedicalDevice`](src/Kryptonian.MedicalDevice/) for the enro
 
 [`src/Kryptonian.DICOMTls`](src/Kryptonian.DICOMTls/) demonstrates how two medical devices can establish a **mutually authenticated TLS (mTLS)** DICOM connection using gateway-issued certificates. It shows the gateway governing trust end-to-end — from certificate issuance through connection validation — across the supported CA backends.
 
-```bash
-# Run from the src/Kryptonian.DICOMTls directory
-dotnet run
+Run the operator-friendly demo from the repository root:
+
+```powershell
+dotnet run --project .\src\Kryptonian.DICOMTls\Kryptonian.DICOMTls.csproj
+```
+
+The console app will:
+
+1. Prompt for an admin API key.
+2. Create two temporary demo devices and activation codes through the gateway admin API.
+3. Enroll each device through EST and receive gateway-issued certificates.
+4. Start a local fo-dicom TLS Store SCP for the receiver.
+5. Generate dummy Secondary Capture DICOM files.
+6. Send the files from the sender AE to the receiver AE over DIMSE TLS with mutual certificate authentication.
+7. Print the certificate subjects, issuers, thumbprints, trust results, association acceptance, C-STORE status for each SOP Instance UID, and received file paths.
+8. Ask `Are you ready to remove demo devices?` and, if confirmed, archive and delete the temporary demo devices from the gateway.
+
+Useful options:
+
+```powershell
+dotnet run --project .\src\Kryptonian.DICOMTls\Kryptonian.DICOMTls.csproj -- --count 5
+dotnet run --project .\src\Kryptonian.DICOMTls\Kryptonian.DICOMTls.csproj -- --port 11115
 ```
 
 ---
