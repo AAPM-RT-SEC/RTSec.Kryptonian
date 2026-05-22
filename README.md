@@ -1,9 +1,4 @@
 # Kryptonian Gateway
-
-<p align="center">
-  <img src="docs/screenshots/kryptonian-gateway-logo.png" alt="Kryptonian Gateway logo" width="560" />
-</p>
-
 A reference implementation of **MEDIATE** (Medical Device Identity, Enrollment, and Trust Exchange) — a framework proposed by the [AAPM RT-SEC](https://www.aapm.org/) working group as a mechanism to remove the burden of network security from individual medical devices.
 
 > **Note:** This is a proof-of-concept created at the AAPM RT-SEC annual meeting in Trento, Italy (2026). It has not been reviewed by security experts outside of the RT-SEC working group and is **not intended for clinical deployment**. Its primary purpose is to serve as a reference implementation for the MEDIATE specification.
