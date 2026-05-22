@@ -30,18 +30,21 @@ internal static class DicomFixtureGenerator
                 { DicomTag.SOPClassUID, DicomUID.SecondaryCaptureImageStorage },
                 { DicomTag.SOPInstanceUID, sopInstanceUid },
                 { DicomTag.Modality, "OT" },
+                { DicomTag.Manufacturer, "Kryptonian" },
+                { DicomTag.ConversionType, "WSD" },
                 { DicomTag.StudyDate, now.ToString("yyyyMMdd", CultureInfo.InvariantCulture) },
                 { DicomTag.StudyTime, now.ToString("HHmmss", CultureInfo.InvariantCulture) },
                 { DicomTag.SeriesNumber, i },
                 { DicomTag.InstanceNumber, i },
                 { DicomTag.SamplesPerPixel, (ushort)1 },
-                { DicomTag.PhotometricInterpretation, PhotometricInterpretation.Monochrome2.Value },
+                { DicomTag.PhotometricInterpretation, "MONOCHROME2" },
                 { DicomTag.Rows, (ushort)64 },
                 { DicomTag.Columns, (ushort)64 },
                 { DicomTag.BitsAllocated, (ushort)8 },
                 { DicomTag.BitsStored, (ushort)8 },
                 { DicomTag.HighBit, (ushort)7 },
-                { DicomTag.PixelRepresentation, (ushort)0 }
+                { DicomTag.PixelRepresentation, (ushort)0 },
+                { DicomTag.BurnedInAnnotation, "NO" }
             };
 
             var pixels = new byte[64 * 64];
@@ -56,6 +59,7 @@ internal static class DicomFixtureGenerator
             var file = new DicomFile(dataset);
             var path = System.IO.Path.Combine(outputPath, $"dummy-{i:000}-{sopInstanceUid}.dcm");
             await file.SaveAsync(path);
+            await DicomFile.OpenAsync(path);
             generated.Add(new GeneratedDicomFile(path, sopInstanceUid.UID));
         }
 

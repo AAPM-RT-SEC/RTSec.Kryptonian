@@ -47,9 +47,21 @@ using var serviceProvider = new ServiceCollection()
 var serverFactory = serviceProvider.GetRequiredService<IDicomServerFactory>();
 var clientFactory = serviceProvider.GetRequiredService<IDicomClientFactory>();
 var estClient = new EstEnrollmentClient();
-using var adminClient = string.IsNullOrWhiteSpace(options.AdminApiKey)
+var adminApiKey = options.AdminApiKey;
+if (string.IsNullOrWhiteSpace(adminApiKey) && RequiresAdminApiKey(options))
+{
+    Console.WriteLine("An admin API key is required to create and remove demo devices.");
+    adminApiKey = ReadSecret("Admin API key: ");
+    if (string.IsNullOrWhiteSpace(adminApiKey))
+    {
+        Console.Error.WriteLine("Admin API key was not provided.");
+        return 2;
+    }
+}
+
+using var adminClient = string.IsNullOrWhiteSpace(adminApiKey)
     ? null
-    : new GatewayAdminClient(options.Gateway!, options.AdminApiKey);
+    : new GatewayAdminClient(options.Gateway!, adminApiKey);
 
 Console.WriteLine("Kryptonian DICOM TLS demo");
 Console.WriteLine($"Gateway: {options.Gateway}");
@@ -62,6 +74,7 @@ if (options.HasManagementCommand)
 }
 
 var createdDevices = new List<ProvisionedActivation>();
+var cleanupCompleted = false;
 
 try
 {
@@ -185,20 +198,54 @@ try
 
     Console.WriteLine();
     Console.WriteLine($"Success: {received.Count} DICOM file(s) transported over DIMSE TLS with mutual certificate authentication.");
+
+    if (createdDevices.Count > 0 && adminClient != null)
+    {
+        if (options.ArchiveCreatedDevices || options.DeleteCreatedDevices)
+        {
+            await CleanupCreatedDevicesAsync(adminClient, createdDevices, options.DeleteCreatedDevices);
+            cleanupCompleted = true;
+        }
+        else if (PromptYesNo("Are you ready to remove demo devices?"))
+        {
+            await CleanupCreatedDevicesAsync(adminClient, createdDevices, deleteAfterArchive: true);
+            cleanupCompleted = true;
+        }
+        else
+        {
+            Console.WriteLine("Demo devices were left on the server:");
+            foreach (var device in createdDevices)
+            {
+                Console.WriteLine($"  {device.DeviceId} ({device.DisplayName})");
+            }
+        }
+    }
+
     return 0;
 }
 catch (Exception ex)
 {
-    Console.Error.WriteLine($"DICOM TLS demo failed: {ex.Message}");
+    Console.Error.WriteLine("DICOM TLS demo failed:");
+    Console.Error.WriteLine(ex);
     return 1;
 }
 finally
 {
-    if (createdDevices.Count > 0 && adminClient != null && (options.ArchiveCreatedDevices || options.DeleteCreatedDevices))
+    if (!cleanupCompleted
+        && createdDevices.Count > 0
+        && adminClient != null
+        && (options.ArchiveCreatedDevices || options.DeleteCreatedDevices))
     {
         await CleanupCreatedDevicesAsync(adminClient, createdDevices, options.DeleteCreatedDevices);
     }
 }
+
+static bool RequiresAdminApiKey(DemoOptions options)
+    => options.HasManagementCommand
+        || string.IsNullOrWhiteSpace(options.ActivationCodeA)
+        || string.IsNullOrWhiteSpace(options.ActivationCodeB)
+        || options.ArchiveCreatedDevices
+        || options.DeleteCreatedDevices;
 
 static async Task<int> RunManagementCommandAsync(DemoOptions options, GatewayAdminClient adminClient)
 {
@@ -286,6 +333,54 @@ static async Task CleanupCreatedDevicesAsync(
     }
 }
 
+static bool PromptYesNo(string prompt)
+{
+    Console.Write($"{prompt} [y/N] ");
+    var answer = Console.ReadLine();
+    return answer is not null
+        && (answer.Equals("y", StringComparison.OrdinalIgnoreCase)
+            || answer.Equals("yes", StringComparison.OrdinalIgnoreCase));
+}
+
+static string ReadSecret(string prompt)
+{
+    Console.Write(prompt);
+    if (Console.IsInputRedirected)
+    {
+        var secret = Console.ReadLine() ?? string.Empty;
+        Console.WriteLine();
+        return secret;
+    }
+
+    var value = new StringBuilder();
+    while (true)
+    {
+        var key = Console.ReadKey(intercept: true);
+        if (key.Key == ConsoleKey.Enter)
+        {
+            Console.WriteLine();
+            return value.ToString();
+        }
+
+        if (key.Key == ConsoleKey.Backspace)
+        {
+            if (value.Length > 0)
+            {
+                value.Length--;
+                Console.Write("\b \b");
+            }
+
+            continue;
+        }
+
+        if (!char.IsControl(key.KeyChar))
+        {
+            value.Append(key.KeyChar);
+            Console.Write('*');
+        }
+    }
+}
+
 static async Task<MedicalDeviceNode> EnrollNodeAsync(
     EstEnrollmentClient estClient,
     Uri gateway,
@@ -306,7 +401,8 @@ static async Task<MedicalDeviceNode> EnrollNodeAsync(
             serial,
             activationCode));
 
-    var node = new MedicalDeviceNode(label, commonName, serial, aeTitle, result.Certificate, result.IssuedCertificates);
+    var tlsCertificate = PrepareCertificateForTls(result.Certificate);
+    var node = new MedicalDeviceNode(label, commonName, serial, aeTitle, tlsCertificate, result.IssuedCertificates);
     await File.WriteAllTextAsync(
         Path.Combine(outputRoot, $"{Sanitize(commonName)}.certificate.pem"),
         result.Certificate.ExportCertificatePem());
@@ -332,6 +428,20 @@ static DefaultTlsAcceptor CreateTlsAcceptor(
     };
 }
 
+static X509Certificate2 PrepareCertificateForTls(X509Certificate2 certificate)
+{
+    if (!OperatingSystem.IsWindows())
+    {
+        return certificate;
+    }
+
+    var pfx = certificate.Export(X509ContentType.Pkcs12, string.Empty);
+    return X509CertificateLoader.LoadPkcs12(
+        pfx,
+        string.Empty,
+        X509KeyStorageFlags.Exportable | X509KeyStorageFlags.UserKeySet | X509KeyStorageFlags.PersistKeySet);
+}
+
 static DefaultTlsInitiator CreateTlsInitiator(
     MedicalDeviceNode clientNode,
     MedicalDeviceNode serverNode,
@@ -342,6 +452,7 @@ static DefaultTlsInitiator CreateTlsInitiator(
         IgnoreSslPolicyErrors = false,
         CheckCertificateRevocation = false,
         Protocols = SslProtocols.Tls12 | SslProtocols.Tls13,
+        Certificates = new X509CertificateCollection { clientNode.Certificate },
         CertificateValidationCallback = (_, certificate, _, _) =>
         {
             var result = CertificateTrustValidator.Validate(certificate, clientNode.IssuedCertificates);
@@ -356,7 +467,6 @@ static DefaultTlsInitiator CreateTlsInitiator(
                     StringComparison.OrdinalIgnoreCase);
         }
     };
-    initiator.Certificates.Add(clientNode.Certificate);
     return initiator;
 }
 
