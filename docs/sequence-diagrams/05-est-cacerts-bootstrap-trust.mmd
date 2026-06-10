@@ -1,0 +1,36 @@
+sequenceDiagram
+    autonumber
+    participant Device as Medical Device
+    participant EST as EstController
+    participant Orch as EnrollmentOrchestrator
+    participant DB as Gateway Database
+    participant Factory as CaConnectorFactory
+    participant CA as Active CA Backend
+    participant PKCS as PkcsService
+
+    Device->>EST: GET /.well-known/est/cacerts
+    EST->>DB: Resolve enabled EST profile by host and path
+    DB-->>EST: EST profile id
+    EST->>Orch: GetCaCertsAsync(profileId)
+    Orch->>DB: Load EST profile
+    DB-->>Orch: Enabled profile
+    Orch->>DB: Load active CA backend or profile backend
+    DB-->>Orch: Enabled CA backend
+    Orch->>Factory: CreateConnector(backend)
+    Factory-->>Orch: ICaConnector
+    Orch->>CA: GetCaCertificatesAsync()
+
+    alt CA chain is available
+        CA-->>Orch: CA certificates
+        Orch->>PKCS: EncodeToPkcs7(caCerts)
+        PKCS-->>Orch: PKCS#7 DER
+        Orch-->>EST: PKCS#7
+        EST->>PKCS: EncodeEstResponseBody(pkcs7)
+        PKCS-->>EST: Base64 body
+        EST-->>Device: 200 application/pkcs7-mime
+        Device->>Device: Cache gateway CA chain for certificate validation
+    else CA chain unavailable
+        CA-->>Orch: Empty chain
+        Orch-->>EST: InvalidOperationException
+        EST-->>Device: 404 or 500 JSON error
+    end

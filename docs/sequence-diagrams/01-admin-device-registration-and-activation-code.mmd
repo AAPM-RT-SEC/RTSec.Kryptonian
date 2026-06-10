@@ -1,0 +1,39 @@
+sequenceDiagram
+    autonumber
+    actor Admin as Device Admin
+    participant UI as Admin UI
+    participant API as DevicesController
+    participant Service as DeviceService
+    participant DB as Gateway Database
+
+    Admin->>UI: Register device alias
+    UI->>API: POST /api/devices
+    API->>Service: CreateAsync(displayName)
+    Service->>Service: Generate device id
+    Service->>Service: Set SubjectCommonName = pending-{id}
+    Service->>Service: Set Status = Pending
+    Service->>DB: Insert Device
+    DB-->>Service: Saved pending device
+    Service-->>API: DeviceDto
+    API-->>UI: 201 Created
+
+    Admin->>UI: Generate activation code
+    UI->>API: POST /api/devices/{id}/activation-code
+    API->>Service: GenerateActivationCodeAsync(id, validForMinutes)
+    Service->>DB: Load device
+    DB-->>Service: Pending device
+
+    alt Device is pending
+        Service->>Service: Generate random activation code
+        Service->>Service: Hash "{deviceId}|{activationCode}"
+        Service->>Service: Set expiry and clear used timestamp
+        Service->>DB: Update ActivationCodeHash and ActivationCodeExpiresAt
+        DB-->>Service: Saved activation code hash
+        Service-->>API: ActivationCodeDto with plain code
+        API-->>UI: 200 OK activation code
+        UI-->>Admin: Display one-time code and expiry
+    else Device is active or removed
+        Service-->>API: InvalidOperationException
+        API-->>UI: 400 Bad Request
+        UI-->>Admin: Activation code rejected
+    end

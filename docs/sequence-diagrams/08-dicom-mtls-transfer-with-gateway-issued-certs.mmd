@@ -1,0 +1,48 @@
+sequenceDiagram
+    autonumber
+    participant AdminClient as GatewayAdminClient
+    participant Gateway as Kryptonian Gateway
+    participant DeviceA as Device A - DICOM SCU
+    participant DeviceB as Device B - DICOM SCP
+    participant TrustA as Device A Trust Validator
+    participant TrustB as Device B Trust Validator
+    participant DICOM as DICOM TLS Session
+
+    AdminClient->>Gateway: POST /api/devices for sender
+    Gateway-->>AdminClient: Sender pending device
+    AdminClient->>Gateway: POST /api/devices/{id}/activation-code
+    Gateway-->>AdminClient: Sender activation code
+    AdminClient->>Gateway: POST /api/devices for receiver
+    Gateway-->>AdminClient: Receiver pending device
+    AdminClient->>Gateway: POST /api/devices/{id}/activation-code
+    Gateway-->>AdminClient: Receiver activation code
+
+    DeviceA->>Gateway: EST simpleenroll with sender activation code
+    Gateway-->>DeviceA: Sender certificate and CA chain
+    DeviceB->>Gateway: EST simpleenroll with receiver activation code
+    Gateway-->>DeviceB: Receiver certificate and CA chain
+
+    DeviceA->>TrustA: Validate receiver certificate against gateway CA chain
+    TrustA-->>DeviceA: Trusted or rejected
+    DeviceB->>TrustB: Validate sender certificate against gateway CA chain
+    TrustB-->>DeviceB: Trusted or rejected
+
+    alt Both certificates trusted
+        DeviceB->>DICOM: Start TLS Store SCP
+        DeviceA->>DICOM: Connect with sender client certificate
+        DICOM->>DeviceB: Present sender certificate
+        DICOM->>DeviceA: Present receiver certificate
+        DeviceA->>DICOM: Send C-STORE request
+        DICOM->>DeviceB: Deliver DICOM object
+        DeviceB-->>DeviceA: C-STORE success
+    else Either certificate fails trust validation
+        DeviceA-->>DeviceA: Abort transfer
+        DeviceB-->>DeviceB: Reject association
+    end
+
+    opt Demo cleanup
+        AdminClient->>Gateway: POST /api/devices/{id}/remove
+        Gateway-->>AdminClient: Device status removed
+        AdminClient->>Gateway: DELETE /api/devices/{id}
+        Gateway-->>AdminClient: 204 No Content if archived
+    end

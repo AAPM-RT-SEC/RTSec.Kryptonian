@@ -1,0 +1,55 @@
+sequenceDiagram
+    autonumber
+    actor Admin as Device Admin
+    participant UI as Admin UI
+    participant API as DevicesController
+    participant Service as DeviceService
+    participant DB as Gateway Database
+    participant Device as Medical Device
+    participant EST as EstController
+    participant Orch as EnrollmentOrchestrator
+    participant Notify as NotificationDispatcher
+    participant Revoker as Future Gateway Revocation Service
+    participant Factory as CaConnectorFactory
+    participant CA as CA Backend
+
+    Admin->>UI: Remove device trust
+    UI->>API: POST /api/devices/{id}/remove
+    API->>Service: RemoveAsync(id)
+    Service->>DB: Load device
+    DB-->>Service: Device
+    Service->>Service: Set Status = Removed and RemovedAt = now
+    Service->>DB: Save device
+    Service-->>API: DeviceDto(status=removed)
+    API-->>UI: 200 OK
+    UI-->>Admin: Device removed from gateway trust
+
+    Note over Service,CA: Current admin API does not call ICaConnector.RevokeCertificateAsync or mark existing certificates revoked.
+
+    Device->>EST: Later POST /.well-known/est/simplereenroll with old client cert
+    EST->>Orch: ReenrollAsync(profileId, csr, oldCert, clientIp)
+    Orch->>DB: Resolve stored certificate and device
+    DB-->>Orch: Certificate maps to removed device
+    Orch->>Orch: Reject because device is not active
+    Orch->>Notify: NotifyEnrollmentRejectedAsync
+    Notify-->>Orch: Notification attempted if enabled
+    Orch-->>EST: Failed("Device is not active", 403)
+    EST-->>Device: 403 JSON error
+
+    opt Future direct CA-side certificate revocation
+        Admin->>UI: Revoke certificate serial
+        UI->>Revoker: Request revoke(serial, reason)
+        Revoker->>DB: Load certificate and active or owning backend
+        DB-->>Revoker: Certificate and CA backend
+        Revoker->>Factory: CreateConnector(backend)
+        Factory-->>Revoker: ICaConnector
+        Revoker->>CA: RevokeCertificateAsync(serial, reason)
+        alt Connector and CA support revocation
+            CA-->>Revoker: true
+            Revoker->>DB: Set Certificate.Status = Revoked
+            Revoker-->>UI: Revoked
+        else Connector does not support revocation
+            CA-->>Revoker: false
+            Revoker-->>UI: Revocation unavailable; trust removal still blocks renewals
+        end
+    end

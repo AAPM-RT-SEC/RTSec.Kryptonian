@@ -205,10 +205,46 @@ public class CaConnectorFactory : ICaConnectorFactory, IDisposable
         {
             BaseUrl = baseUrl,
             TemplateName = GetConfigValue(backend, "TemplateName", "") ?? "DicomDeviceAuthentication",
-            ValidityDays = int.TryParse(GetConfigValue(backend, "ValidityDays", ""), out var vd) ? vd : 7
+            ValidityDays = int.TryParse(GetConfigValue(backend, "ValidityDays", ""), out var vd) ? vd : 7,
+            EnrollmentAgentPfxPath = GetConfigValue(backend, "EnrollmentAgentPfxPath", "KRYPTONIAN__CA__ADCS__ENROLLMENTAGENTPFXPATH"),
+            EnrollmentAgentPfxPassword = GetConfigValue(backend, "EnrollmentAgentPfxPassword", "KRYPTONIAN__CA__ADCS__ENROLLMENTAGENTPFXPASSWORD"),
+            EnrollmentAgentThumbprint = GetConfigValue(backend, "EnrollmentAgentThumbprint", "KRYPTONIAN__CA__ADCS__ENROLLMENTAGENTTHUMBPRINT"),
         };
 
-        return new AdcsCaConnector(logger, new HttpClient(), config);
+        var http = BuildAdcsHttpClient(config);
+        return new AdcsCaConnector(logger, http, config);
+    }
+
+    private static HttpClient BuildAdcsHttpClient(AdcsScepConnectorConfig config)
+    {
+        X509Certificate2? agentCert = null;
+
+        if (!string.IsNullOrWhiteSpace(config.EnrollmentAgentPfxPath))
+        {
+            agentCert = new X509Certificate2(
+                config.EnrollmentAgentPfxPath,
+                config.EnrollmentAgentPfxPassword,
+                X509KeyStorageFlags.MachineKeySet | X509KeyStorageFlags.PersistKeySet);
+        }
+        else if (!string.IsNullOrWhiteSpace(config.EnrollmentAgentThumbprint))
+        {
+            using var store = new X509Store(StoreName.My, StoreLocation.LocalMachine);
+            store.Open(OpenFlags.ReadOnly);
+            var matches = store.Certificates.Find(
+                X509FindType.FindByThumbprint, config.EnrollmentAgentThumbprint, validOnly: false);
+            agentCert = matches.Count > 0
+                ? matches[0]
+                : throw new InvalidOperationException(
+                    $"Enrollment agent certificate with thumbprint {config.EnrollmentAgentThumbprint} not found in LocalMachine\\My.");
+        }
+
+        if (agentCert is null)
+            return new HttpClient();
+
+        var handler = new HttpClientHandler();
+        handler.ClientCertificates.Add(agentCert);
+        handler.ClientCertificateOptions = ClientCertificateOption.Manual;
+        return new HttpClient(handler);
     }
 
     private ICaConnector CreateEjbcaConnector(CaBackend backend)

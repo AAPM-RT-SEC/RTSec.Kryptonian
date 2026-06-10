@@ -1,0 +1,46 @@
+sequenceDiagram
+    autonumber
+    participant Watcher as CertificateExpiryWatcher
+    participant DB as Gateway Database
+    participant Notify as NotificationDispatcher
+    participant SMTP as SMTP Sender
+    actor Recipient as Notification Recipient
+
+    Watcher->>Watcher: Wait startup delay
+
+    loop Every 24 hours
+        Watcher->>DB: Load notification settings
+        DB-->>Watcher: Settings
+
+        alt Expiry notifications disabled
+            Watcher->>Watcher: Skip scan
+        else Expiry notifications enabled
+            Watcher->>DB: Get valid certificates expiring before warning horizon
+            DB-->>Watcher: Candidate certificates
+
+            loop Each candidate certificate
+                Watcher->>Watcher: Skip if revoked, expired, already renewed, or recently notified
+                Watcher->>DB: Load device by DeviceRecordId
+                DB-->>Watcher: Device with LastCertificateId
+
+                alt Device already has a newer certificate
+                    Watcher->>Watcher: Treat as renewal requested; skip
+                else No newer certificate recorded
+                    Watcher->>Notify: NotifyCertificateNearExpiryAsync
+                    Notify->>DB: Load settings and recipients
+                    DB-->>Notify: Dispatch config and subscribed recipients
+
+                    alt Recipients exist
+                        Notify->>SMTP: Send near-expiry email
+                        SMTP-->>Recipient: Email with subject, serial, expiry, and days left
+                    else No subscribed recipients
+                        Notify-->>Watcher: No send
+                    end
+
+                    Watcher->>DB: Set LastExpiryNotifiedAt = now
+                end
+            end
+
+            Watcher->>DB: Save updated notification timestamps
+        end
+    end

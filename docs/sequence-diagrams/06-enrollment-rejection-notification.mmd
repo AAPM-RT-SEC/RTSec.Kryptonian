@@ -1,0 +1,42 @@
+sequenceDiagram
+    autonumber
+    participant Device as Medical Device
+    participant EST as EstController
+    participant Orch as EnrollmentOrchestrator
+    participant DB as Gateway Database
+    participant Notify as NotificationDispatcher
+    participant SMTP as SMTP Sender
+    actor Recipient as Notification Recipient
+
+    Device->>EST: Submit enrollment or re-enrollment request
+    EST->>Orch: EnrollAsync or ReenrollAsync
+    Orch->>DB: Load profile, device, certificate, and policy state
+
+    alt First enrollment rejected
+        Orch->>DB: Insert EnrollmentEvent(status=Rejected, reason)
+        Orch->>Notify: NotifyEnrollmentRejectedAsync(operation=Enrollment)
+    else Re-enrollment rejected
+        Note over Orch,DB: Re-enrollment rejection currently sends notification but does not persist a rejected EnrollmentEvent.
+        Orch->>Notify: NotifyEnrollmentRejectedAsync(operation=Re-enrollment)
+    end
+
+    Notify->>DB: Load notification settings
+    DB-->>Notify: Settings
+
+    alt Notifications disabled or event unsubscribed
+        Notify-->>Orch: Return without sending
+    else Notifications enabled
+        Notify->>DB: Load recipients subscribed to EnrollmentRejected
+        DB-->>Notify: Recipients
+
+        alt No recipients
+            Notify-->>Orch: Return without sending
+        else Recipients exist
+            Notify->>SMTP: Send rejection email
+            SMTP-->>Recipient: Email with subject DN, device id, IP, time, and reason
+            SMTP-->>Notify: Send complete
+        end
+    end
+
+    Orch-->>EST: Failed(reason, statusCode)
+    EST-->>Device: JSON error response

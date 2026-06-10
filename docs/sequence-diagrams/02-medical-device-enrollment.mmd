@@ -1,0 +1,73 @@
+sequenceDiagram
+    autonumber
+    actor Admin as Device Admin
+    participant Device as Medical Device
+    participant EST as EstController
+    participant Orch as EnrollmentOrchestrator
+    participant PKCS as PkcsService
+    participant DB as Gateway Database
+    participant Factory as CaConnectorFactory
+    participant CA as Active CA Backend
+    participant Notify as NotificationDispatcher
+
+    Admin-->>Device: Provide one-time activation code
+    Device->>Device: Generate private key
+    Device->>Device: Build PKCS#10 CSR with subject CN
+    Device->>EST: POST /.well-known/est/simpleenroll
+    Note over Device,EST: Headers: X-Activation-Code, X-Device-Manufacturer, X-Device-Model, X-Device-Serial-Number
+
+    EST->>DB: Resolve enabled EST profile by host and path
+    DB-->>EST: EST profile id
+    EST->>PKCS: Decode EST request body
+    PKCS-->>EST: CSR bytes
+    EST->>Orch: EnrollAsync(profileId, csr, activation metadata, clientIp)
+
+    Orch->>DB: Load EST profile
+    DB-->>Orch: Enabled profile
+    Orch->>PKCS: ParsePkcs10(csr)
+    PKCS-->>Orch: Parsed subject DN and SANs
+    Orch->>DB: Find device by CSR subject CN
+    DB-->>Orch: No active device yet
+    Orch->>DB: Find pending device by activation-code hash
+    DB-->>Orch: Pending device
+    Orch->>Orch: Validate code exists, unused, unexpired, and serial/CN are present
+    Orch->>DB: Ensure CSR CN is not bound to another device
+
+    alt Activation request is invalid
+        Orch->>DB: Insert rejected EnrollmentEvent
+        Orch->>Notify: NotifyEnrollmentRejectedAsync
+        Notify-->>Orch: Notification attempted if enabled
+        Orch-->>EST: Failed(reason, 403)
+        EST-->>Device: 403 JSON error
+    else Activation request is valid
+        Orch->>DB: Load active CA backend
+        DB-->>Orch: Active enabled backend
+        Orch->>PKCS: Validate CSR signature
+        PKCS-->>Orch: Valid
+        Orch->>DB: Insert pending EnrollmentEvent
+        Orch->>Factory: CreateConnector(active backend)
+        Factory-->>Orch: ICaConnector
+
+        alt Self-signed backend
+            Orch->>CA: IssueCertificateAsync(csr, profile)
+            CA-->>Orch: Issued certificate and CA chain
+        else ADCS backend
+            Orch->>CA: Build SCEP PKCSReq and POST PKIOperation
+            CA-->>Orch: Issued certificate
+        else EJBCA backend
+            Orch->>CA: POST pkcs10enroll
+            CA-->>Orch: Issued certificate and optional chain
+        else ACME backend
+            Orch->>CA: Create order, satisfy challenge, finalize CSR
+            CA-->>Orch: Issued certificate and chain
+        end
+
+        Orch->>DB: Store Certificate metadata
+        Orch->>DB: Mark device Active and consume activation code
+        Orch->>DB: Mark EnrollmentEvent Issued
+        Orch->>PKCS: Encode certificate chain as PKCS#7 EST response
+        PKCS-->>Orch: Base64 response body
+        Orch-->>EST: Successful(PKCS#7 response)
+        EST-->>Device: 200 application/pkcs7-mime
+        Device->>Device: Install certificate with local private key
+    end
