@@ -35,7 +35,10 @@ services:
 
       # ASP.NET Core
       ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
-      ASPNETCORE_URLS: http://+:5000
+      ASPNETCORE_URLS: "http://+:5000;https://+:8443"
+
+      ASPNETCORE_Kestrel__Certificates__Default__Path: "/app/certs/ca.pfx"
+      ASPNETCORE_Kestrel__Certificates__Default__Password: ${CA_PFX_PASSWORD:-}
 
       # Admin API keys (comma-separated) — legacy backward compat, still honored as SystemAdmin
       Kryptonian__AdminApi__ApiKeys: ${ADMIN_API_KEYS:-}
@@ -44,9 +47,9 @@ services:
       Kryptonian__Auth__JwtSecret: ${KRYPTONIAN_JWT_SECRET:-}
 
       # Optional: seed the first admin account on first start (UI wizard if omitted)
-      Kryptonian__Auth__InitialAdminUsername: admin
-      Kryptonian__Auth__InitialAdminPassword: rtsec2026
-      Kryptonian__Auth__InitialAdminEmail: demo@email.com
+      Kryptonian__Auth__InitialAdminUsername:  ${KRYPTONIAN_ADMIN_USERNAME:-}
+      Kryptonian__Auth__InitialAdminPassword:  ${KRYPTONIAN_ADMIN_PASSWORD:-}
+      Kryptonian__Auth__InitialAdminEmail: ${KRYPTONIAN_ADMIN_EMAIL:-}
 
       # Self-signed CA configuration (optional, paths inside container)
       KRYPTONIAN__CA__SELFSIGNED__PFXPATH: /app/certs/ca.pfx
@@ -62,6 +65,7 @@ services:
       - ./logs:/app/logs
     ports:
       - "5000:5000"
+      - "8443:5000"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000/api/status/health"]
       interval: 30s

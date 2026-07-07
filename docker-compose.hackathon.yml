@@ -17,7 +17,7 @@ services:
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_URLS: http://+:8080
       # ACME proxy — forwards /acme/** to step-ca and rewrites directory URLs back to the harness
-      ACME_UPSTREAM_URL: https://step-ca:9000
+      ACME_UPSTREAM_URL: https://step-ca:9020
       ACME_HARNESS_BASE_URL: http://ca-harness:8080
       ORTHANC_URL: http://orthanc:8042
     ports:
@@ -42,9 +42,9 @@ services:
       DOCKER_STEPCA_INIT_ACME: "true"
       DOCKER_STEPCA_INIT_PASSWORD: hackathon-step-ca-password
     ports:
-      - "9000:9000"  # local access; remove for production-like demo
+      - "9020:9000"  # local access; remove for production-like demo
     healthcheck:
-      test: ["CMD", "step", "ca", "health", "--ca-url", "https://localhost:9000", "--root", "/home/step/certs/root_ca.crt"]
+      test: ["CMD", "step", "ca", "health", "--ca-url", "https://localhost:9020", "--root", "/home/step/certs/root_ca.crt"]
       interval: 30s
       timeout: 10s
       start_period: 15s
