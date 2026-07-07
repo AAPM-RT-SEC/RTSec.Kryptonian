@@ -116,12 +116,11 @@ public class CaConnectorFactory : ICaConnectorFactory, IDisposable
                     "Set via environment variable KRYPTONIAN__CA__SELFSIGNED__PFXPASSWORD or backend config.");
             }
 
-            // Load from PFX - Use EphemeralKeySet on non-Windows to avoid key storage issues,
-            // and MachineKeySet on Windows for better key protection. Avoid Exportable flag
-            // unless the downstream dependency truly requires it (BouncyCastle needs the private key).
+            // Load from PFX. The self-signed connector signs via BouncyCastle,
+            // so the private key must be exportable from the loaded certificate.
             var keyStorageFlags = OperatingSystem.IsWindows()
                 ? X509KeyStorageFlags.MachineKeySet | X509KeyStorageFlags.PersistKeySet | X509KeyStorageFlags.Exportable
-                : X509KeyStorageFlags.EphemeralKeySet;
+                : X509KeyStorageFlags.EphemeralKeySet | X509KeyStorageFlags.Exportable;
 
             // Note: We need to export the private key for BouncyCastle's signing operations.
             // On Windows with MachineKeySet, the key can still be extracted by the current process.
@@ -316,8 +315,8 @@ public class CaConnectorFactory : ICaConnectorFactory, IDisposable
         // Use EphemeralKeySet on non-Windows to avoid key storage issues,
         // and MachineKeySet on Windows for better key protection.
         var keyStorageFlags = OperatingSystem.IsWindows()
-            ? X509KeyStorageFlags.MachineKeySet | X509KeyStorageFlags.PersistKeySet
-            : X509KeyStorageFlags.EphemeralKeySet;
+            ? X509KeyStorageFlags.MachineKeySet | X509KeyStorageFlags.PersistKeySet | X509KeyStorageFlags.Exportable
+            : X509KeyStorageFlags.EphemeralKeySet | X509KeyStorageFlags.Exportable;
 
         // Re-import to ensure proper key storage. On Linux with EphemeralKeySet,
         // the key remains in memory and is cleaned up when the certificate is disposed.

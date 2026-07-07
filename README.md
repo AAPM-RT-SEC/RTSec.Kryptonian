@@ -120,6 +120,109 @@ docker compose -f docker-compose.yml -f docker-compose.hackathon.yml up
 
 ---
 
+## Hello World: Self-Signed Device Activation
+
+This flow starts a fresh local gateway, adds a self-signed CA backend, registers a pending device, generates an activation code, and uses that code to enroll a device certificate through EST.
+
+Prerequisites: Docker Desktop, OpenSSL, and a Bash-compatible shell with `curl` and `sed`.
+
+```bash
+# Generate local test certificates and an EST CSR into ./certs.
+./scripts/generate-test-certs.sh
+
+# Start PostgreSQL and the API. ADMIN_API_KEYS makes the curl examples authenticate.
+ADMIN_API_KEYS='dev-api-key-change-in-production' \
+CA_PFX_PASSWORD='TestPassword123!' \
+docker compose up -d --build
+
+BASE_URL='http://localhost:5000'
+API_KEY='dev-api-key-change-in-production'
+
+curl "$BASE_URL/api/status/health"
+```
+
+Create and activate a self-signed CA backend. `./certs` is mounted into the API container at `/app/certs`.
+
+```bash
+BACKEND_ID=$(
+  curl -s -X POST "$BASE_URL/api/cas" \
+    -H "X-API-Key: $API_KEY" \
+    -H "Content-Type: application/json" \
+    -d '{
+      "name": "Local Self-Signed CA",
+      "type": "selfsigned",
+      "isEnabled": true,
+      "isActive": true,
+      "config": {
+        "PfxPath": "/app/certs/ca.pfx",
+        "PfxPassword": "TestPassword123!"
+      }
+    }' | sed -n 's/.*"id":"\([^"]*\)".*/\1/p'
+)
+
+echo "$BACKEND_ID"
+```
+
+Create an EST profile for local enrollment requests.
+
+```bash
+curl -s -X POST "$BASE_URL/api/est-profiles" \
+  -H "X-API-Key: $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"name\": \"Local Device EST\",
+    \"hostnames\": [\"localhost\"],
+    \"hostnameMatchType\": \"exact\",
+    \"pathPrefix\": \"/.well-known/est\",
+    \"caBackendId\": \"$BACKEND_ID\",
+    \"allowedKeyUsages\": [\"digitalSignature\", \"keyEncipherment\"],
+    \"validityDays\": 365,
+    \"requireClientCertificate\": false,
+    \"validateClientCertificateChain\": false,
+    \"trustedClientCaThumbprints\": [],
+    \"isEnabled\": true
+  }"
+```
+
+Register a pending device and generate its one-time activation code.
+
+```bash
+DEVICE_ID=$(
+  curl -s -X POST "$BASE_URL/api/devices" \
+    -H "X-API-Key: $API_KEY" \
+    -H "Content-Type: application/json" \
+    -d '{"displayName":"Hello World Device"}' \
+    | sed -n 's/.*"id":"\([^"]*\)".*/\1/p'
+)
+
+ACTIVATION_CODE=$(
+  curl -s -X POST "$BASE_URL/api/devices/$DEVICE_ID/activation-code" \
+    -H "X-API-Key: $API_KEY" \
+    -H "Content-Type: application/json" \
+    -d '{"validForMinutes":60}' \
+    | sed -n 's/.*"activationCode":"\([^"]*\)".*/\1/p'
+)
+
+echo "$ACTIVATION_CODE"
+```
+
+Enroll the generated test CSR. The activation headers bind the pending device to the CSR common name `test-device-enroll` and the supplied device identity fields.
+
+```bash
+curl -i -X POST "$BASE_URL/.well-known/est/simpleenroll" \
+  -H "Content-Type: application/pkcs10" \
+  -H "Content-Transfer-Encoding: base64" \
+  -H "X-Activation-Code: $ACTIVATION_CODE" \
+  -H "X-Device-Manufacturer: RTSec" \
+  -H "X-Device-Model: Local Test" \
+  -H "X-Device-Serial-Number: hello-world-001" \
+  --data-binary @certs/test-enroll.b64
+```
+
+Expected result: `HTTP/1.1 200 OK`, `Content-Type: application/pkcs7-mime; smime-type=certs-only`, and a base64 PKCS#7 certificate response body. The device record is marked active after the activation code is consumed.
+
+---
+
 ## Demo Walkthrough
 
 ### 1. Register a device
