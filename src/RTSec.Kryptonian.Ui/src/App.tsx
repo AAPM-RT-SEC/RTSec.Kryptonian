@@ -94,8 +94,6 @@ const defaultBackendConfig: Record<string, Record<string, unknown>> = {
   selfsigned: {
     PfxPath: '',
     PfxPassword: '',
-    CertPath: '',
-    KeyPath: '',
   },
   adcs: {
     BaseUrl: '',
@@ -117,6 +115,33 @@ const defaultBackendConfig: Record<string, Record<string, unknown>> = {
     EabHmacKey: '',
   },
 };
+
+type SelfSignedCertMode = 'pfx' | 'pem';
+
+const selfSignedPfxKeys = ['PfxPath', 'PfxPassword'];
+const selfSignedPemKeys = ['CertPath', 'KeyPath'];
+
+function getSelfSignedCertMode(config: Record<string, unknown>): SelfSignedCertMode {
+  const hasPem = selfSignedPemKeys.some((key) => Boolean(String(config[key] ?? '').trim()));
+  const hasPfx = selfSignedPfxKeys.some((key) => Boolean(String(config[key] ?? '').trim()));
+  return hasPem && !hasPfx ? 'pem' : 'pfx';
+}
+
+function configForSelfSignedMode(config: Record<string, unknown>, mode: SelfSignedCertMode): Record<string, unknown> {
+  const next = { ...config };
+  const removeKeys = mode === 'pfx' ? selfSignedPemKeys : selfSignedPfxKeys;
+  const ensureKeys = mode === 'pfx' ? selfSignedPfxKeys : selfSignedPemKeys;
+
+  for (const key of removeKeys) {
+    delete next[key];
+  }
+
+  for (const key of ensureKeys) {
+    next[key] ??= '';
+  }
+
+  return next;
+}
 
 export function App() {
   const [page, setPage] = useState<Page>('dashboard');
@@ -1483,17 +1508,20 @@ function EventsPage({ events }: { events: EnrollmentEvent[] }) {
 }
 
 function BackendModal({ backend, onClose, run }: { backend: CaBackend | null; onClose: () => void; run: Runner }) {
+  const initialConfig = {
+    ...(defaultBackendConfig[backend?.type ?? 'selfsigned'] ?? {}),
+    ...(backend?.config ?? {}),
+  };
+  const initialCertMode = getSelfSignedCertMode(initialConfig);
+  const normalizedInitialConfig = (backend?.type ?? 'selfsigned') === 'selfsigned'
+    ? configForSelfSignedMode(initialConfig, initialCertMode)
+    : initialConfig;
   const [name, setName] = useState(backend?.name ?? '');
   const [type, setType] = useState(backend?.type ?? 'selfsigned');
   const [url, setUrl] = useState(backend?.url ?? '');
-  const [config, setConfig] = useState<Record<string, unknown>>({
-    ...(defaultBackendConfig[backend?.type ?? 'selfsigned'] ?? {}),
-    ...(backend?.config ?? {}),
-  });
-  const [rawConfig, setRawConfig] = useState(() => JSON.stringify({
-    ...(defaultBackendConfig[backend?.type ?? 'selfsigned'] ?? {}),
-    ...(backend?.config ?? {}),
-  }, null, 2));
+  const [config, setConfig] = useState<Record<string, unknown>>(normalizedInitialConfig);
+  const [rawConfig, setRawConfig] = useState(() => JSON.stringify(normalizedInitialConfig, null, 2));
+  const [certMode, setCertMode] = useState<SelfSignedCertMode>(initialCertMode);
   const [showRawConfig, setShowRawConfig] = useState(false);
   const [isEnabled, setIsEnabled] = useState(backend?.isEnabled ?? true);
   const [isActive, setIsActive] = useState(backend?.isActive ?? false);
@@ -1501,10 +1529,15 @@ function BackendModal({ backend, onClose, run }: { backend: CaBackend | null; on
 
   const updateType = (nextType: string) => {
     setType(nextType);
-    const nextConfig = {
+    let nextConfig = {
       ...(defaultBackendConfig[nextType] ?? {}),
       ...config,
     };
+    if (nextType === 'selfsigned') {
+      const nextCertMode = getSelfSignedCertMode(nextConfig);
+      setCertMode(nextCertMode);
+      nextConfig = configForSelfSignedMode(nextConfig, nextCertMode);
+    }
     setConfig(nextConfig);
     setRawConfig(JSON.stringify(nextConfig, null, 2));
   };
@@ -1512,6 +1545,15 @@ function BackendModal({ backend, onClose, run }: { backend: CaBackend | null; on
   const updateConfig = (key: string, value: string | number) => {
     setConfig((current) => {
       const next = { ...current, [key]: value };
+      setRawConfig(JSON.stringify(next, null, 2));
+      return next;
+    });
+  };
+
+  const updateCertMode = (mode: SelfSignedCertMode) => {
+    setCertMode(mode);
+    setConfig((current) => {
+      const next = configForSelfSignedMode(current, mode);
       setRawConfig(JSON.stringify(next, null, 2));
       return next;
     });
@@ -1545,8 +1587,14 @@ function BackendModal({ backend, onClose, run }: { backend: CaBackend | null; on
         {error && <p className="formError">{error}</p>}
         <label>Name<input value={name} onChange={(e) => setName(e.target.value)} required /></label>
         <label>Type<select value={type} onChange={(e) => updateType(e.target.value)}>{backendTypes.map((item) => <option key={item}>{item}</option>)}</select></label>
-        <label>Primary URL<input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://..." /></label>
-        <BackendConfigFields type={type} config={config} updateConfig={updateConfig} />
+        <label>
+          {type === 'selfsigned' ? 'Harness URL (optional)' : 'Primary URL'}
+          <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder={type === 'selfsigned' ? 'Leave blank for local PFX/PEM' : 'https://...'} />
+        </label>
+        {type === 'selfsigned' && (
+          <p className="formHint">Leave this blank to sign with the local CA certificate below. Only enter a URL when using the external self-signed EST harness.</p>
+        )}
+        <BackendConfigFields type={type} config={config} certMode={certMode} updateCertMode={updateCertMode} updateConfig={updateConfig} />
         <details className="advancedConfig" open={showRawConfig} onToggle={(e) => setShowRawConfig(e.currentTarget.open)}>
           <summary>Advanced JSON config</summary>
           <label>Config JSON<textarea value={rawConfig} onChange={(e) => setRawConfig(e.target.value)} rows={8} /></label>
@@ -1562,10 +1610,14 @@ function BackendModal({ backend, onClose, run }: { backend: CaBackend | null; on
 function BackendConfigFields({
   type,
   config,
+  certMode,
+  updateCertMode,
   updateConfig,
 }: {
   type: string;
   config: Record<string, unknown>;
+  certMode: SelfSignedCertMode;
+  updateCertMode: (mode: SelfSignedCertMode) => void;
   updateConfig: (key: string, value: string | number) => void;
 }) {
   const stringValue = (key: string) => String(config[key] ?? '');
@@ -1575,11 +1627,22 @@ function BackendConfigFields({
     return (
       <fieldset className="configFieldset">
         <legend>Self-signed CA Settings</legend>
-        <p>Use a PFX file, or provide separate PEM certificate and key files.</p>
-        <label>PFX Path<input value={stringValue('PfxPath')} onChange={(e) => updateConfig('PfxPath', e.target.value)} placeholder="certs/dev-ca.pfx" /></label>
-        <label>PFX Password<input type="password" value={stringValue('PfxPassword')} onChange={(e) => updateConfig('PfxPassword', e.target.value)} /></label>
-        <label>PEM Certificate Path<input value={stringValue('CertPath')} onChange={(e) => updateConfig('CertPath', e.target.value)} placeholder="certs/dev-ca.crt" /></label>
-        <label>PEM Key Path<input value={stringValue('KeyPath')} onChange={(e) => updateConfig('KeyPath', e.target.value)} placeholder="certs/dev-ca.key" /></label>
+        <p>Choose one certificate source for the local self-signed CA.</p>
+        <div className="segmentedControl" role="group" aria-label="Self-signed certificate source">
+          <button type="button" className={certMode === 'pfx' ? 'active' : ''} aria-pressed={certMode === 'pfx'} onClick={() => updateCertMode('pfx')}>PFX</button>
+          <button type="button" className={certMode === 'pem' ? 'active' : ''} aria-pressed={certMode === 'pem'} onClick={() => updateCertMode('pem')}>PEM</button>
+        </div>
+        {certMode === 'pfx' ? (
+          <>
+            <label>PFX Path<input value={stringValue('PfxPath')} onChange={(e) => updateConfig('PfxPath', e.target.value)} placeholder="certs/dev-ca.pfx" /></label>
+            <label>PFX Password<input type="password" value={stringValue('PfxPassword')} onChange={(e) => updateConfig('PfxPassword', e.target.value)} /></label>
+          </>
+        ) : (
+          <>
+            <label>PEM Certificate Path<input value={stringValue('CertPath')} onChange={(e) => updateConfig('CertPath', e.target.value)} placeholder="certs/dev-ca.crt" /></label>
+            <label>PEM Key Path<input value={stringValue('KeyPath')} onChange={(e) => updateConfig('KeyPath', e.target.value)} placeholder="certs/dev-ca.key" /></label>
+          </>
+        )}
       </fieldset>
     );
   }

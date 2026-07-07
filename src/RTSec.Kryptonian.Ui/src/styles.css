@@ -647,6 +647,13 @@ th {
   gap: 5px;
 }
 
+.formHint {
+  color: #637a7f;
+  font-size: 0.92rem;
+  line-height: 1.45;
+  margin: -4px 0 0;
+}
+
 .configFieldset {
   border: 1px solid #dce7ea;
   border-radius: 8px;
@@ -665,6 +672,38 @@ th {
 .configFieldset p {
   color: #637a7f;
   margin: 0;
+}
+
+.segmentedControl {
+  align-items: center;
+  background: #eef5f7;
+  border: 1px solid #cbd8dc;
+  border-radius: 8px;
+  display: grid;
+  gap: 4px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: 4px;
+}
+
+.segmentedControl button {
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: #315a61;
+  font-weight: 700;
+  min-height: 34px;
+  padding: 7px 12px;
+}
+
+.segmentedControl button.active {
+  background: #ffffff;
+  box-shadow: 0 1px 4px rgba(13, 31, 36, 0.12);
+  color: #004f80;
+}
+
+.segmentedControl button:focus-visible {
+  outline: 2px solid #0087a8;
+  outline-offset: 2px;
 }
 
 .advancedConfig {

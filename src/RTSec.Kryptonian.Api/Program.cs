@@ -139,6 +139,10 @@ try
     var jwtSecret = builder.Configuration["Kryptonian:Auth:JwtSecret"]
         ?? Environment.GetEnvironmentVariable("KRYPTONIAN__AUTH__JWTSECRET")
         ?? "kryptonian-dev-secret-not-for-production-32chars";
+    if (string.IsNullOrWhiteSpace(jwtSecret))
+    {
+        jwtSecret = "kryptonian-dev-secret-not-for-production-32chars";
+    }
 
     builder.Services.AddAuthentication(options =>
     {

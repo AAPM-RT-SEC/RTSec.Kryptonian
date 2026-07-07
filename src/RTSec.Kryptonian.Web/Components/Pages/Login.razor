@@ -1,0 +1,52 @@
+@page "/login"
+@layout AuthLayout
+
+<PageTitle>Sign in - Kryptonian Gateway</PageTitle>
+
+<div class="auth-page">
+    <section class="auth-hero" aria-label="Kryptonian Gateway">
+        <img src="img/kryptonian-gateway.png" alt="Kryptonian Gateway" />
+        <p class="eyebrow">Device Registration Portal</p>
+        <h1>Kryptonian Gateway</h1>
+        <p>Register, activate, and renew trusted medical devices through a controlled certificate gateway.</p>
+    </section>
+
+    <section class="auth-card" aria-label="Sign in">
+        <div class="auth-brand">
+            <img src="img/kryptonian-mark.png" alt="" />
+            <div>
+                <strong>Kryptonian Gateway</strong>
+                <span>Medical device trust gateway</span>
+            </div>
+        </div>
+
+        <h2>Sign in</h2>
+        <p>Use your Kryptonian administrator account to continue.</p>
+
+        @if (!string.IsNullOrWhiteSpace(Error))
+        {
+            <div class="auth-error">@Error</div>
+        }
+
+        <form method="post" action="/auth/login">
+            <input type="hidden" name="returnUrl" value="@ReturnUrl" />
+            <label>
+                Username
+                <input name="username" autocomplete="username" required autofocus />
+            </label>
+            <label>
+                Password
+                <input name="password" type="password" autocomplete="current-password" required />
+            </label>
+            <button type="submit">Sign in</button>
+        </form>
+    </section>
+</div>
+
+@code {
+    [SupplyParameterFromQuery(Name = "error")]
+    public string? Error { get; set; }
+
+    [SupplyParameterFromQuery(Name = "returnUrl")]
+    public string ReturnUrl { get; set; } = "/";
+}

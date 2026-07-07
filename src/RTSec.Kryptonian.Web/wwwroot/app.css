@@ -34,3 +34,137 @@ html, body {
 .blazor-error-boundary::after {
     content: "An error has occurred."
 }
+
+.auth-page {
+    align-items: center;
+    background: #062f5f;
+    color: #fff;
+    display: grid;
+    gap: 4rem;
+    grid-template-columns: minmax(0, 1fr) 420px;
+    min-height: 100vh;
+    padding: 4rem;
+}
+
+.auth-hero {
+    max-width: 620px;
+}
+
+.auth-hero img {
+    background: #fff;
+    display: block;
+    margin-bottom: 2rem;
+    max-width: 360px;
+    padding: 1.25rem;
+    width: 70%;
+}
+
+.auth-hero .eyebrow {
+    color: #37b8cf;
+    font-size: 0.75rem;
+    letter-spacing: 0;
+    margin: 0 0 0.75rem;
+    text-transform: uppercase;
+}
+
+.auth-hero h1 {
+    font-size: 4rem;
+    line-height: 1.05;
+    margin: 0 0 1rem;
+}
+
+.auth-hero p:not(.eyebrow) {
+    font-size: 1.1rem;
+    line-height: 1.7;
+    margin: 0;
+}
+
+.auth-card {
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 18px 40px rgb(0 0 0 / 24%);
+    color: #001f4f;
+    padding: 2rem;
+}
+
+.auth-brand {
+    align-items: center;
+    display: flex;
+    gap: 0.75rem;
+    margin-bottom: 1.5rem;
+}
+
+.auth-brand img {
+    height: 40px;
+    width: 40px;
+}
+
+.auth-brand strong,
+.auth-brand span {
+    display: block;
+}
+
+.auth-brand span,
+.auth-card p {
+    color: #54708f;
+}
+
+.auth-card h2 {
+    font-size: 1.8rem;
+    margin: 0 0 0.5rem;
+}
+
+.auth-error {
+    background: #fde8e8;
+    border: 1px solid #f8b4b4;
+    border-radius: 6px;
+    color: #b42318;
+    margin: 1rem 0;
+    padding: 0.8rem 1rem;
+}
+
+.auth-card form {
+    display: grid;
+    gap: 1rem;
+    margin-top: 1.5rem;
+}
+
+.auth-card label {
+    color: #001f4f;
+    display: grid;
+    font-weight: 700;
+    gap: 0.45rem;
+}
+
+.auth-card input {
+    border: 1px solid #c8d6e2;
+    border-radius: 6px;
+    font: inherit;
+    padding: 0.75rem;
+}
+
+.auth-card button {
+    background: #007e99;
+    border: 0;
+    border-radius: 6px;
+    color: #fff;
+    cursor: pointer;
+    font: inherit;
+    font-weight: 700;
+    padding: 0.85rem 1rem;
+}
+
+.auth-card button:hover {
+    background: #006f87;
+}
+
+@media (max-width: 900px) {
+    .auth-page {
+        grid-template-columns: 1fr;
+        padding: 2rem;
+    }
+
+    .auth-hero h1 {
+        font-size: 3rem;
+    }
+}

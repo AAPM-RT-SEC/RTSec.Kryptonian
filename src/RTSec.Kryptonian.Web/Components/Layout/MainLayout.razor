@@ -16,6 +16,9 @@
                            Color="Color.Inherit"
                            OnClick="@ToggleDarkMode" />
         </MudTooltip>
+        <MudButton Href="/logout" Color="Color.Inherit" StartIcon="@Icons.Material.Filled.Logout">
+            Sign out
+        </MudButton>
     </MudAppBar>
     <MudDrawer @bind-Open="_drawerOpen" ClipMode="DrawerClipMode.Always" Elevation="2">
         <NavMenu />

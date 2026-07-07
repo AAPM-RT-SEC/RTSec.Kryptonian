@@ -266,9 +266,18 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   });
 
   if (response.status === 401) {
+    const body = await readJsonOrText(response);
+    const message =
+      typeof body === 'object' && body && 'error' in body
+        ? String((body as { error: unknown }).error)
+        : 'Authentication failed.';
+
+    if (path === '/api/auth/login' || path === '/api/auth/setup') {
+      throw new ApiError(message, 401, body);
+    }
+
     clearStoredToken();
     onUnauthorized?.();
-    const body = await readJsonOrText(response);
     throw new ApiError('Session expired. Please log in again.', 401, body);
   }
 

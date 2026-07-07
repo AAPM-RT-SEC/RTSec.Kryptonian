@@ -38,7 +38,7 @@ services:
       ASPNETCORE_URLS: http://+:5000
 
       # Admin API keys (comma-separated) — legacy backward compat, still honored as SystemAdmin
-      Kryptonian__AdminApi__ApiKeys: ${ADMIN_API_KEYS:-}
+      Kryptonian__AdminApi__ApiKeys: ${ADMIN_API_KEYS:-dev-api-key-change-in-production}
 
       # JWT authentication secret (must be ≥32 chars in production)
       Kryptonian__Auth__JwtSecret: ${KRYPTONIAN_JWT_SECRET:-}
