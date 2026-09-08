@@ -17,6 +17,7 @@
   -->
   <ItemGroup>
     <Compile Include="..\..\src\Kryptonian.MedicalDevice\Enrollment\*.cs" Link="Enrollment\%(Filename)%(Extension)" />
+    <Compile Include="..\..\src\Kryptonian.DICOMTls\GatewayHttpClient.cs" Link="GatewayHttpClient.cs" />
   </ItemGroup>
 
   <ItemGroup>
