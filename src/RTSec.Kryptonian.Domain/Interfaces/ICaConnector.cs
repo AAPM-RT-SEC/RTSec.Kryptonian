@@ -28,12 +28,17 @@ public interface ICaConnector
         CancellationToken ct = default);
 
     /// <summary>
-    /// Revokes a certificate by serial number.
+    /// Revokes a certificate by serial number when the backend has a native mutation API.
+    /// Local CRL-backed revocation is coordinated through <see cref="GenerateCrlAsync"/>, which receives the full issuer-scoped set.
     /// </summary>
     Task<bool> RevokeCertificateAsync(
         string serial,
         RevocationReason reason,
         CancellationToken ct = default);
+
+    /// <summary>Builds a complete signed CRL for the connector's current issuer.</summary>
+    Task<CrlGenerationResult> GenerateCrlAsync(CrlGenerationRequest request, CancellationToken ct = default) =>
+        Task.FromResult(CrlGenerationResult.Unsupported());
 
     /// <summary>
     /// Tests the connection to the CA backend.

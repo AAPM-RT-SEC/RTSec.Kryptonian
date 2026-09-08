@@ -145,7 +145,10 @@ public class CaConnectorFactory : ICaConnectorFactory, IDisposable
                 "Set via environment variables KRYPTONIAN__CA__SELFSIGNED__* or backend config.");
         }
 
-        return new SelfSignedCaConnector(logger, caCert);
+        var cdpUrl = GetConfigValue(backend, "CrlDistributionPointUrl", "KRYPTONIAN__CA__SELFSIGNED__CRLDISTRIBUTIONPOINTURL");
+        if (!string.IsNullOrWhiteSpace(cdpUrl) && !Uri.TryCreate(cdpUrl, UriKind.Absolute, out _))
+            throw new InvalidOperationException("Self-signed CA CrlDistributionPointUrl must be an absolute canonical URL.");
+        return new SelfSignedCaConnector(logger, caCert, cdpUrl);
     }
 
     private ICaConnector CreateAcmeConnector(CaBackend backend)

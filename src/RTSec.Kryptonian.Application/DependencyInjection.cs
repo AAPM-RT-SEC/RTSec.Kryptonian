@@ -20,6 +20,7 @@ public static class ApplicationServiceExtensions
         services.AddScoped<IEstProfileService, EstProfileService>();
         services.AddScoped<IEnrollmentEventService, EnrollmentEventService>();
         services.AddScoped<IEnrollmentOrchestrator, EnrollmentOrchestrator>();
+        services.AddScoped<ICertificateRevocationService, CertificateRevocationService>();
         services.AddScoped<IDeviceService, DeviceService>();
         services.AddScoped<IGatewaySettingsService, GatewaySettingsService>();
         services.AddScoped<INotificationSettingsService, NotificationSettingsService>();

@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Formats.Asn1;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using FluentAssertions;
@@ -315,6 +316,42 @@ public class SelfSignedCaConnectorTests : IDisposable
         result.Should().BeFalse();
     }
 
+    [Fact]
+    public async Task GenerateCrlAsyncProducesSignedDerWithIssuerScopedSerial()
+    {
+        var fingerprint = Convert.ToHexString(SHA256.HashData(_caCertificate.RawData));
+        var result = await _sut.GenerateCrlAsync(new CrlGenerationRequest(
+            fingerprint,
+            1,
+            DateTime.UtcNow,
+            DateTime.UtcNow.AddHours(1),
+            [new CrlEntry("010203", DateTime.UtcNow, RevocationReason.KeyCompromise)]));
+
+        var error = _loggerMock.Invocations.SelectMany(i => i.Arguments).OfType<Exception>().SingleOrDefault()?.Message;
+        result.Supported.Should().BeTrue(error);
+        result.Der.Should().NotBeNullOrEmpty();
+        var reader = new AsnReader(result.Der!, AsnEncodingRules.DER);
+        var signedCrl = reader.ReadSequence();
+        var tbs = signedCrl.ReadEncodedValue().ToArray();
+        signedCrl.ReadSequence();
+        var signature = signedCrl.ReadBitString(out var unusedBits);
+        unusedBits.Should().Be(0);
+        signedCrl.ThrowIfNotEmpty();
+        reader.ThrowIfNotEmpty();
+        using var issuerKey = _caCertificate.GetRSAPublicKey();
+        issuerKey!.VerifyData(tbs, signature, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1).Should().BeTrue();
+
+        var tbsReader = new AsnReader(tbs, AsnEncodingRules.DER).ReadSequence();
+        tbsReader.ReadInteger();
+        tbsReader.ReadSequence();
+        tbsReader.ReadSequence();
+        ReadTime(tbsReader);
+        ReadTime(tbsReader);
+        var revoked = tbsReader.ReadSequence();
+        var entry = revoked.ReadSequence();
+        entry.ReadIntegerBytes().ToArray().Should().Equal(1, 2, 3);
+    }
+
     #endregion
 
     #region Certificate Chain Tests
@@ -412,11 +449,18 @@ public class SelfSignedCaConnectorTests : IDisposable
             DateTimeOffset.UtcNow.AddMinutes(-5),
             DateTimeOffset.UtcNow.AddYears(10));
 
-        // Export and reimport to make key exportable
+        // Match the launcher path: a .NET-generated CA exported as encrypted PFX and
+        // reloaded as an exportable key. Ephemeral storage avoids Windows key-container policy.
         return new X509Certificate2(
             cert.Export(X509ContentType.Pfx, "test"),
             "test",
-            X509KeyStorageFlags.Exportable);
+            X509KeyStorageFlags.EphemeralKeySet | X509KeyStorageFlags.Exportable);
+    }
+
+    private static void ReadTime(AsnReader reader)
+    {
+        if (reader.PeekTag().TagValue == (int)UniversalTagNumber.UtcTime) reader.ReadUtcTime();
+        else reader.ReadGeneralizedTime();
     }
 
     private static X509Certificate2 CreateEcdsaCaCertificate()

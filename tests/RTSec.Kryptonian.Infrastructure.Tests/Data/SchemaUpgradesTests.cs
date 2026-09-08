@@ -12,7 +12,7 @@ public class SchemaUpgradesTests
         await using var connection = new SqliteConnection("Data Source=:memory:");
         await connection.OpenAsync();
         await using var db = new KryptonianDbContext(new DbContextOptionsBuilder<KryptonianDbContext>().UseSqlite(connection).Options);
-        await db.Database.ExecuteSqlRawAsync("CREATE TABLE est_profiles (id TEXT PRIMARY KEY, name TEXT NOT NULL); INSERT INTO est_profiles VALUES ('existing', 'Keep this profile');");
+        await db.Database.ExecuteSqlRawAsync("CREATE TABLE est_profiles (id TEXT PRIMARY KEY, name TEXT NOT NULL); INSERT INTO est_profiles VALUES ('existing', 'Keep this profile'); CREATE TABLE certificates (id TEXT PRIMARY KEY, ca_backend_id TEXT, serial_number TEXT);");
 
         await SchemaUpgrades.EnsureTrustPolicyAsync(db);
         await SchemaUpgrades.EnsureTrustPolicyAsync(db);

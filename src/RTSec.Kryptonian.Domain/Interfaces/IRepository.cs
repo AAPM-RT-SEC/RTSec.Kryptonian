@@ -12,6 +12,7 @@ public interface IUnitOfWork : IDisposable
     IEstProfileRepository EstProfiles { get; }
     IDeviceRepository Devices { get; }
     ICertificateRepository Certificates { get; }
+    IIssuerCrlStateRepository IssuerCrlStates { get; }
     IEnrollmentEventRepository EnrollmentEvents { get; }
     IAcmeAccountRepository AcmeAccounts { get; }
     IGatewaySettingsRepository GatewaySettings { get; }
@@ -24,6 +25,7 @@ public interface IUnitOfWork : IDisposable
     /// Saves all pending changes to the database.
     /// </summary>
     Task<int> SaveChangesAsync(CancellationToken ct = default);
+    Task<bool> TryPersistRevocationStateAsync(CancellationToken ct = default);
 
     /// <summary>
     /// Persists a one-time activation-code consumption, returning false when a concurrent
@@ -95,6 +97,12 @@ public interface ICertificateRepository : IRepository<Certificate>
     Task<IEnumerable<Certificate>> GetByDeviceRecordIdAsync(Guid deviceId, CancellationToken ct = default);
     Task<Certificate?> GetMostRecentBridgeCertificateAsync(CancellationToken ct = default);
     Task<IEnumerable<Certificate>> GetExpiringAsync(DateTime before, CancellationToken ct = default);
+}
+
+public interface IIssuerCrlStateRepository : IRepository<IssuerCrlState>
+{
+    Task<IssuerCrlState?> GetByIssuerFingerprintAsync(string issuerFingerprint, CancellationToken ct = default);
+    Task<IssuerCrlState?> GetByCaBackendIdAsync(Guid caBackendId, CancellationToken ct = default);
 }
 
 /// <summary>

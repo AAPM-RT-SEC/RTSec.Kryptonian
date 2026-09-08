@@ -51,6 +51,13 @@ public class CertificateConfiguration : IEntityTypeConfiguration<Certificate>
             .HasConversion<string>()
             .HasMaxLength(50);
 
+        builder.Property(e => e.RevokedAt).HasColumnName("revoked_at");
+
+        builder.Property(e => e.RevocationReason)
+            .HasColumnName("revocation_reason")
+            .HasConversion<string>()
+            .HasMaxLength(50);
+
         builder.Property(e => e.EstProfileId)
             .HasColumnName("est_profile_id")
             .IsRequired();
@@ -103,8 +110,8 @@ public class CertificateConfiguration : IEntityTypeConfiguration<Certificate>
             .HasForeignKey(e => e.CaBackendId)
             .OnDelete(DeleteBehavior.SetNull);
 
-        builder.HasIndex(e => e.SerialNumber)
-            .IsUnique();
+        builder.HasIndex(e => new { e.CaBackendId, e.SerialNumber })
+            .HasDatabaseName("ix_certificates_issuer_serial").IsUnique();
 
         builder.HasIndex(e => e.Thumbprint)
             .IsUnique();
