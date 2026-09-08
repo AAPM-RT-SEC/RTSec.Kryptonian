@@ -66,6 +66,20 @@ public class EstProfileConfiguration : IEntityTypeConfiguration<EstProfile>
             .HasColumnName("require_client_certificate")
             .HasDefaultValue(true);
 
+        // Was previously a public field, which EF Core does not map: the setting silently
+        // never persisted. As a property it is now stored, defaulting to false so existing
+        // rows and profiles created without an explicit choice keep chain validation off.
+        builder.Property(e => e.ValidateClientCertificateChain)
+            .HasColumnName("validate_client_certificate_chain")
+            .HasDefaultValue(false);
+
+        // Same native text[] mapping as Hostnames/AllowedKeyUsages, with the collection
+        // comparer so in-place Add/Remove mutations are detected by the change tracker.
+        builder.Property(e => e.TrustedClientCaThumbprints)
+            .HasColumnName("trusted_client_ca_thumbprints")
+            .HasColumnType("text[]")
+            .Metadata.SetValueComparer(ValueComparers.StringCollectionComparer);
+
         builder.Property(e => e.IsEnabled)
             .HasColumnName("is_enabled")
             .HasDefaultValue(true);
