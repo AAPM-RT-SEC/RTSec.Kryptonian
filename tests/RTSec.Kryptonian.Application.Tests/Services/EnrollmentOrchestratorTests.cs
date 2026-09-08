@@ -28,6 +28,8 @@ public class EnrollmentOrchestratorTests : IDisposable
     private readonly Mock<INotificationDispatcher> _notificationDispatcherMock;
     private readonly EnrollmentOrchestrator _sut;
     private readonly X509Certificate2 _testCert;
+    private readonly X509Certificate2 _testIssuer;
+    private readonly List<X509Certificate2> _issuedCertificates = new();
 
     public EnrollmentOrchestratorTests()
     {
@@ -53,6 +55,8 @@ public class EnrollmentOrchestratorTests : IDisposable
             .ReturnsAsync(true);
 
         _testCert = CreateTestCertificate();
+        _testIssuer = CreateTestCertificate("Issuer", isCa: true);
+        _connectorMock.Setup(c => c.GetCaCertificatesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(new[] { _testIssuer });
 
         _sut = new EnrollmentOrchestrator(
             _unitOfWorkMock.Object,
@@ -65,6 +69,8 @@ public class EnrollmentOrchestratorTests : IDisposable
     public void Dispose()
     {
         _testCert.Dispose();
+        _testIssuer.Dispose();
+        foreach (var cert in _issuedCertificates) cert.Dispose();
     }
 
     #region GetCaCertsAsync Tests
@@ -200,7 +206,7 @@ public class EnrollmentOrchestratorTests : IDisposable
         var profile = CreateEstProfile(profileId, backendId);
         var backend = CreateCaBackend(backendId);
         var csrBytes = CreateTestCsrBytes();
-        var parsedCsr = new ParsedCsr { SubjectDn = "CN=TestDevice", RawData = csrBytes };
+        var parsedCsr = CreateParsedCsr("CN=TestDevice");
         var pkcs7 = new byte[] { 0x30, 0x82 };
         var encodedPkcs7 = new byte[] { 0x65, 0x66 }; // base64 encoded
 
@@ -227,7 +233,7 @@ public class EnrollmentOrchestratorTests : IDisposable
 
         _connectorMock
             .Setup(c => c.IssueCertificateAsync(parsedCsr, profile, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(CertificateIssuanceResult.Successful(_testCert, new[] { _testCert }));
+            .ReturnsAsync(CreateIssuedCertificate(parsedCsr));
 
         _pkcsServiceMock
             .Setup(p => p.ExportToPem(_testCert))
@@ -280,7 +286,7 @@ public class EnrollmentOrchestratorTests : IDisposable
         var profileId = Guid.NewGuid();
         var profile = CreateEstProfile(profileId, Guid.NewGuid());
         var csrBytes = CreateTestCsrBytes();
-        var parsedCsr = new ParsedCsr { SubjectDn = "CN=TestDevice", RawData = csrBytes };
+        var parsedCsr = CreateParsedCsr("CN=TestDevice");
 
         _estProfileRepoMock
             .Setup(r => r.GetByIdAsync(profileId, It.IsAny<CancellationToken>()))
@@ -356,7 +362,7 @@ public class EnrollmentOrchestratorTests : IDisposable
         var profile = CreateEstProfile(profileId, backendId);
         var backend = CreateCaBackend(backendId);
         var csrBytes = new byte[] { 1, 2, 3 };
-        var parsedCsr = new ParsedCsr { SubjectDn = "CN=UnknownDevice", RawData = csrBytes };
+        var parsedCsr = CreateParsedCsr("CN=UnknownDevice");
 
         _estProfileRepoMock
             .Setup(r => r.GetByIdAsync(profileId, It.IsAny<CancellationToken>()))
@@ -395,7 +401,7 @@ public class EnrollmentOrchestratorTests : IDisposable
         var backend = CreateCaBackend(Guid.NewGuid());
         var profile = CreateEstProfile(profileId, backend.Id);
         var csrBytes = new byte[] { 1, 2, 3 };
-        var parsedCsr = new ParsedCsr { SubjectDn = "CN=PendingDevice", RawData = csrBytes };
+        var parsedCsr = CreateParsedCsr("CN=PendingDevice");
 
         _estProfileRepoMock
             .Setup(r => r.GetByIdAsync(profileId, It.IsAny<CancellationToken>()))
@@ -425,7 +431,7 @@ public class EnrollmentOrchestratorTests : IDisposable
         var profileId = Guid.NewGuid();
         var profile = CreateEstProfile(profileId, Guid.NewGuid());
         var csrBytes = new byte[] { 1, 2, 3 };
-        var parsedCsr = new ParsedCsr { SubjectDn = "CN=InventoryScanner", RawData = csrBytes };
+        var parsedCsr = CreateParsedCsr("CN=InventoryScanner");
         var device = CreatePendingDevice("InventoryScanner", "INV-001", "ACTIVATE123");
 
         _estProfileRepoMock.Setup(r => r.GetByIdAsync(profileId, It.IsAny<CancellationToken>())).ReturnsAsync(profile);
@@ -451,7 +457,7 @@ public class EnrollmentOrchestratorTests : IDisposable
         var profileId = Guid.NewGuid();
         var profile = CreateEstProfile(profileId, Guid.NewGuid());
         var csrBytes = new byte[] { 1, 2, 3 };
-        var parsedCsr = new ParsedCsr { SubjectDn = "CN=InventoryScanner", RawData = csrBytes };
+        var parsedCsr = CreateParsedCsr("CN=InventoryScanner");
         var device = CreatePendingDevice("InventoryScanner", "INV-001", "ACTIVATE123");
         device.ActivationCodeExpiresAt = DateTime.UtcNow.AddMinutes(-1);
 
@@ -478,7 +484,7 @@ public class EnrollmentOrchestratorTests : IDisposable
         var profileId = Guid.NewGuid();
         var profile = CreateEstProfile(profileId, Guid.NewGuid());
         var csrBytes = new byte[] { 1, 2, 3 };
-        var parsedCsr = new ParsedCsr { SubjectDn = "CN=AnotherDevice", RawData = csrBytes };
+        var parsedCsr = CreateParsedCsr("CN=AnotherDevice");
         var device = CreatePendingDevice("pending-scanner", "INV-001", "ACTIVATE123");
 
         _estProfileRepoMock.Setup(r => r.GetByIdAsync(profileId, It.IsAny<CancellationToken>())).ReturnsAsync(profile);
@@ -504,7 +510,7 @@ public class EnrollmentOrchestratorTests : IDisposable
         var profileId = Guid.NewGuid();
         var profile = CreateEstProfile(profileId, Guid.NewGuid());
         var csrBytes = new byte[] { 1, 2, 3 };
-        var parsedCsr = new ParsedCsr { SubjectDn = "CN=InventoryScanner", RawData = csrBytes };
+        var parsedCsr = CreateParsedCsr("CN=InventoryScanner");
         var device = CreatePendingDevice("InventoryScanner", "INV-001", "ACTIVATE123");
 
         _estProfileRepoMock.Setup(r => r.GetByIdAsync(profileId, It.IsAny<CancellationToken>())).ReturnsAsync(profile);
@@ -536,7 +542,7 @@ public class EnrollmentOrchestratorTests : IDisposable
         var backend = CreateCaBackend(Guid.NewGuid());
         var profile = CreateEstProfile(profileId, backend.Id);
         var csrBytes = CreateTestCsrBytes();
-        var parsedCsr = new ParsedCsr { SubjectDn = "CN=PendingDevice", RawData = csrBytes };
+        var parsedCsr = CreateParsedCsr("CN=PendingDevice");
         var device = CreatePendingDevice("PendingDevice", "PEND-001", "ACTIVATE123");
 
         _estProfileRepoMock
@@ -565,7 +571,7 @@ public class EnrollmentOrchestratorTests : IDisposable
 
         _connectorMock
             .Setup(c => c.IssueCertificateAsync(parsedCsr, profile, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(CertificateIssuanceResult.Successful(_testCert, new[] { _testCert }));
+            .ReturnsAsync(CreateIssuedCertificate(parsedCsr));
 
         _pkcsServiceMock
             .Setup(p => p.ExportToPem(_testCert))
@@ -604,7 +610,7 @@ public class EnrollmentOrchestratorTests : IDisposable
         var backend = CreateCaBackend(Guid.NewGuid());
         var profile = CreateEstProfile(profileId, backend.Id);
         var csrBytes = CreateTestCsrBytes();
-        var parsedCsr = new ParsedCsr { SubjectDn = "CN=ActivatedDevice", RawData = csrBytes };
+        var parsedCsr = CreateParsedCsr("CN=ActivatedDevice");
         var device = CreatePendingDevice("placeholder", null, "ACTIVATE123");
         device.SubjectCommonName = $"pending-{device.Id:N}";
 
@@ -639,7 +645,7 @@ public class EnrollmentOrchestratorTests : IDisposable
 
         _connectorMock
             .Setup(c => c.IssueCertificateAsync(parsedCsr, profile, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(CertificateIssuanceResult.Successful(_testCert, new[] { _testCert }));
+            .ReturnsAsync(CreateIssuedCertificate(parsedCsr));
 
         _pkcsServiceMock
             .Setup(p => p.ExportToPem(_testCert))
@@ -687,7 +693,7 @@ public class EnrollmentOrchestratorTests : IDisposable
         activeBackend.Name = "Unrelated Active CA";
         activeBackend.IsActive = true;
         var csrBytes = CreateTestCsrBytes();
-        var parsedCsr = new ParsedCsr { SubjectDn = "CN=TestDevice", RawData = csrBytes };
+        var parsedCsr = CreateParsedCsr("CN=TestDevice");
 
         _estProfileRepoMock
             .Setup(r => r.GetByIdAsync(profileId, It.IsAny<CancellationToken>()))
@@ -718,7 +724,7 @@ public class EnrollmentOrchestratorTests : IDisposable
 
         _connectorMock
             .Setup(c => c.IssueCertificateAsync(parsedCsr, profile, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(CertificateIssuanceResult.Successful(_testCert, new[] { _testCert }));
+            .ReturnsAsync(CreateIssuedCertificate(parsedCsr));
 
         _pkcsServiceMock
             .Setup(p => p.ExportToPem(_testCert))
@@ -754,7 +760,7 @@ public class EnrollmentOrchestratorTests : IDisposable
         var profile = CreateEstProfile(profileId, missingBackendId);
         var unrelatedActive = CreateCaBackend(Guid.NewGuid());
         var csrBytes = CreateTestCsrBytes();
-        var parsedCsr = new ParsedCsr { SubjectDn = "CN=TestDevice", RawData = csrBytes };
+        var parsedCsr = CreateParsedCsr("CN=TestDevice");
 
         _estProfileRepoMock
             .Setup(r => r.GetByIdAsync(profileId, It.IsAny<CancellationToken>()))
@@ -789,7 +795,7 @@ public class EnrollmentOrchestratorTests : IDisposable
         var profile = CreateEstProfile(profileId, backendId);
         var disabledBackend = CreateCaBackend(backendId, isEnabled: false);
         var csrBytes = CreateTestCsrBytes();
-        var parsedCsr = new ParsedCsr { SubjectDn = "CN=TestDevice", RawData = csrBytes };
+        var parsedCsr = CreateParsedCsr("CN=TestDevice");
 
         _estProfileRepoMock
             .Setup(r => r.GetByIdAsync(profileId, It.IsAny<CancellationToken>()))
@@ -828,7 +834,7 @@ public class EnrollmentOrchestratorTests : IDisposable
         var profile = CreateEstProfile(profileId, backendId);
         var backend = CreateCaBackend(backendId);
         var csrBytes = new byte[] { 1, 2, 3 };
-        var parsedCsr = new ParsedCsr { SubjectDn = "CN=TestDevice", RawData = csrBytes };
+        var parsedCsr = CreateParsedCsr("CN=TestDevice");
 
         _estProfileRepoMock
             .Setup(r => r.GetByIdAsync(profileId, It.IsAny<CancellationToken>()))
@@ -865,7 +871,7 @@ public class EnrollmentOrchestratorTests : IDisposable
         var profile = CreateEstProfile(profileId, backendId);
         var backend = CreateCaBackend(backendId);
         var csrBytes = CreateTestCsrBytes();
-        var parsedCsr = new ParsedCsr { SubjectDn = "CN=TestDevice", RawData = csrBytes };
+        var parsedCsr = CreateParsedCsr("CN=TestDevice");
 
         _estProfileRepoMock
             .Setup(r => r.GetByIdAsync(profileId, It.IsAny<CancellationToken>()))
@@ -917,7 +923,7 @@ public class EnrollmentOrchestratorTests : IDisposable
         var profile = CreateEstProfile(profileId, backendId);
         var backend = CreateCaBackend(backendId);
         var csrBytes = CreateTestCsrBytes();
-        var parsedCsr = new ParsedCsr { SubjectDn = "CN=TestDevice", RawData = csrBytes };
+        var parsedCsr = CreateParsedCsr("CN=TestDevice");
         var pkcs7 = new byte[] { 0x30, 0x82 };
         var encodedPkcs7 = new byte[] { 0x65, 0x66 };
         var device = CreateActiveDevice("TestDevice");
@@ -952,7 +958,7 @@ public class EnrollmentOrchestratorTests : IDisposable
 
         _connectorMock
             .Setup(c => c.IssueCertificateAsync(parsedCsr, profile, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(CertificateIssuanceResult.Successful(_testCert, new[] { _testCert }));
+            .ReturnsAsync(CreateIssuedCertificate(parsedCsr));
 
         _pkcsServiceMock
             .Setup(p => p.ExportToPem(_testCert))
@@ -1103,7 +1109,7 @@ public class EnrollmentOrchestratorTests : IDisposable
         var device = CreateActiveDevice("TestDevice");
         var existingDbCert = CreateStoredCertificate(_testCert, profileId, device);
         var csrBytes = new byte[] { 1, 2, 3 };
-        var parsedCsr = new ParsedCsr { SubjectDn = "CN=OtherDevice", RawData = csrBytes };
+        var parsedCsr = CreateParsedCsr("CN=OtherDevice");
 
         _estProfileRepoMock
             .Setup(r => r.GetByIdAsync(profileId, It.IsAny<CancellationToken>()))
@@ -1184,6 +1190,7 @@ public class EnrollmentOrchestratorTests : IDisposable
             UpdatedAt = DateTime.UtcNow
         };
         profile.Hostnames.Add("test.example.com");
+        profile.AllowedKeyUsages.AddRange(["digitalSignature", "clientAuth", "serverAuth"]);
         return profile;
     }
 
@@ -1295,9 +1302,10 @@ public class EnrollmentOrchestratorTests : IDisposable
     };
 
     private static X509Certificate2 CreateTestCertificate(
-        string commonName = "Test Cert",
+        string commonName = "TestDevice",
         DateTimeOffset? notBefore = null,
-        DateTimeOffset? notAfter = null)
+        DateTimeOffset? notAfter = null,
+        bool isCa = false)
     {
         using var rsa = RSA.Create(2048);
         var request = new CertificateRequest(
@@ -1306,6 +1314,8 @@ public class EnrollmentOrchestratorTests : IDisposable
             HashAlgorithmName.SHA256,
             RSASignaturePadding.Pkcs1);
 
+        request.CertificateExtensions.Add(new X509BasicConstraintsExtension(isCa, false, 0, true));
+        request.CertificateExtensions.Add(new X509KeyUsageExtension(isCa ? X509KeyUsageFlags.KeyCertSign : X509KeyUsageFlags.DigitalSignature, true));
         var cert = request.CreateSelfSigned(
             notBefore ?? DateTimeOffset.UtcNow.AddMinutes(-5),
             notAfter ?? DateTimeOffset.UtcNow.AddYears(1));
@@ -1326,6 +1336,25 @@ public class EnrollmentOrchestratorTests : IDisposable
             RSASignaturePadding.Pkcs1);
 
         return request.CreateSigningRequest();
+    }
+
+    private ParsedCsr CreateParsedCsr(string subject)
+    {
+        using var key = _testCert.GetRSAPrivateKey()!;
+        var request = new CertificateRequest(subject, key, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        return new ParsedCsr { SubjectDn = subject, RawData = request.CreateSigningRequest() };
+    }
+
+    private CertificateIssuanceResult CreateIssuedCertificate(ParsedCsr csr)
+    {
+        var request = CertificateRequest.LoadSigningRequest(csr.RawData.ToArray(), HashAlgorithmName.SHA256,
+            CertificateRequestLoadOptions.UnsafeLoadCertificateExtensions, RSASignaturePadding.Pkcs1);
+        request.CertificateExtensions.Add(new X509BasicConstraintsExtension(false, false, 0, true));
+        request.CertificateExtensions.Add(new X509KeyUsageExtension(X509KeyUsageFlags.DigitalSignature, true));
+        request.CertificateExtensions.Add(new X509EnhancedKeyUsageExtension(new OidCollection { new("1.3.6.1.5.5.7.3.1"), new("1.3.6.1.5.5.7.3.2") }, false));
+        var leaf = request.Create(_testIssuer, DateTimeOffset.UtcNow.AddMinutes(-1), DateTimeOffset.UtcNow.AddDays(30), RandomNumberGenerator.GetBytes(16));
+        _issuedCertificates.Add(leaf);
+        return CertificateIssuanceResult.Successful(leaf, new[] { leaf, _testIssuer });
     }
 
     #endregion

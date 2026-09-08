@@ -289,6 +289,16 @@ public class EnrollmentOrchestrator : IEnrollmentOrchestrator
             return EnrollmentResult.Failed("CSR signature validation failed", 400);
         }
 
+        CertificateRequest approvedRequest;
+        try
+        {
+            approvedRequest = EnrollmentCertificatePolicy.ValidateRequest(csr, device.SubjectCommonName, profile);
+        }
+        catch (CryptographicException ex)
+        {
+            return EnrollmentResult.Failed(ex.Message, 400);
+        }
+
         // Create enrollment event for tracking
         var enrollmentEvent = new EnrollmentEvent
         {
@@ -312,6 +322,7 @@ public class EnrollmentOrchestrator : IEnrollmentOrchestrator
         {
             // Issue certificate
             var connector = _connectorFactory.CreateConnector(backend);
+            var authorizedCas = await connector.GetCaCertificatesAsync(ct);
             var issuanceResult = await connector.IssueCertificateAsync(csr, profile, ct);
 
             if (!issuanceResult.Success)
@@ -336,6 +347,9 @@ public class EnrollmentOrchestrator : IEnrollmentOrchestrator
 
                 return EnrollmentResult.Failed("No certificate returned from CA", 500);
             }
+
+            EnrollmentCertificatePolicy.ValidateIssued(approvedRequest, profile, issuanceResult.Certificate,
+                issuanceResult.CertificateChain ?? new[] { issuanceResult.Certificate }, authorizedCas);
 
             // Store the certificate
             var certificate = new Certificate
@@ -381,7 +395,8 @@ public class EnrollmentOrchestrator : IEnrollmentOrchestrator
             await _unitOfWork.SaveChangesAsync(ct);
 
             // Build certificate chain for response
-            var certChain = issuanceResult.CertificateChain?.ToArray() ?? new[] { issuanceResult.Certificate! };
+            var certChain = new[] { issuanceResult.Certificate }.Concat(issuanceResult.CertificateChain ?? Array.Empty<X509Certificate2>())
+                .DistinctBy(c => c.Thumbprint).ToArray();
             var pkcs7 = _pkcsService.EncodeToPkcs7(certChain);
             var responseBody = _pkcsService.EncodeEstResponseBody(pkcs7);
 
@@ -673,6 +688,16 @@ public class EnrollmentOrchestrator : IEnrollmentOrchestrator
             return EnrollmentResult.Failed("CSR signature validation failed", 400);
         }
 
+        CertificateRequest approvedRequest;
+        try
+        {
+            approvedRequest = EnrollmentCertificatePolicy.ValidateRequest(csr, device.SubjectCommonName, profile, existingCert);
+        }
+        catch (CryptographicException ex)
+        {
+            return EnrollmentResult.Failed(ex.Message, 400);
+        }
+
         var enrollmentEvent = new EnrollmentEvent
         {
             Id = Guid.NewGuid(),
@@ -694,6 +719,7 @@ public class EnrollmentOrchestrator : IEnrollmentOrchestrator
         try
         {
             var connector = _connectorFactory.CreateConnector(backend);
+            var authorizedCas = await connector.GetCaCertificatesAsync(ct);
             var issuanceResult = await connector.IssueCertificateAsync(csr, profile, ct);
 
             if (!issuanceResult.Success)
@@ -718,6 +744,9 @@ public class EnrollmentOrchestrator : IEnrollmentOrchestrator
 
                 return EnrollmentResult.Failed("No certificate returned from CA", 500);
             }
+
+            EnrollmentCertificatePolicy.ValidateIssued(approvedRequest, profile, issuanceResult.Certificate,
+                issuanceResult.CertificateChain ?? new[] { issuanceResult.Certificate }, authorizedCas);
 
             var certificate = new Certificate
             {
@@ -752,7 +781,8 @@ public class EnrollmentOrchestrator : IEnrollmentOrchestrator
 
             await _unitOfWork.SaveChangesAsync(ct);
 
-            var certChain = issuanceResult.CertificateChain?.ToArray() ?? new[] { issuanceResult.Certificate! };
+            var certChain = new[] { issuanceResult.Certificate }.Concat(issuanceResult.CertificateChain ?? Array.Empty<X509Certificate2>())
+                .DistinctBy(c => c.Thumbprint).ToArray();
             var pkcs7 = _pkcsService.EncodeToPkcs7(certChain);
             var responseBody = _pkcsService.EncodeEstResponseBody(pkcs7);
 
