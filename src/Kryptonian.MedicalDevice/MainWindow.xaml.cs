@@ -12,10 +12,20 @@ namespace Kryptonian.MedicalDevice;
 public partial class MainWindow : Window
 {
     private readonly EstEnrollmentClient _estEnrollment = new();
+    private readonly CancellationTokenSource _renewalCancellation = new();
+    private readonly InstalledCertificateRenewal _renewal = new(Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Kryptonian", "renewal.json"));
 
     public MainWindow()
     {
         InitializeComponent();
+        var renewalTask = _renewal.RunAsync(message => Dispatcher.BeginInvoke(() => SetStatus(message)), _renewalCancellation.Token);
+        Closed += async (_, _) =>
+        {
+            _renewalCancellation.Cancel();
+            await renewalTask;
+            _renewalCancellation.Dispose();
+        };
         foreach (var box in new[] { GatewayText, CommonNameText, ManufacturerText, ModelText, SerialText })
         {
             box.TextChanged += OnInputChanged;
@@ -82,6 +92,7 @@ public partial class MainWindow : Window
             if (install)
             {
                 InstallCertificate(certificate);
+                await _renewal.TrackAsync(gatewayUri, certificate, _renewalCancellation.Token);
                 SetStatus($"Certificate installed to CurrentUser\\My. Thumbprint: {certificate.Thumbprint}", success: true);
             }
             else
@@ -154,6 +165,7 @@ public partial class MainWindow : Window
             if (install)
             {
                 InstallCertificate(renewed);
+                await _renewal.TrackAsync(gatewayUri, renewed, _renewalCancellation.Token);
                 SetStatus($"Renewed certificate installed to CurrentUser\\My. New thumbprint: {renewed.Thumbprint}", success: true);
             }
             else
