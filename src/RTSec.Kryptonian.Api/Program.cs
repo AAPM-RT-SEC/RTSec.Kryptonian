@@ -352,6 +352,7 @@ try
         options.MinIdLength = 8;
         options.MaxIdLength = 128;
     });
+    app.UseMiddleware<CertificateForwardingGuard>();
     app.UseCertificateForwarding();
 
     // Rate limiting for EST endpoints (must come before controller routing)
