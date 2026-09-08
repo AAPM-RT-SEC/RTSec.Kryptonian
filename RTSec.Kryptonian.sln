@@ -41,6 +41,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Kryptonian.MedicalDevice", 
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Kryptonian.DICOMTls", "src\Kryptonian.DICOMTls\Kryptonian.DICOMTls.csproj", "{A13B2862-B1F0-4F16-BDE9-E4934B8874B5}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Kryptonian.MedicalDevice.Enrollment.Tests", "tests\Kryptonian.MedicalDevice.Enrollment.Tests\Kryptonian.MedicalDevice.Enrollment.Tests.csproj", "{FA1F7A5C-A5B9-4DCD-A4E4-81FAD274DE2C}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -255,6 +257,18 @@ Global
 		{A13B2862-B1F0-4F16-BDE9-E4934B8874B5}.Release|x64.Build.0 = Release|Any CPU
 		{A13B2862-B1F0-4F16-BDE9-E4934B8874B5}.Release|x86.ActiveCfg = Release|Any CPU
 		{A13B2862-B1F0-4F16-BDE9-E4934B8874B5}.Release|x86.Build.0 = Release|Any CPU
+		{FA1F7A5C-A5B9-4DCD-A4E4-81FAD274DE2C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{FA1F7A5C-A5B9-4DCD-A4E4-81FAD274DE2C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{FA1F7A5C-A5B9-4DCD-A4E4-81FAD274DE2C}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{FA1F7A5C-A5B9-4DCD-A4E4-81FAD274DE2C}.Debug|x64.Build.0 = Debug|Any CPU
+		{FA1F7A5C-A5B9-4DCD-A4E4-81FAD274DE2C}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{FA1F7A5C-A5B9-4DCD-A4E4-81FAD274DE2C}.Debug|x86.Build.0 = Debug|Any CPU
+		{FA1F7A5C-A5B9-4DCD-A4E4-81FAD274DE2C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{FA1F7A5C-A5B9-4DCD-A4E4-81FAD274DE2C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{FA1F7A5C-A5B9-4DCD-A4E4-81FAD274DE2C}.Release|x64.ActiveCfg = Release|Any CPU
+		{FA1F7A5C-A5B9-4DCD-A4E4-81FAD274DE2C}.Release|x64.Build.0 = Release|Any CPU
+		{FA1F7A5C-A5B9-4DCD-A4E4-81FAD274DE2C}.Release|x86.ActiveCfg = Release|Any CPU
+		{FA1F7A5C-A5B9-4DCD-A4E4-81FAD274DE2C}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -277,5 +291,6 @@ Global
 		{CCBBFBD5-A61D-40BE-972A-70D8295DC332} = {0FC2DCFB-B735-4722-BE6C-AB51EA942471}
 		{F1A2B3C4-D5E6-47F8-9012-345678901234} = {0FC2DCFB-B735-4722-BE6C-AB51EA942471}
 		{A13B2862-B1F0-4F16-BDE9-E4934B8874B5} = {0FC2DCFB-B735-4722-BE6C-AB51EA942471}
+		{FA1F7A5C-A5B9-4DCD-A4E4-81FAD274DE2C} = {ED96308E-DEF4-4EAC-9912-C5FA1CE88F81}
 	EndGlobalSection
 EndGlobal

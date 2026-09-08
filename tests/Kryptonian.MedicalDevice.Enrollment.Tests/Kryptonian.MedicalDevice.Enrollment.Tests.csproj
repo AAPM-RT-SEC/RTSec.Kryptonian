@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>Kryptonian.MedicalDevice.Enrollment.Tests</RootNamespace>
+  </PropertyGroup>
+
+  <!--
+    Link the enrollment source instead of referencing the WPF app: Kryptonian.MedicalDevice
+    is a net10.0-windows WinExe with UseWPF, which a cross-platform test project cannot
+    reference. The DICOM demo project links this same folder.
+  -->
+  <ItemGroup>
+    <Compile Include="..\..\src\Kryptonian.MedicalDevice\Enrollment\*.cs" Link="Enrollment\%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.assert" Version="2.9.2" />
+    <PackageReference Include="xunit.core" Version="2.9.2" />
+    <PackageReference Include="xunit.extensibility.core" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="FluentAssertions" Version="6.12.2" />
+    <PackageReference Include="System.Security.Cryptography.Pkcs" Version="9.0.0" />
+  </ItemGroup>
+
+</Project>
