@@ -36,7 +36,11 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           npm run build
       - name: Build and test solution
+        # NuGet transitive advisories remain documented deployment blockers.
         run: dotnet test RTSec.Kryptonian.sln --configuration Release --logger "trx;LogFilePrefix=tests" --results-directory TestResults
+      - name: Audit UI dependencies
+        working-directory: src/RTSec.Kryptonian.Ui
+        run: npm audit --audit-level=high
       - name: Build standalone DIMSE proxy
         run: dotnet build src/RTSec.Kryptonian.DimseTlsProxy --configuration Release
       - uses: actions/upload-artifact@v4

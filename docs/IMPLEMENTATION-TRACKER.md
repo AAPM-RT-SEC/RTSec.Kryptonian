@@ -25,6 +25,7 @@ state; merge policy for this run is successful checks plus parent review.
 | [49](https://github.com/AAPM-RT-SEC/RTSec.Kryptonian/pull/49) | Reproducible HTTPS/EST/DICOM developer proof | feat/developer-lifecycle-validation |
 | [50](https://github.com/AAPM-RT-SEC/RTSec.Kryptonian/pull/50) | Windows Schannel key import and persistent installation | fix/windows-enrollment-key-persistence |
 | [51](https://github.com/AAPM-RT-SEC/RTSec.Kryptonian/pull/51) | OR.NET positioning and evidence handoff | docs/ornet-est-alignment |
+| [52](https://github.com/AAPM-RT-SEC/RTSec.Kryptonian/pull/52) | Compatible dependency security updates and audit disclosure | chore/developer-dependency-patches |
 
 ## Executed evidence, not conformance claims
 
@@ -43,6 +44,8 @@ state; merge policy for this run is successful checks plus parent review.
   the public client's returned certificate; WPF build passed. Developer trust adds a
   separate issuer/hostname/purpose regression.
 - Windows GitHub CI builds the UI, tests the solution and builds the standalone proxy.
+- Compatible UI lockfile refresh reduced npm audit from six vulnerable packages to zero;
+  CI now rejects high/critical UI dependency advisories. This is not a whole-system audit.
 
 Combined live-run evidence is local and ignored:
 `artifacts/developer/verify-fa867498c35c4ca7bf58c0d4bc3acd21/evidence.json`.
@@ -73,8 +76,11 @@ Failed attempts remain alongside successful artifacts.
   PFX renewal is external; proxy reload is demonstrated, not automated CA renewal.
 - PostgreSQL schema upgrades are implemented but only SQLite persistence was exercised.
 - Eighteen pre-existing Windows infrastructure skips and existing analyzer warnings remain.
-  MailKit 4.8.0 still raises moderate advisory GHSA-9j88-vvj5-vhgr; upgrading/testing the
-  unrelated email subsystem is a follow-up before any deployment.
+  MailKit was upgraded to patched 4.16.0 with its required BouncyCastle 2.6.2 dependency
+  ([MailKit advisory](https://github.com/advisories/GHSA-9j88-vvj5-vhgr)).
+  The transitive audit still reports high advisories in SQLitePCLRaw.lib.e_sqlite3 2.1.6
+  and System.Security.Cryptography.Xml 8.0.2. These are deployment blockers requiring
+  a separately tested framework/native-provider update, not evidence of a clean security audit.
 - Existing user artifacts and services were preserved. Synthetic demo records remain.
 
 For Wednesday's requested committee decisions and source provenance, use
