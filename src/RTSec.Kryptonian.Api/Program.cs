@@ -308,6 +308,7 @@ try
         {
             Log.Information("Ensuring database schema...");
             dbContext.Database.EnsureCreated();
+            await SchemaUpgrades.EnsureTrustPolicyAsync(dbContext);
             Log.Information("Schema ready");
         }
 

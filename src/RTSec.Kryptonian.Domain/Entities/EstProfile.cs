@@ -66,12 +66,20 @@ public class EstProfile : BaseEntity
     /// <summary>
     /// Whether to validate client certificate chain against trusted CAs.
     /// When true, client certs must chain to a trusted issuer configured in TrustedClientCaThumbprints.
+    /// Declared as a property (not a field) so EF Core maps and persists it.
     /// </summary>
-    public bool ValidateClientCertificateChain;
+    public bool ValidateClientCertificateChain { get; set; }
 
     /// <summary>
-    /// List of trusted CA certificate thumbprints (SHA-256) for client cert validation.
-    /// Client certificates must be issued by one of these CAs when ValidateClientCertificateChain is true.
+    /// List of trusted CA certificate thumbprints for client cert validation.
+    /// Client certificates must be issued by one of these CAs when
+    /// ValidateClientCertificateChain is true.
+    ///
+    /// Hash algorithm: the current consumer compares these values against
+    /// X509Certificate2.GetCertHashString(), which returns a SHA-1 hex digest. So although
+    /// these were historically documented as SHA-256, today only legacy SHA-1 thumbprints
+    /// actually match. Do not paste a SHA-256 fingerprint here expecting it to work until
+    /// the comparison side is changed to hash with SHA-256 explicitly.
     /// </summary>
     public List<string> TrustedClientCaThumbprints { get; } = new List<string>();
 
