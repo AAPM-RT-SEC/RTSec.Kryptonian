@@ -2,9 +2,16 @@ namespace Kryptonian.DICOMTls;
 
 internal sealed class DemoOptions
 {
-    private const string DefaultGateway = "https://kryptonian-gateway.mangotree-b3d09362.eastus.azurecontainerapps.io";
+    private const string DefaultGateway = "https://localhost:7443";
 
     public Uri? Gateway { get; private init; }
+
+    /// <summary>Optional PEM CA used ONLY for gateway HTTPS trust in this demo.</summary>
+    public string? GatewayCaPemPath { get; private init; }
+
+    /// <summary>Skip the interactive cleanup prompt; devices stay registered unless an
+    /// explicit archive/delete option was passed.</summary>
+    public bool NonInteractive { get; private init; }
 
     public string? ActivationCodeA { get; private init; }
 
@@ -87,6 +94,8 @@ internal sealed class DemoOptions
         {
             ShowHelp = showHelp,
             Gateway = Uri.TryCreate(gateway.TrimEnd('/'), UriKind.Absolute, out var gatewayUri) ? gatewayUri : null,
+            GatewayCaPemPath = GetValue(values, "gateway-ca") ?? Environment.GetEnvironmentVariable("KRYPTONIAN_GATEWAY_CA_PEM"),
+            NonInteractive = HasFlag(values, "non-interactive"),
             ActivationCodeA = GetValue(values, "activation-code-a") ?? Environment.GetEnvironmentVariable("KRYPTONIAN_ACTIVATION_CODE_A"),
             ActivationCodeB = GetValue(values, "activation-code-b") ?? Environment.GetEnvironmentVariable("KRYPTONIAN_ACTIVATION_CODE_B"),
             AdminApiKey = GetValue(values, "admin-api-key") ?? Environment.GetEnvironmentVariable("KRYPTONIAN_ADMIN_API_KEY"),
@@ -166,7 +175,10 @@ internal sealed class DemoOptions
         Console.WriteLine("  dotnet run --project src/Kryptonian.DICOMTls -- --activation-code-a <token> --activation-code-b <token> [options]");
         Console.WriteLine();
         Console.WriteLine("Options:");
-        Console.WriteLine("  --gateway <url>             Gateway base URL.");
+        Console.WriteLine("  --gateway <url>             Gateway base URL. Default: https://localhost:7443.");
+        Console.WriteLine("  --gateway-ca <pem>          PEM CA used to trust the gateway HTTPS endpoint (EST + admin API).");
+        Console.WriteLine("                              Revocation is NoCheck for this path; DICOM peer trust is unchanged.");
+        Console.WriteLine("  --non-interactive           Leave created devices registered; no cleanup prompt.");
         Console.WriteLine("  --activation-code-a <token> Activation token for the sending device.");
         Console.WriteLine("  --activation-code-b <token> Activation token for the receiving device.");
         Console.WriteLine("  --admin-api-key <key>       Admin API key for activation creation and cleanup.");

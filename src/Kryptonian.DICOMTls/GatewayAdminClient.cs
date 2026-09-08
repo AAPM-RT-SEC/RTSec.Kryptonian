@@ -12,11 +12,23 @@ internal sealed class GatewayAdminClient : IDisposable
     private readonly HttpClient _http;
 
     public GatewayAdminClient(Uri gateway, string apiKey)
+        : this(gateway, apiKey, http: null)
+    {
+    }
+
+    public GatewayAdminClient(Uri gateway, string apiKey, HttpClient? http)
     {
         ArgumentNullException.ThrowIfNull(gateway);
         ArgumentException.ThrowIfNullOrWhiteSpace(apiKey);
 
-        _http = new HttpClient { BaseAddress = gateway };
+        // Caller-supplied client keeps gateway TLS trust identical to the EST path; when it
+        // is absent we fall back to default platform validation.
+        _http = http ?? new HttpClient { BaseAddress = gateway };
+        if (_http.BaseAddress is null)
+        {
+            _http.BaseAddress = gateway;
+        }
+
         _http.DefaultRequestHeaders.Add("X-API-Key", apiKey);
     }
 

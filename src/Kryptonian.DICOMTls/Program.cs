@@ -46,7 +46,7 @@ using var serviceProvider = new ServiceCollection()
 
 var serverFactory = serviceProvider.GetRequiredService<IDicomServerFactory>();
 var clientFactory = serviceProvider.GetRequiredService<IDicomClientFactory>();
-var estClient = new EstEnrollmentClient();
+var estClient = new EstEnrollmentClient(GatewayHttpClient.Create(options.Gateway!, options.GatewayCaPemPath));
 var adminApiKey = options.AdminApiKey;
 if (string.IsNullOrWhiteSpace(adminApiKey) && RequiresAdminApiKey(options))
 {
@@ -61,7 +61,7 @@ if (string.IsNullOrWhiteSpace(adminApiKey) && RequiresAdminApiKey(options))
 
 using var adminClient = string.IsNullOrWhiteSpace(adminApiKey)
     ? null
-    : new GatewayAdminClient(options.Gateway!, adminApiKey);
+    : new GatewayAdminClient(options.Gateway!, adminApiKey, GatewayHttpClient.Create(options.Gateway!, options.GatewayCaPemPath));
 
 Console.WriteLine("Kryptonian DICOM TLS demo");
 Console.WriteLine($"Gateway: {options.Gateway}");
@@ -123,7 +123,7 @@ try
     PrintCertificate("Device B", deviceB.Certificate);
     Console.WriteLine();
 
-    var aTrustsB = CertificateTrustValidator.Validate(deviceB.Certificate, deviceA.IssuedCertificates);
+    var aTrustsB = CertificateTrustValidator.Validate(deviceB.Certificate, deviceA.IssuedCertificates, server: true);
     var bTrustsA = CertificateTrustValidator.Validate(deviceA.Certificate, deviceB.IssuedCertificates);
     Console.WriteLine($"A trusts B through gateway CA: {FormatTrust(aTrustsB)}");
     Console.WriteLine($"B trusts A through gateway CA: {FormatTrust(bTrustsA)}");
@@ -181,6 +181,10 @@ try
     var allResponsesSucceeded = expectedSopInstanceUids.All(uid =>
         cstoreStatuses.TryGetValue(uid, out var status) && status == DicomStatus.Success);
     var allObjectsArrived = expectedSops.SequenceEqual(receivedSops, StringComparer.Ordinal);
+    var persistedSops = new List<string>();
+    foreach (var item in received)
+        persistedSops.Add((await DicomFile.OpenAsync(item.Path)).Dataset.GetSingleValue<string>(DicomTag.SOPInstanceUID));
+    allObjectsArrived &= expectedSops.SequenceEqual(persistedSops.Order(StringComparer.Ordinal), StringComparer.Ordinal);
 
     Console.WriteLine();
     Console.WriteLine($"Client TLS validation: {FormatTrustChecked(clientValidationResults.LastOrDefault())}");
@@ -206,7 +210,7 @@ try
             await CleanupCreatedDevicesAsync(adminClient, createdDevices, options.DeleteCreatedDevices);
             cleanupCompleted = true;
         }
-        else if (PromptYesNo("Are you ready to remove demo devices?"))
+        else if (!options.NonInteractive && PromptYesNo("Are you ready to remove demo devices?"))
         {
             await CleanupCreatedDevicesAsync(adminClient, createdDevices, deleteAfterArchive: true);
             cleanupCompleted = true;
@@ -291,7 +295,7 @@ static async Task<string> ProvisionActivationAsync(
 {
     var activation = await adminClient.CreateActivationAsync(displayName, validForMinutes);
     createdDevices.Add(activation);
-    PrintProvisionedActivation(activation);
+    Console.WriteLine($"Created demo device {activation.DeviceId}; activation credential withheld from automated output.");
     return activation.ActivationCode;
 }
 
@@ -455,7 +459,7 @@ static DefaultTlsInitiator CreateTlsInitiator(
         Certificates = new X509CertificateCollection { clientNode.Certificate },
         CertificateValidationCallback = (_, certificate, _, _) =>
         {
-            var result = CertificateTrustValidator.Validate(certificate, clientNode.IssuedCertificates);
+            var result = CertificateTrustValidator.Validate(certificate, clientNode.IssuedCertificates, server: true);
             validationResults.Enqueue(result);
             using var peerCertificate = certificate == null
                 ? null
