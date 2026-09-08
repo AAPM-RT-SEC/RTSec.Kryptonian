@@ -1,81 +1,101 @@
-using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
-using Org.BouncyCastle.Crypto.Generators;
-using Org.BouncyCastle.Crypto.Operators;
-using Org.BouncyCastle.Crypto.Parameters;
-using Org.BouncyCastle.Math;
-using Org.BouncyCastle.Security;
-using Org.BouncyCastle.X509;
-using Org.BouncyCastle.Asn1.X509;
 
 namespace RTSec.Kryptonian.DimseTlsProxy;
 
-// Generates (or loads from disk) the TLS server certificate presented to DICOM clients on port 4243.
-// Teams download this cert once and add it to their client trust store.
+/// <summary>
+/// Loads the proxy's TLS server certificate from configuration. The credential is issued and
+/// rotated outside this process; nothing here generates, writes, caches, or falls back to a
+/// stale copy. Every load re-reads the PFX so a replacement is picked up immediately.
+/// </summary>
 public sealed class ServerCertificateProvider
 {
-    private const string CertPath = "/certs/proxy-server.pfx";
-    private const string CertPassword = "kryptonian-proxy";
+    private const string ServerAuthOid = "1.3.6.1.5.5.7.3.1";
 
-    public X509Certificate2 Certificate { get; }
-    public string CertificatePem { get; }
+    private readonly string _path;
+    private readonly string _password;
 
-    public ServerCertificateProvider(ILogger<ServerCertificateProvider> logger)
+    public ServerCertificateProvider(IConfiguration configuration, ILogger<ServerCertificateProvider> logger)
     {
-        if (File.Exists(CertPath))
-        {
-            Certificate = new X509Certificate2(CertPath, CertPassword,
-                X509KeyStorageFlags.EphemeralKeySet | X509KeyStorageFlags.PersistKeySet);
-            logger.LogInformation("Loaded existing proxy server certificate from {Path}", CertPath);
-        }
-        else
-        {
-            Certificate = Generate();
-            Directory.CreateDirectory(Path.GetDirectoryName(CertPath)!);
-            File.WriteAllBytes(CertPath, Certificate.Export(X509ContentType.Pfx, CertPassword));
-            logger.LogInformation("Generated new proxy server certificate, saved to {Path}", CertPath);
-        }
+        _path = configuration["Proxy:ServerCertificatePath"]
+            ?? throw new InvalidOperationException("Proxy:ServerCertificatePath is required.");
+        _password = configuration["Proxy:ServerCertificatePassword"]
+            ?? throw new InvalidOperationException("Proxy:ServerCertificatePassword is required.");
 
-        CertificatePem = ToPem(Certificate.RawData);
+        // Fail fast at startup rather than on first DICOM association.
+        using var probe = LoadCertificate();
+        logger.LogInformation("Proxy server certificate loaded for {Subject}", probe.Subject);
     }
 
-    private static X509Certificate2 Generate()
+    /// <summary>Returns a fresh, caller-owned instance; the caller disposes it.</summary>
+    /// <summary>Public PEM only, read from the current on-disk credential.</summary>
+    public string CertificatePem
     {
-        var keyGen = new RsaKeyPairGenerator();
-        keyGen.Init(new RsaKeyGenerationParameters(
-            BigInteger.ValueOf(65537), new SecureRandom(), 4096, 112));
-        var keyPair = keyGen.GenerateKeyPair();
-
-        var dn = new X509Name("CN=Kryptonian DIMSE Proxy,O=Kryptonian Hackathon,C=US");
-        var serialBytes = new byte[16];
-        RandomNumberGenerator.Fill(serialBytes);
-        serialBytes[0] &= 0x7F;
-
-        var certGen = new X509V3CertificateGenerator();
-        certGen.SetSerialNumber(new BigInteger(1, serialBytes));
-        certGen.SetSubjectDN(dn);
-        certGen.SetIssuerDN(dn);
-        certGen.SetNotBefore(DateTime.UtcNow.AddDays(-1));
-        certGen.SetNotAfter(DateTime.UtcNow.AddDays(30));
-        certGen.SetPublicKey(keyPair.Public);
-        certGen.AddExtension(X509Extensions.BasicConstraints, true, new BasicConstraints(false));
-        certGen.AddExtension(X509Extensions.KeyUsage, true,
-            new KeyUsage(KeyUsage.DigitalSignature | KeyUsage.KeyEncipherment));
-
-        var bcCert = certGen.Generate(new Asn1SignatureFactory("SHA256WithRSA", keyPair.Private));
-        var certDer = bcCert.GetEncoded();
-
-        // Combine DER cert with private key into a .NET X509Certificate2 with private key
-        var rsaParams = DotNetUtilities.ToRSAParameters((RsaPrivateCrtKeyParameters)keyPair.Private);
-        using var rsa = RSA.Create();
-        rsa.ImportParameters(rsaParams);
-        var dotnetCert = new X509Certificate2(certDer);
-        return dotnetCert.CopyWithPrivateKey(rsa);
+        get
+        {
+            using var cert = LoadCertificate();
+            var b64 = Convert.ToBase64String(cert.RawData, Base64FormattingOptions.InsertLineBreaks);
+            return $"-----BEGIN CERTIFICATE-----\n{b64}\n-----END CERTIFICATE-----\n";
+        }
     }
 
-    private static string ToPem(byte[] der)
+    /// <summary>Reads the PFX anew each call. Caller owns and must dispose the result.</summary>
+    public X509Certificate2 LoadCertificate()
     {
-        var b64 = Convert.ToBase64String(der, Base64FormattingOptions.InsertLineBreaks);
-        return $"-----BEGIN CERTIFICATE-----\n{b64}\n-----END CERTIFICATE-----\n";
+        if (!File.Exists(_path))
+        {
+            throw new FileNotFoundException($"Proxy server certificate not found: {_path}");
+        }
+
+        var cert = new X509Certificate2(
+            _path, _password, OperatingSystem.IsWindows() ? X509KeyStorageFlags.UserKeySet : X509KeyStorageFlags.EphemeralKeySet);
+
+        try
+        {
+            Validate(cert);
+            return cert;
+        }
+        catch
+        {
+            cert.Dispose();
+            throw;
+        }
+    }
+
+    private void Validate(X509Certificate2 cert)
+    {
+        if (!cert.HasPrivateKey)
+        {
+            throw new InvalidOperationException($"Proxy certificate '{_path}' has no private key.");
+        }
+
+        var now = DateTime.UtcNow;
+        if (now < cert.NotBefore.ToUniversalTime())
+        {
+            throw new InvalidOperationException(
+                $"Proxy certificate '{_path}' is not valid before {cert.NotBefore:O}.");
+        }
+
+        if (now > cert.NotAfter.ToUniversalTime())
+        {
+            throw new InvalidOperationException(
+                $"Proxy certificate '{_path}' expired at {cert.NotAfter:O}; replace the file.");
+        }
+
+        var isCa = cert.Extensions.OfType<X509BasicConstraintsExtension>()
+            .Any(basic => basic.CertificateAuthority);
+        if (isCa)
+        {
+            throw new InvalidOperationException($"Proxy certificate '{_path}' is a CA certificate.");
+        }
+
+        var eku = cert.Extensions.OfType<X509EnhancedKeyUsageExtension>().SingleOrDefault();
+        var hasServerAuth = eku is not null && eku.EnhancedKeyUsages
+            .Cast<System.Security.Cryptography.Oid>()
+            .Any(o => o.Value == ServerAuthOid);
+        if (!hasServerAuth)
+        {
+            throw new InvalidOperationException(
+                $"Proxy certificate '{_path}' lacks an explicit serverAuth EKU.");
+        }
     }
 }
