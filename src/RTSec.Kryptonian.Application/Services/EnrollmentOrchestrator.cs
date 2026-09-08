@@ -157,11 +157,86 @@ public class EnrollmentOrchestrator : IEnrollmentOrchestrator
             device.Model = NormalizeOptional(activationModel);
             device.SerialNumber = NormalizeOptional(activationSerialNumber)!;
         }
-        else if (device.Status != DeviceStatus.Active)
+        else
         {
-            return await RejectEnrollmentAsync(profileId, device, csr.SubjectDn, clientIp, $"Device is {device.Status.ToString().ToLowerInvariant()}", ct);
+            return await RejectEnrollmentAsync(
+                profileId,
+                device,
+                csr.SubjectDn,
+                clientIp,
+                "Public enrollment requires pending device activation; active devices must use authenticated re-enrollment",
+                ct);
         }
 
+        return await IssueForDeviceAsync(profileId, profile, device, csr, clientIp, activationEnrollment, ct);
+    }
+
+    /// <inheritdoc />
+    public async Task<EnrollmentResult> EnrollAdminAsync(
+        Guid profileId,
+        Guid deviceRecordId,
+        byte[] csrBytes,
+        string? clientIp,
+        CancellationToken ct = default)
+    {
+        var profile = await _unitOfWork.EstProfiles.GetByIdAsync(profileId, ct);
+        if (profile == null)
+        {
+            return EnrollmentResult.Failed($"EST profile not found: {profileId}", 404);
+        }
+
+        if (!profile.IsEnabled)
+        {
+            return EnrollmentResult.Failed($"EST profile is disabled: {profileId}", 403);
+        }
+
+        var device = await _unitOfWork.Devices.GetByIdAsync(deviceRecordId, ct);
+        if (device == null)
+        {
+            return EnrollmentResult.Failed("Device not found", 404);
+        }
+
+        if (device.Status != DeviceStatus.Active || device.RemovedAt != null)
+        {
+            return EnrollmentResult.Failed("Device is not active", 403);
+        }
+
+        ParsedCsr csr;
+        try
+        {
+            csr = _pkcsService.ParsePkcs10(csrBytes);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to parse admin enrollment CSR");
+            return EnrollmentResult.Failed($"Invalid CSR: {ex.Message}", 400);
+        }
+
+        if (!_pkcsService.ValidateCsrSignature(csr))
+        {
+            _logger.LogWarning("CSR signature validation failed");
+            return EnrollmentResult.Failed("CSR signature validation failed", 400);
+        }
+
+        var csrCommonName = ExtractSubjectCommonName(csr.SubjectDn);
+        if (!string.Equals(csrCommonName?.Trim(), device.SubjectCommonName, StringComparison.OrdinalIgnoreCase))
+        {
+            return EnrollmentResult.Failed("CSR subject common name does not match the device", 403);
+        }
+
+        return await IssueForDeviceAsync(profileId, profile, device, csr, clientIp, activationEnrollment: false, ct: ct, csrSignatureValidated: true);
+    }
+
+    private async Task<EnrollmentResult> IssueForDeviceAsync(
+        Guid profileId,
+        EstProfile profile,
+        Device device,
+        ParsedCsr csr,
+        string? clientIp,
+        bool activationEnrollment,
+        CancellationToken ct,
+        bool csrSignatureValidated = false)
+    {
         // Route issuance through the backend this EST profile is bound to. The globally
         // active backend is an admin/dashboard concept; using it here would let one
         // profile silently issue from another profile's CA.
@@ -172,7 +247,7 @@ public class EnrollmentOrchestrator : IEnrollmentOrchestrator
         }
 
         // Validate CSR signature
-        if (!_pkcsService.ValidateCsrSignature(csr))
+        if (!csrSignatureValidated && !_pkcsService.ValidateCsrSignature(csr))
         {
             _logger.LogWarning("CSR signature validation failed");
             return EnrollmentResult.Failed("CSR signature validation failed", 400);
@@ -447,13 +522,18 @@ public class EnrollmentOrchestrator : IEnrollmentOrchestrator
         }
 
         var existingThumbprint = NormalizeThumbprint(existingCert.GetCertHashString());
-        var existingDbCert = await _unitOfWork.Certificates.GetByThumbprintAsync(existingThumbprint, ct)
-            ?? await _unitOfWork.Certificates.GetBySerialNumberAsync(existingCert.SerialNumber, ct);
+        var existingDbCert = await _unitOfWork.Certificates.GetByThumbprintAsync(existingThumbprint, ct);
 
         if (existingDbCert == null)
         {
             return await RejectReenrollmentAsync(existingCert.Subject, existingSubjectCn, clientIp,
                 "Certificate is not registered for re-enrollment", 403, ct);
+        }
+
+        if (!MatchesStoredCertificate(existingDbCert, existingCert))
+        {
+            return await RejectReenrollmentAsync(existingCert.Subject, existingSubjectCn, clientIp,
+                "Presented certificate does not match the registered certificate", 403, ct);
         }
 
         if (existingDbCert.EstProfileId != profileId)
@@ -486,7 +566,13 @@ public class EnrollmentOrchestrator : IEnrollmentOrchestrator
                 "Certificate is not yet valid", 403, ct);
         }
 
-        var device = await ResolveDeviceForCertificateAsync(existingDbCert, existingCert, ct);
+        if (!existingDbCert.DeviceRecordId.HasValue)
+        {
+            return await RejectReenrollmentAsync(existingCert.Subject, existingSubjectCn, clientIp,
+                "Certificate does not map to a registered device", 403, ct);
+        }
+
+        var device = await _unitOfWork.Devices.GetByIdAsync(existingDbCert.DeviceRecordId.Value, ct);
         if (device == null)
         {
             return await RejectReenrollmentAsync(existingCert.Subject, existingSubjectCn, clientIp,
@@ -639,27 +725,23 @@ public class EnrollmentOrchestrator : IEnrollmentOrchestrator
         }
     }
 
-    private async Task<Device?> ResolveDeviceForCertificateAsync(
-        Certificate certificate,
-        X509Certificate2 presentedCertificate,
-        CancellationToken ct)
+    private static bool MatchesStoredCertificate(Certificate certificate, X509Certificate2 presentedCertificate)
     {
-        if (certificate.DeviceRecordId.HasValue)
+        if (string.IsNullOrWhiteSpace(certificate.CertificateDerBase64))
         {
-            var deviceById = await _unitOfWork.Devices.GetByIdAsync(certificate.DeviceRecordId.Value, ct);
-            if (deviceById != null)
-            {
-                return deviceById;
-            }
+            return true;
         }
 
-        var commonName = ExtractSubjectCommonName(certificate.SubjectDn)
-            ?? (!string.IsNullOrWhiteSpace(certificate.DeviceId) ? certificate.DeviceId : null)
-            ?? ExtractSubjectCommonName(presentedCertificate.Subject);
-
-        return string.IsNullOrWhiteSpace(commonName)
-            ? null
-            : await _unitOfWork.Devices.GetBySubjectCommonNameAsync(commonName, ct);
+        try
+        {
+            return CryptographicOperations.FixedTimeEquals(
+                Convert.FromBase64String(certificate.CertificateDerBase64),
+                presentedCertificate.RawData);
+        }
+        catch (FormatException)
+        {
+            return false;
+        }
     }
 
     private async Task<EnrollmentResult> RejectEnrollmentAsync(

@@ -115,18 +115,18 @@ public class EstController : ControllerBase
                 return EstError(StatusCodes.Status404NotFound, "EST profile not found");
             }
 
-            // Validate profile requires client cert (if configured)
+            // A presented certificate is always validated; profile configuration only
+            // controls whether one is required for bootstrap enrollment.
             var profile = await _unitOfWork.EstProfiles.GetByIdAsync(profileId.Value, ct);
-            if (profile?.RequireClientCertificate == true)
+            var clientCert = GetClientCertificate();
+            if (profile?.RequireClientCertificate == true && clientCert == null)
             {
-                var clientCert = GetClientCertificate();
-                if (clientCert == null)
-                {
-                    _logger.LogWarning("Client certificate required but not provided for profile {ProfileId}", profileId);
-                    return EstError(StatusCodes.Status401Unauthorized, "Client certificate required");
-                }
+                _logger.LogWarning("Client certificate required but not provided for profile {ProfileId}", profileId);
+                return EstError(StatusCodes.Status401Unauthorized, "Client certificate required");
+            }
 
-                // Validate client certificate chain if configured
+            if (clientCert != null && profile != null)
+            {
                 var validationResult = ValidateClientCertificate(clientCert, profile);
                 if (!validationResult.IsValid)
                 {

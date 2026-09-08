@@ -213,7 +213,7 @@ public class DeviceService : IDeviceService
             ?? throw new InvalidOperationException("The profile CA backend was not found.");
 
         var (csr, privateKeyPem) = CreateDemoCsr(device.SubjectCommonName);
-        var result = await _orchestrator.EnrollAsync(profileId, csr, device.SubjectCommonName, "demo-ui", ct);
+        var result = await _orchestrator.EnrollAdminAsync(profileId, device.Id, csr, clientIp: null, ct: ct);
         if (!result.Success || result.EnrollmentEventId == null)
         {
             throw new InvalidOperationException(result.ErrorMessage ?? "Demo enrollment failed.");

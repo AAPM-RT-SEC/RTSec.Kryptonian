@@ -283,6 +283,36 @@ public class EstControllerTests
     }
 
     [Fact]
+    public async Task SimpleEnrollWithOptionalExpiredClientCertificateReturns403BeforeCsrDecode()
+    {
+        var profileId = Guid.NewGuid();
+        var testProfile = CreateTestProfile(profileId, requireClientCert: false);
+        using var clientCert = CreateClientCertificate(
+            "TestDevice",
+            DateTimeOffset.UtcNow.AddDays(-2),
+            DateTimeOffset.UtcNow.AddDays(-1));
+        _sut.HttpContext.Connection.ClientCertificate = clientCert;
+
+        _estProfileRepoMock
+            .Setup(r => r.GetByPathAndHostnameAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(testProfile);
+        _estProfileRepoMock
+            .Setup(r => r.GetByIdAsync(profileId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(testProfile);
+
+        var result = await _sut.SimpleEnroll(null, CancellationToken.None);
+
+        var forbidden = result.Should().BeOfType<ObjectResult>().Subject;
+        forbidden.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+        _pkcsServiceMock.Verify(p => p.DecodeEstRequestBodyAsync(
+            It.IsAny<Stream>(), It.IsAny<string?>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
+        _orchestratorMock.Verify(o => o.EnrollAsync(
+            It.IsAny<Guid>(), It.IsAny<byte[]>(), It.IsAny<string?>(), It.IsAny<string?>(),
+            It.IsAny<CancellationToken>(), It.IsAny<string?>(), It.IsAny<string?>(),
+            It.IsAny<string?>(), It.IsAny<string?>()), Times.Never);
+    }
+
+    [Fact]
     public async Task SimpleEnrollWithInvalidCsrReturns400()
     {
         // Arrange
@@ -644,7 +674,10 @@ public class EstControllerTests
         return request.CreateSigningRequest();
     }
 
-    private static X509Certificate2 CreateClientCertificate(string commonName)
+    private static X509Certificate2 CreateClientCertificate(
+        string commonName,
+        DateTimeOffset? notBefore = null,
+        DateTimeOffset? notAfter = null)
     {
         using var rsa = RSA.Create(2048);
         var request = new CertificateRequest(
@@ -654,8 +687,8 @@ public class EstControllerTests
             RSASignaturePadding.Pkcs1);
 
         var cert = request.CreateSelfSigned(
-            DateTimeOffset.UtcNow.AddMinutes(-5),
-            DateTimeOffset.UtcNow.AddYears(1));
+            notBefore ?? DateTimeOffset.UtcNow.AddMinutes(-5),
+            notAfter ?? DateTimeOffset.UtcNow.AddYears(1));
 
         return new X509Certificate2(
             cert.Export(X509ContentType.Pfx, "test"),
