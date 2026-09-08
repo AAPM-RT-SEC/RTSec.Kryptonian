@@ -141,6 +141,49 @@ public class EnrollmentOrchestratorTests : IDisposable
             .WithMessage("*disabled*");
     }
 
+    [Fact]
+    public async Task GetCaCertsReturnsProfileBackendCaEvenWhenADifferentBackendIsActive()
+    {
+        // Arrange
+        var profileId = Guid.NewGuid();
+        var profileBackendId = Guid.NewGuid();
+        var profile = CreateEstProfile(profileId, profileBackendId);
+        var profileBackend = CreateCaBackend(profileBackendId);
+        var activeBackend = CreateCaBackend(Guid.NewGuid());
+        activeBackend.Name = "Unrelated Active CA";
+        activeBackend.IsActive = true;
+        var caCerts = new[] { _testCert };
+
+        _estProfileRepoMock
+            .Setup(r => r.GetByIdAsync(profileId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(profile);
+
+        SetupActiveBackend(activeBackend);
+        _caBackendRepoMock
+            .Setup(r => r.GetByIdAsync(profileBackendId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(profileBackend);
+
+        _connectorFactoryMock
+            .Setup(f => f.CreateConnector(profileBackend))
+            .Returns(_connectorMock.Object);
+
+        _connectorMock
+            .Setup(c => c.GetCaCertificatesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(caCerts);
+
+        _pkcsServiceMock
+            .Setup(p => p.EncodeToPkcs7(caCerts))
+            .Returns(new byte[] { 0x30 });
+
+        // Act
+        await _sut.GetCaCertsAsync(profileId);
+
+        // Assert: the profile's own CA answered, and the global lookup was never consulted.
+        _connectorFactoryMock.Verify(f => f.CreateConnector(profileBackend), Times.Once);
+        _connectorFactoryMock.Verify(f => f.CreateConnector(activeBackend), Times.Never);
+        _caBackendRepoMock.Verify(r => r.GetActiveAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
     #endregion
 
     #region EnrollAsync Tests
@@ -366,7 +409,7 @@ public class EnrollmentOrchestratorTests : IDisposable
             .ReturnsAsync(profile);
 
         _caBackendRepoMock
-            .Setup(r => r.GetActiveAsync(It.IsAny<CancellationToken>()))
+            .Setup(r => r.GetByIdAsync(backend.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(backend);
 
         _deviceRepoMock
@@ -434,7 +477,7 @@ public class EnrollmentOrchestratorTests : IDisposable
             .ReturnsAsync(profile);
 
         _caBackendRepoMock
-            .Setup(r => r.GetActiveAsync(It.IsAny<CancellationToken>()))
+            .Setup(r => r.GetByIdAsync(backend.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(backend);
 
         _deviceRepoMock
@@ -495,15 +538,17 @@ public class EnrollmentOrchestratorTests : IDisposable
     }
 
     [Fact]
-    public async Task EnrollAsyncRoutesToActiveBackendInsteadOfProfileBackend()
+    public async Task EnrollAsyncRoutesToProfileBackendEvenWhenADifferentBackendIsActive()
     {
         // Arrange
         var profileId = Guid.NewGuid();
         var profileBackendId = Guid.NewGuid();
         var activeBackendId = Guid.NewGuid();
         var profile = CreateEstProfile(profileId, profileBackendId);
+        var profileBackend = CreateCaBackend(profileBackendId);
+        profileBackend.Name = "Profile CA";
         var activeBackend = CreateCaBackend(activeBackendId);
-        activeBackend.Name = "Active CA";
+        activeBackend.Name = "Unrelated Active CA";
         activeBackend.IsActive = true;
         var csrBytes = CreateTestCsrBytes();
         var parsedCsr = new ParsedCsr { SubjectDn = "CN=TestDevice", RawData = csrBytes };
@@ -512,7 +557,15 @@ public class EnrollmentOrchestratorTests : IDisposable
             .Setup(r => r.GetByIdAsync(profileId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(profile);
 
-        SetupActiveDeviceAndBackend(activeBackend);
+        // The globally active backend is a different, conflicting CA.
+        SetupActiveBackend(activeBackend);
+        _caBackendRepoMock
+            .Setup(r => r.GetByIdAsync(profileBackendId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(profileBackend);
+
+        _deviceRepoMock
+            .Setup(r => r.GetBySubjectCommonNameAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CreateActiveDevice("TestDevice"));
 
         _pkcsServiceMock
             .Setup(p => p.ParsePkcs10(csrBytes))
@@ -523,7 +576,7 @@ public class EnrollmentOrchestratorTests : IDisposable
             .Returns(true);
 
         _connectorFactoryMock
-            .Setup(f => f.CreateConnector(activeBackend))
+            .Setup(f => f.CreateConnector(profileBackend))
             .Returns(_connectorMock.Object);
 
         _connectorMock
@@ -545,13 +598,90 @@ public class EnrollmentOrchestratorTests : IDisposable
         // Act
         var result = await _sut.EnrollAsync(profileId, csrBytes, null, null);
 
-        // Assert
+        // Assert: issuance used the profile's own CA, never the globally active one.
         result.Success.Should().BeTrue();
-        _connectorFactoryMock.Verify(f => f.CreateConnector(activeBackend), Times.Once);
-        _caBackendRepoMock.Verify(r => r.GetByIdAsync(profileBackendId, It.IsAny<CancellationToken>()), Times.Never);
+        _connectorFactoryMock.Verify(f => f.CreateConnector(profileBackend), Times.Once);
+        _connectorFactoryMock.Verify(f => f.CreateConnector(activeBackend), Times.Never);
+        _caBackendRepoMock.Verify(r => r.GetActiveAsync(It.IsAny<CancellationToken>()), Times.Never);
         _certificateRepoMock.Verify(r => r.Add(It.Is<Certificate>(
-            c => c.CaBackendId == activeBackendId &&
+            c => c.CaBackendId == profileBackendId &&
                  c.CaBackendType == "selfsigned")), Times.Once);
+    }
+
+    [Fact]
+    public async Task EnrollAsyncWhenProfileBackendMissingReturns503WithoutConsultingActiveBackend()
+    {
+        // Arrange
+        var profileId = Guid.NewGuid();
+        var missingBackendId = Guid.NewGuid();
+        var profile = CreateEstProfile(profileId, missingBackendId);
+        var unrelatedActive = CreateCaBackend(Guid.NewGuid());
+        var csrBytes = CreateTestCsrBytes();
+        var parsedCsr = new ParsedCsr { SubjectDn = "CN=TestDevice", RawData = csrBytes };
+
+        _estProfileRepoMock
+            .Setup(r => r.GetByIdAsync(profileId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(profile);
+
+        SetupActiveDeviceAndBackend(unrelatedActive);
+
+        _pkcsServiceMock
+            .Setup(p => p.ParsePkcs10(csrBytes))
+            .Returns(parsedCsr);
+
+        _pkcsServiceMock
+            .Setup(p => p.ValidateCsrSignature(parsedCsr))
+            .Returns(true);
+
+        // Act
+        var result = await _sut.EnrollAsync(profileId, csrBytes, null, null);
+
+        // Assert: no silent failover to the active backend.
+        result.Success.Should().BeFalse();
+        result.StatusCode.Should().Be(503);
+        result.ErrorMessage.Should().Contain("EST profile");
+        _connectorFactoryMock.Verify(f => f.CreateConnector(It.IsAny<CaBackend>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task EnrollAsyncWhenProfileBackendDisabledReturns503()
+    {
+        // Arrange
+        var profileId = Guid.NewGuid();
+        var backendId = Guid.NewGuid();
+        var profile = CreateEstProfile(profileId, backendId);
+        var disabledBackend = CreateCaBackend(backendId, isEnabled: false);
+        var csrBytes = CreateTestCsrBytes();
+        var parsedCsr = new ParsedCsr { SubjectDn = "CN=TestDevice", RawData = csrBytes };
+
+        _estProfileRepoMock
+            .Setup(r => r.GetByIdAsync(profileId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(profile);
+
+        _caBackendRepoMock
+            .Setup(r => r.GetByIdAsync(backendId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(disabledBackend);
+
+        _deviceRepoMock
+            .Setup(r => r.GetBySubjectCommonNameAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CreateActiveDevice("TestDevice"));
+
+        _pkcsServiceMock
+            .Setup(p => p.ParsePkcs10(csrBytes))
+            .Returns(parsedCsr);
+
+        _pkcsServiceMock
+            .Setup(p => p.ValidateCsrSignature(parsedCsr))
+            .Returns(true);
+
+        // Act
+        var result = await _sut.EnrollAsync(profileId, csrBytes, null, null);
+
+        // Assert
+        result.Success.Should().BeFalse();
+        result.StatusCode.Should().Be(503);
+        result.ErrorMessage.Should().Contain("disabled");
+        _connectorFactoryMock.Verify(f => f.CreateConnector(It.IsAny<CaBackend>()), Times.Never);
     }
 
     [Fact]
@@ -671,7 +801,7 @@ public class EnrollmentOrchestratorTests : IDisposable
             .Setup(r => r.GetByIdAsync(device.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(device);
 
-        SetupActiveBackend(backend);
+        SetupProfileBackend(backend);
 
         _pkcsServiceMock
             .Setup(p => p.ParsePkcs10(csrBytes))
@@ -907,15 +1037,31 @@ public class EnrollmentOrchestratorTests : IDisposable
         };
     }
 
+    /// <summary>
+    /// Stubs the backend resolved via <see cref="EstProfile.CaBackendId"/> (GetByIdAsync) and an
+    /// active device. Enrollment no longer consults the globally active backend, so this is the
+    /// only backend stub production code will observe.
+    /// </summary>
+    private void SetupProfileBackend(CaBackend backend)
+    {
+        _caBackendRepoMock
+            .Setup(r => r.GetByIdAsync(backend.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(backend);
+    }
+
     private void SetupActiveDeviceAndBackend(CaBackend backend)
     {
-        SetupActiveBackend(backend);
+        SetupProfileBackend(backend);
 
         _deviceRepoMock
             .Setup(r => r.GetBySubjectCommonNameAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(CreateActiveDevice("TestDevice"));
     }
 
+    /// <summary>
+    /// Stubs a conflicting globally active backend. Used only by tests that must prove
+    /// enrollment ignores it.
+    /// </summary>
     private void SetupActiveBackend(CaBackend backend)
     {
         backend.IsActive = true;

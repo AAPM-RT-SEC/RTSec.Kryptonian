@@ -51,8 +51,10 @@ public class EnrollmentOrchestrator : IEnrollmentOrchestrator
             throw new InvalidOperationException($"EST profile is disabled: {profileId}");
         }
 
-        var backend = await _unitOfWork.CaBackends.GetActiveAsync(ct)
-            ?? await _unitOfWork.CaBackends.GetByIdAsync(profile.CaBackendId, ct);
+        // The profile owns its issuer. Resolve it by id rather than falling back to
+        // whichever backend happens to be globally active, so /cacerts always returns
+        // the CA that will actually sign for this profile.
+        var backend = await _unitOfWork.CaBackends.GetByIdAsync(profile.CaBackendId, ct);
         if (backend == null)
         {
             throw new InvalidOperationException($"CA backend not found: {profile.CaBackendId}");
@@ -160,18 +162,13 @@ public class EnrollmentOrchestrator : IEnrollmentOrchestrator
             return await RejectEnrollmentAsync(profileId, device, csr.SubjectDn, clientIp, $"Device is {device.Status.ToString().ToLowerInvariant()}", ct);
         }
 
-        // Validate active CA backend. EST profiles keep legacy metadata, but device enrollment routes to the active backend.
-        var backend = await _unitOfWork.CaBackends.GetActiveAsync(ct);
-        if (backend == null)
+        // Route issuance through the backend this EST profile is bound to. The globally
+        // active backend is an admin/dashboard concept; using it here would let one
+        // profile silently issue from another profile's CA.
+        var (backend, backendError) = await ResolveProfileBackendAsync(profile, ct);
+        if (backendError != null)
         {
-            _logger.LogError("No active CA backend configured for profile {ProfileId}", profileId);
-            return EnrollmentResult.Failed("No active CA backend configured", 503);
-        }
-
-        if (!backend.IsEnabled)
-        {
-            _logger.LogWarning("Active CA backend is disabled: {BackendId}", backend.Id);
-            return EnrollmentResult.Failed("Active CA backend is disabled", 503);
+            return backendError;
         }
 
         // Validate CSR signature
@@ -378,6 +375,36 @@ public class EnrollmentOrchestrator : IEnrollmentOrchestrator
     private static string? NormalizeOptional(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
+    /// <summary>
+    /// Resolves the CA backend an EST profile is bound to via <see cref="EstProfile.CaBackendId"/>.
+    /// Returns a failed <see cref="EnrollmentResult"/> in the second slot when the backend is
+    /// missing or disabled, so callers can surface it directly. The globally active backend is
+    /// never consulted: enrollment must be issued by the CA the profile points at.
+    /// </summary>
+    private async Task<(CaBackend? Backend, EnrollmentResult? Error)> ResolveProfileBackendAsync(
+        EstProfile profile,
+        CancellationToken ct)
+    {
+        var backend = await _unitOfWork.CaBackends.GetByIdAsync(profile.CaBackendId, ct);
+        if (backend == null)
+        {
+            _logger.LogError(
+                "EST profile {ProfileId} references a CA backend that does not exist: {BackendId}",
+                profile.Id, profile.CaBackendId);
+            return (null, EnrollmentResult.Failed("CA backend configured for this EST profile not found", 503));
+        }
+
+        if (!backend.IsEnabled)
+        {
+            _logger.LogWarning(
+                "CA backend {BackendId} bound to EST profile {ProfileId} is disabled",
+                backend.Id, profile.Id);
+            return (null, EnrollmentResult.Failed("CA backend configured for this EST profile is disabled", 503));
+        }
+
+        return (backend, null);
+    }
+
     /// <inheritdoc />
     public async Task<EnrollmentResult> ReenrollAsync(
         Guid profileId,
@@ -499,17 +526,10 @@ public class EnrollmentOrchestrator : IEnrollmentOrchestrator
                 "CSR subject common name does not match the existing device", 403, ct);
         }
 
-        var backend = await _unitOfWork.CaBackends.GetActiveAsync(ct);
-        if (backend == null)
+        var (backend, backendError) = await ResolveProfileBackendAsync(profile, ct);
+        if (backendError != null)
         {
-            _logger.LogError("No active CA backend configured for profile {ProfileId}", profileId);
-            return EnrollmentResult.Failed("No active CA backend configured", 503);
-        }
-
-        if (!backend.IsEnabled)
-        {
-            _logger.LogWarning("Active CA backend is disabled: {BackendId}", backend.Id);
-            return EnrollmentResult.Failed("Active CA backend is disabled", 503);
+            return backendError;
         }
 
         if (!_pkcsService.ValidateCsrSignature(csr))
