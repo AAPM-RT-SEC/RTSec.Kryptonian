@@ -413,6 +413,16 @@ public sealed class EstEnrollmentClient
 
         var leaf = FindLeafCertificate(signedCms.Certificates, privateKey);
         var certificate = leaf.CopyWithPrivateKey(privateKey);
+        if (OperatingSystem.IsWindows())
+        {
+            // Schannel cannot acquire credentials from an ephemeral attached RSA key.
+            // A temporary OS-backed import is cleaned up with the certificate, unless
+            // the caller explicitly persists it to the user's certificate store.
+            var password = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
+            using var ephemeral = certificate;
+            certificate = X509CertificateLoader.LoadPkcs12(ephemeral.Export(X509ContentType.Pfx, password), password,
+                X509KeyStorageFlags.UserKeySet | X509KeyStorageFlags.Exportable);
+        }
         var issuedCertificates = new X509Certificate2Collection();
         foreach (var cert in signedCms.Certificates)
         {
