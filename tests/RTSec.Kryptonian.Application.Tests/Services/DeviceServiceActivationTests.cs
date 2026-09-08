@@ -60,6 +60,30 @@ public class DeviceServiceActivationTests
     }
 
     [Fact]
+    public async Task CreateAsyncPreservesPreassignedInventoryIdentity()
+    {
+        Device? created = null;
+        _deviceRepoMock.Setup(r => r.Add(It.IsAny<Device>()))
+            .Callback<Device>(device => created = device);
+
+        var result = await CreateSut().CreateAsync(new DeviceCreateDto
+        {
+            DisplayName = "CT Scanner",
+            SubjectCommonName = "ct-01.hospital.example",
+            Manufacturer = "Acme",
+            Model = "CT-1",
+            SerialNumber = "INV-001"
+        });
+
+        created.Should().NotBeNull();
+        created!.SubjectCommonName.Should().Be("ct-01.hospital.example");
+        created.Manufacturer.Should().Be("Acme");
+        created.Model.Should().Be("CT-1");
+        created.SerialNumber.Should().Be("INV-001");
+        result.SubjectCommonName.Should().Be("ct-01.hospital.example");
+    }
+
+    [Fact]
     public async Task GenerateActivationCodeAsyncRejectsInvalidLifetime()
     {
         var device = new Device

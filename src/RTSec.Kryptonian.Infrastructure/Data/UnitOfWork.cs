@@ -1,4 +1,6 @@
 using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.EntityFrameworkCore;
+using RTSec.Kryptonian.Domain.Entities;
 using RTSec.Kryptonian.Domain.Interfaces;
 using RTSec.Kryptonian.Infrastructure.Repositories;
 
@@ -65,6 +67,19 @@ public class UnitOfWork : IUnitOfWork
     public async Task<int> SaveChangesAsync(CancellationToken ct = default)
     {
         return await _context.SaveChangesAsync(ct);
+    }
+
+    public async Task<bool> TryConsumeActivationCodeAsync(Device device, CancellationToken ct = default)
+    {
+        try
+        {
+            await _context.SaveChangesAsync(ct);
+            return true;
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return false;
+        }
     }
 
     public async Task BeginTransactionAsync(CancellationToken ct = default)

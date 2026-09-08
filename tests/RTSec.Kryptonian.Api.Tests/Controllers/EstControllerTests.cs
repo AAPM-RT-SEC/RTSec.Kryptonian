@@ -214,6 +214,7 @@ public class EstControllerTests
         var csrBytes = CreateTestCsrBytes();
 
         _sut.HttpContext.Request.Body = new MemoryStream(Encoding.ASCII.GetBytes(Convert.ToBase64String(csrBytes)));
+        _sut.HttpContext.Request.Headers["X-Activation-Code"] = "ACTIVATE123";
 
         _estProfileRepoMock
             .Setup(r => r.GetByPathAndHostnameAsync("/.well-known/est", "localhost", It.IsAny<CancellationToken>()))
@@ -256,6 +257,7 @@ public class EstControllerTests
         // Setup request body
         var bodyStream = new MemoryStream(Encoding.ASCII.GetBytes(Convert.ToBase64String(csrBytes)));
         _sut.HttpContext.Request.Body = bodyStream;
+        _sut.HttpContext.Request.Headers["X-Activation-Code"] = "ACTIVATE123";
 
         _estProfileRepoMock
             .Setup(r => r.GetByPathAndHostnameAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
@@ -280,6 +282,112 @@ public class EstControllerTests
         var fileResult = result.Should().BeOfType<FileContentResult>().Subject;
         fileResult.ContentType.Should().Be(Pkcs7MimeType);
         fileResult.FileContents.Should().BeEquivalentTo(pkcs7Response);
+    }
+
+    [Fact]
+    public async Task SimpleEnrollWithBasicBootstrapCredentialsPassesUuidAndCodeWithoutPrivateMetadataHeaders()
+    {
+        var profileId = Guid.NewGuid();
+        var deviceId = Guid.NewGuid();
+        var activationCode = "ACTIVATE123";
+        var testProfile = CreateTestProfile(profileId, requireClientCert: false);
+        var csrBytes = CreateTestCsrBytes();
+        _sut.HttpContext.Request.Scheme = "https";
+        _sut.HttpContext.Request.Headers.Authorization = "Basic " + Convert.ToBase64String(
+            Encoding.UTF8.GetBytes($"{deviceId:D}:{activationCode}"));
+
+        _estProfileRepoMock
+            .Setup(r => r.GetByPathAndHostnameAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(testProfile);
+        _estProfileRepoMock
+            .Setup(r => r.GetByIdAsync(profileId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(testProfile);
+        _pkcsServiceMock
+            .Setup(p => p.DecodeEstRequestBodyAsync(It.IsAny<Stream>(), It.IsAny<string?>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(csrBytes);
+        _orchestratorMock
+            .Setup(o => o.EnrollAsync(
+                profileId,
+                csrBytes,
+                deviceId.ToString("D"),
+                It.IsAny<string?>(),
+                It.IsAny<CancellationToken>(),
+                activationCode,
+                null,
+                null,
+                null))
+            .ReturnsAsync(EnrollmentResult.Successful(new byte[] { 0x30 }, Guid.NewGuid()));
+
+        var result = await _sut.SimpleEnroll(null, CancellationToken.None);
+
+        result.Should().BeOfType<FileContentResult>();
+        _orchestratorMock.VerifyAll();
+    }
+
+    [Fact]
+    public async Task SimpleEnrollWithMalformedBasicCredentialsReturns401BeforeCsrDecode()
+    {
+        var profileId = Guid.NewGuid();
+        var testProfile = CreateTestProfile(profileId, requireClientCert: false);
+        _sut.HttpContext.Request.Scheme = "https";
+        _sut.HttpContext.Request.Headers.Authorization = "Basic not-base64";
+
+        _estProfileRepoMock
+            .Setup(r => r.GetByPathAndHostnameAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(testProfile);
+        _estProfileRepoMock
+            .Setup(r => r.GetByIdAsync(profileId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(testProfile);
+
+        var result = await _sut.SimpleEnroll(null, CancellationToken.None);
+
+        result.Should().BeOfType<UnauthorizedObjectResult>();
+        _sut.HttpContext.Response.Headers["WWW-Authenticate"].ToString().Should().Contain("Basic");
+        _pkcsServiceMock.Verify(p => p.DecodeEstRequestBodyAsync(
+            It.IsAny<Stream>(), It.IsAny<string?>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task SimpleEnrollWithoutActivationCredentialsReturnsBasicChallengeBeforeCsrDecode()
+    {
+        var profileId = Guid.NewGuid();
+        var testProfile = CreateTestProfile(profileId, requireClientCert: false);
+        _estProfileRepoMock
+            .Setup(r => r.GetByPathAndHostnameAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(testProfile);
+        _estProfileRepoMock
+            .Setup(r => r.GetByIdAsync(profileId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(testProfile);
+
+        var result = await _sut.SimpleEnroll(null, CancellationToken.None);
+
+        result.Should().BeOfType<UnauthorizedObjectResult>();
+        _sut.HttpContext.Response.Headers["WWW-Authenticate"].ToString().Should().Contain("Basic");
+        _pkcsServiceMock.Verify(p => p.DecodeEstRequestBodyAsync(
+            It.IsAny<Stream>(), It.IsAny<string?>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task SimpleEnrollWithBasicCredentialsOverHttpReturns403BeforeCsrDecode()
+    {
+        var profileId = Guid.NewGuid();
+        var testProfile = CreateTestProfile(profileId, requireClientCert: false);
+        _sut.HttpContext.Request.Headers.Authorization = "Basic " + Convert.ToBase64String(
+            Encoding.UTF8.GetBytes($"{Guid.NewGuid():D}:ACTIVATE123"));
+
+        _estProfileRepoMock
+            .Setup(r => r.GetByPathAndHostnameAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(testProfile);
+        _estProfileRepoMock
+            .Setup(r => r.GetByIdAsync(profileId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(testProfile);
+
+        var result = await _sut.SimpleEnroll(null, CancellationToken.None);
+
+        var forbidden = result.Should().BeOfType<ObjectResult>().Subject;
+        forbidden.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+        _pkcsServiceMock.Verify(p => p.DecodeEstRequestBodyAsync(
+            It.IsAny<Stream>(), It.IsAny<string?>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -318,6 +426,7 @@ public class EstControllerTests
         // Arrange
         var profileId = Guid.NewGuid();
         var testProfile = CreateTestProfile(profileId, requireClientCert: false);
+        _sut.HttpContext.Request.Headers["X-Activation-Code"] = "ACTIVATE123";
 
         _estProfileRepoMock
             .Setup(r => r.GetByPathAndHostnameAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
@@ -365,6 +474,7 @@ public class EstControllerTests
 
         var bodyStream = new MemoryStream(Encoding.ASCII.GetBytes(Convert.ToBase64String(csrBytes)));
         _sut.HttpContext.Request.Body = bodyStream;
+        _sut.HttpContext.Request.Headers["X-Activation-Code"] = "ACTIVATE123";
 
         _estProfileRepoMock
             .Setup(r => r.GetByPathAndHostnameAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
@@ -396,6 +506,7 @@ public class EstControllerTests
         // Arrange
         var profileId = Guid.NewGuid();
         var testProfile = CreateTestProfile(profileId, requireClientCert: false);
+        _sut.HttpContext.Request.Headers["X-Activation-Code"] = "ACTIVATE123";
 
         _estProfileRepoMock
             .Setup(r => r.GetByPathAndHostnameAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
@@ -427,6 +538,7 @@ public class EstControllerTests
 
         var bodyStream = new MemoryStream(Encoding.ASCII.GetBytes(Convert.ToBase64String(csrBytes)));
         _sut.HttpContext.Request.Body = bodyStream;
+        _sut.HttpContext.Request.Headers["X-Activation-Code"] = "ACTIVATE123";
 
         _estProfileRepoMock
             .Setup(r => r.GetByPathAndHostnameAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))

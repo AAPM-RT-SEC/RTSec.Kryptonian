@@ -45,6 +45,7 @@ public class DeviceConfiguration : IEntityTypeConfiguration<Device>
 
         builder.Property(e => e.ActivationCodeHash)
             .HasColumnName("activation_code_hash")
+            .IsConcurrencyToken()
             .HasMaxLength(64);
 
         builder.Property(e => e.ActivationCodeExpiresAt)

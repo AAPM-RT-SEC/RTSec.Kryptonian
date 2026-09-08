@@ -48,6 +48,9 @@ public class EnrollmentOrchestratorTests : IDisposable
         _unitOfWorkMock.Setup(u => u.Devices).Returns(_deviceRepoMock.Object);
         _unitOfWorkMock.Setup(u => u.EnrollmentEvents).Returns(_enrollmentEventRepoMock.Object);
         _unitOfWorkMock.Setup(u => u.Certificates).Returns(_certificateRepoMock.Object);
+        _unitOfWorkMock
+            .Setup(u => u.TryConsumeActivationCodeAsync(It.IsAny<Device>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
 
         _testCert = CreateTestCertificate();
 
@@ -417,6 +420,115 @@ public class EnrollmentOrchestratorTests : IDisposable
     }
 
     [Fact]
+    public async Task EnrollAsyncWithBasicDeviceIdAndWrongActivationCodeRejectsBeforeConnectorDispatch()
+    {
+        var profileId = Guid.NewGuid();
+        var profile = CreateEstProfile(profileId, Guid.NewGuid());
+        var csrBytes = new byte[] { 1, 2, 3 };
+        var parsedCsr = new ParsedCsr { SubjectDn = "CN=InventoryScanner", RawData = csrBytes };
+        var device = CreatePendingDevice("InventoryScanner", "INV-001", "ACTIVATE123");
+
+        _estProfileRepoMock.Setup(r => r.GetByIdAsync(profileId, It.IsAny<CancellationToken>())).ReturnsAsync(profile);
+        _deviceRepoMock.Setup(r => r.GetByIdAsync(device.Id, It.IsAny<CancellationToken>())).ReturnsAsync(device);
+        _deviceRepoMock.Setup(r => r.GetBySubjectCommonNameAsync("InventoryScanner", It.IsAny<CancellationToken>())).ReturnsAsync(device);
+        _pkcsServiceMock.Setup(p => p.ParsePkcs10(csrBytes)).Returns(parsedCsr);
+
+        var result = await _sut.EnrollAsync(
+            profileId,
+            csrBytes,
+            device.Id.ToString("D"),
+            null,
+            activationCode: "WRONG-CODE");
+
+        result.StatusCode.Should().Be(403);
+        result.ErrorMessage.Should().Contain("Invalid activation code");
+        _connectorFactoryMock.Verify(f => f.CreateConnector(It.IsAny<CaBackend>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task EnrollAsyncWithBasicDeviceIdAndExpiredActivationCodeRejectsBeforeConnectorDispatch()
+    {
+        var profileId = Guid.NewGuid();
+        var profile = CreateEstProfile(profileId, Guid.NewGuid());
+        var csrBytes = new byte[] { 1, 2, 3 };
+        var parsedCsr = new ParsedCsr { SubjectDn = "CN=InventoryScanner", RawData = csrBytes };
+        var device = CreatePendingDevice("InventoryScanner", "INV-001", "ACTIVATE123");
+        device.ActivationCodeExpiresAt = DateTime.UtcNow.AddMinutes(-1);
+
+        _estProfileRepoMock.Setup(r => r.GetByIdAsync(profileId, It.IsAny<CancellationToken>())).ReturnsAsync(profile);
+        _deviceRepoMock.Setup(r => r.GetByIdAsync(device.Id, It.IsAny<CancellationToken>())).ReturnsAsync(device);
+        _deviceRepoMock.Setup(r => r.GetBySubjectCommonNameAsync("InventoryScanner", It.IsAny<CancellationToken>())).ReturnsAsync(device);
+        _pkcsServiceMock.Setup(p => p.ParsePkcs10(csrBytes)).Returns(parsedCsr);
+
+        var result = await _sut.EnrollAsync(
+            profileId,
+            csrBytes,
+            device.Id.ToString("D"),
+            null,
+            activationCode: "ACTIVATE123");
+
+        result.StatusCode.Should().Be(403);
+        result.ErrorMessage.Should().Contain("expired");
+        _connectorFactoryMock.Verify(f => f.CreateConnector(It.IsAny<CaBackend>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task EnrollAsyncWithBasicDeviceIdDoesNotReplacePreassignedPendingScannerCommonName()
+    {
+        var profileId = Guid.NewGuid();
+        var profile = CreateEstProfile(profileId, Guid.NewGuid());
+        var csrBytes = new byte[] { 1, 2, 3 };
+        var parsedCsr = new ParsedCsr { SubjectDn = "CN=AnotherDevice", RawData = csrBytes };
+        var device = CreatePendingDevice("pending-scanner", "INV-001", "ACTIVATE123");
+
+        _estProfileRepoMock.Setup(r => r.GetByIdAsync(profileId, It.IsAny<CancellationToken>())).ReturnsAsync(profile);
+        _deviceRepoMock.Setup(r => r.GetByIdAsync(device.Id, It.IsAny<CancellationToken>())).ReturnsAsync(device);
+        _pkcsServiceMock.Setup(p => p.ParsePkcs10(csrBytes)).Returns(parsedCsr);
+
+        var result = await _sut.EnrollAsync(
+            profileId,
+            csrBytes,
+            device.Id.ToString("D"),
+            null,
+            activationCode: "ACTIVATE123");
+
+        result.StatusCode.Should().Be(403);
+        result.ErrorMessage.Should().Contain("common name does not match");
+        _deviceRepoMock.Verify(r => r.GetBySubjectCommonNameAsync("AnotherDevice", It.IsAny<CancellationToken>()), Times.Never);
+        _connectorFactoryMock.Verify(f => f.CreateConnector(It.IsAny<CaBackend>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task EnrollAsyncWithBasicDeviceIdRejectsActivationCodeConcurrencyConflictBeforeConnectorDispatch()
+    {
+        var profileId = Guid.NewGuid();
+        var profile = CreateEstProfile(profileId, Guid.NewGuid());
+        var csrBytes = new byte[] { 1, 2, 3 };
+        var parsedCsr = new ParsedCsr { SubjectDn = "CN=InventoryScanner", RawData = csrBytes };
+        var device = CreatePendingDevice("InventoryScanner", "INV-001", "ACTIVATE123");
+
+        _estProfileRepoMock.Setup(r => r.GetByIdAsync(profileId, It.IsAny<CancellationToken>())).ReturnsAsync(profile);
+        _deviceRepoMock.Setup(r => r.GetByIdAsync(device.Id, It.IsAny<CancellationToken>())).ReturnsAsync(device);
+        _deviceRepoMock.Setup(r => r.GetBySubjectCommonNameAsync("InventoryScanner", It.IsAny<CancellationToken>())).ReturnsAsync(device);
+        _pkcsServiceMock.Setup(p => p.ParsePkcs10(csrBytes)).Returns(parsedCsr);
+        _pkcsServiceMock.Setup(p => p.ValidateCsrSignature(parsedCsr)).Returns(true);
+        _unitOfWorkMock
+            .Setup(u => u.TryConsumeActivationCodeAsync(device, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+
+        var result = await _sut.EnrollAsync(
+            profileId,
+            csrBytes,
+            device.Id.ToString("D"),
+            null,
+            activationCode: "ACTIVATE123");
+
+        result.StatusCode.Should().Be(403);
+        result.ErrorMessage.Should().Contain("already been used");
+        _connectorFactoryMock.Verify(f => f.CreateConnector(It.IsAny<CaBackend>()), Times.Never);
+    }
+
+    [Fact]
     public async Task EnrollAsyncWithPendingDeviceAndActivationCodeIssuesCertificateAndConsumesCode()
     {
         // Arrange
@@ -493,7 +605,8 @@ public class EnrollmentOrchestratorTests : IDisposable
         var profile = CreateEstProfile(profileId, backend.Id);
         var csrBytes = CreateTestCsrBytes();
         var parsedCsr = new ParsedCsr { SubjectDn = "CN=ActivatedDevice", RawData = csrBytes };
-        var device = CreatePendingDevice("pending-alias-device", null, "ACTIVATE123");
+        var device = CreatePendingDevice("placeholder", null, "ACTIVATE123");
+        device.SubjectCommonName = $"pending-{device.Id:N}";
 
         _estProfileRepoMock
             .Setup(r => r.GetByIdAsync(profileId, It.IsAny<CancellationToken>()))

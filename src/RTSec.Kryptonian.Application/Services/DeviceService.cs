@@ -48,7 +48,13 @@ public class DeviceService : IDeviceService
     {
         ArgumentNullException.ThrowIfNull(dto);
 
-        var device = await CreatePendingDeviceAsync(dto.DisplayName, ct);
+        var device = await CreatePendingDeviceAsync(
+            dto.DisplayName,
+            dto.SubjectCommonName,
+            dto.Manufacturer,
+            dto.Model,
+            dto.SerialNumber,
+            ct);
 
         return DtoMapper.ToDto(device);
     }
@@ -57,7 +63,13 @@ public class DeviceService : IDeviceService
     {
         ArgumentNullException.ThrowIfNull(dto);
 
-        var device = await CreatePendingDeviceAsync(dto.DisplayName, ct);
+        var device = await CreatePendingDeviceAsync(
+            dto.DisplayName,
+            dto.SubjectCommonName,
+            dto.Manufacturer,
+            dto.Model,
+            dto.SerialNumber,
+            ct);
 
         _logger.LogInformation("Device approval requested for {SubjectCommonName}", device.SubjectCommonName);
 
@@ -309,7 +321,13 @@ public class DeviceService : IDeviceService
         };
     }
 
-    private async Task<Device> CreatePendingDeviceAsync(string displayName, CancellationToken ct)
+    private async Task<Device> CreatePendingDeviceAsync(
+        string displayName,
+        string? subjectCommonName,
+        string? manufacturer,
+        string? model,
+        string? serialNumber,
+        CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(displayName))
         {
@@ -322,7 +340,12 @@ public class DeviceService : IDeviceService
         {
             Id = id,
             DisplayName = displayName.Trim(),
-            SubjectCommonName = $"pending-{id:N}",
+            SubjectCommonName = string.IsNullOrWhiteSpace(subjectCommonName)
+                ? $"pending-{id:N}"
+                : subjectCommonName.Trim(),
+            Manufacturer = string.IsNullOrWhiteSpace(manufacturer) ? null : manufacturer.Trim(),
+            Model = string.IsNullOrWhiteSpace(model) ? null : model.Trim(),
+            SerialNumber = string.IsNullOrWhiteSpace(serialNumber) ? null : serialNumber.Trim(),
             Status = DeviceStatus.Pending
         };
 
