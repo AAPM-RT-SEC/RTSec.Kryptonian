@@ -5,6 +5,8 @@ using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
 using FluentAssertions;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.DependencyInjection;
 using RTSec.Kryptonian.CaHarness.Models;
 using Xunit;
 
@@ -22,7 +24,20 @@ public sealed class HarnessApiTests : IClassFixture<WebApplicationFactory<Progra
 
     public HarnessApiTests(WebApplicationFactory<Program> factory)
     {
-        _client = factory.CreateClient();
+        _client = factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
+            services.AddHttpClient("orthanc").ConfigurePrimaryHttpMessageHandler(() => new OfflineOrthancHandler())))
+            .CreateClient();
+    }
+
+    // These are API contract tests, not DICOM transfer evidence. Never contact an
+    // ambient Orthanc instance (or spend minutes waiting for container DNS).
+    private sealed class OfflineOrthancHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+            => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("[]", System.Text.Encoding.UTF8, "application/json")
+            });
     }
 
     public async Task InitializeAsync()
