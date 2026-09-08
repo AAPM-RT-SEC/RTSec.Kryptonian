@@ -223,12 +223,8 @@ public sealed class InMemoryCaEngine
 
     private CaState BuildCa()
     {
-        var keyGen = new RsaKeyPairGenerator();
-        keyGen.Init(new RsaKeyGenerationParameters(
-            BigInteger.ValueOf(65537),
-            new SecureRandom(),
-            4096, 112));
-        var keyPair = keyGen.GenerateKeyPair();
+        using var rsa = RSA.Create(4096);
+        var keyPair = DotNetUtilities.GetRsaKeyPair(rsa);
 
         var dn = new X509Name($"CN={_displayName} Harness CA {_instanceTag},O=Kryptonian Hackathon,C=US");
 
