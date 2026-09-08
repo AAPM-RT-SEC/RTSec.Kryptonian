@@ -1,13 +1,15 @@
 # Kryptonian Gateway
-A reference implementation of **MEDIATE** (Medical Device Identity, Enrollment, and Trust Exchange) — a framework proposed by the [AAPM RT-SEC](https://www.aapm.org/) working group as a mechanism to remove the burden of network security from individual medical devices.
+A reference implementation and test environment from [AAPM RT-SEC](https://www.aapm.org/) for medical-device certificate enrollment and renewal using **EST (RFC 7030)** and existing PKI. The project aims to contribute operational DICOM lifecycle evidence to the OR.NET / IEEE 11073 SDC enrollment work, not define a competing protocol.
 
-> **Note:** This is a proof-of-concept created at the AAPM RT-SEC annual meeting in Trento, Italy (2026). It has not been reviewed by security experts outside of the RT-SEC working group and is **not intended for clinical deployment**. Its primary purpose is to serve as a reference implementation for the MEDIATE specification.
+> **Note:** This proof-of-concept originated at the AAPM RT-SEC annual meeting in Trento, Italy (2026), previously under the MEDIATE working name. It is **not intended for clinical deployment** and is not an adopted OR.NET enrollment profile, SDC conformity implementation, or DICOM TLS certification. Independent security assessment and joint interoperability testing remain necessary.
+
+Start with the [local developer system](docs/development.md), [implementation/PR tracker](docs/IMPLEMENTATION-TRACKER.md), and [Wednesday architecture briefing](docs/ORNET-ALIGNMENT-2026-09-09.md).
 
 ---
 
 ## Overview
 
-Medical device network security today requires each device and each vendor to independently negotiate trust with a hospital's certificate infrastructure — a fragmented, error-prone process. Kryptonian abstracts that complexity by establishing a single protocol that all devices must speak: **EST (Enrollment over Secure Transport, RFC 7030)**.
+Kryptonian connects device-side EST clients to hospital-authorized certificate authorities. DICOM and SDC retain their existing application protocols. An operational TLS identity does not itself establish a device's clinical capability, regulatory status, or SDC role authorization.
 
 The gateway sits between medical devices and one or more certificate authority backends, providing:
 
@@ -191,7 +193,7 @@ DEVICE_ID=$(
   curl -s -X POST "$BASE_URL/api/devices" \
     -H "X-API-Key: $API_KEY" \
     -H "Content-Type: application/json" \
-    -d '{"displayName":"Hello World Device"}' \
+    -d '{"displayName":"Hello World Device","subjectCommonName":"test-device-enroll","manufacturer":"RTSec","model":"Local Test","serialNumber":"hello-world-001"}' \
     | sed -n 's/.*"id":"\([^"]*\)".*/\1/p'
 )
 
@@ -206,16 +208,13 @@ ACTIVATION_CODE=$(
 echo "$ACTIVATION_CODE"
 ```
 
-Enroll the generated test CSR. The activation headers bind the pending device to the CSR common name `test-device-enroll` and the supplied device identity fields.
+Enroll the generated test CSR using standard HTTP Basic over authenticated HTTPS: the username is the registered device UUID and the password is its one-time activation code. The CSR must match the administratively approved common name. The automated developer verifier passes credentials through stdin, keeping them off the process command line; this short interactive example exposes them to local process inspection.
 
 ```bash
 curl -i -X POST "$BASE_URL/.well-known/est/simpleenroll" \
   -H "Content-Type: application/pkcs10" \
   -H "Content-Transfer-Encoding: base64" \
-  -H "X-Activation-Code: $ACTIVATION_CODE" \
-  -H "X-Device-Manufacturer: RTSec" \
-  -H "X-Device-Model: Local Test" \
-  -H "X-Device-Serial-Number: hello-world-001" \
+  --user "$DEVICE_ID:$ACTIVATION_CODE" \
   --data-binary @certs/test-enroll.b64
 ```
 
