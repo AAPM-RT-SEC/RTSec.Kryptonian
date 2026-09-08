@@ -149,6 +149,7 @@ public class EstIntegrationTests
         var testProfile = CreateTestProfile(profileId, requireClientCert: false);
         var csrBytes = CreateTestCsrBytes();
         var pkcs7Response = new byte[] { 0x30, 0x82, 0x01, 0x00 };
+        _sut.HttpContext.Request.Headers["X-Activation-Code"] = "ACTIVATE123";
 
         var bodyStream = new MemoryStream(Encoding.ASCII.GetBytes(Convert.ToBase64String(csrBytes)));
         _sut.HttpContext.Request.Body = bodyStream;
@@ -230,6 +231,7 @@ public class EstIntegrationTests
         // Arrange
         var profileId = Guid.NewGuid();
         var testProfile = CreateTestProfile(profileId, requireClientCert: false);
+        _sut.HttpContext.Request.Headers["X-Activation-Code"] = "ACTIVATE123";
 
         _estProfileRepoMock
             .Setup(r => r.GetByPathAndHostnameAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
@@ -257,6 +259,7 @@ public class EstIntegrationTests
         // Arrange
         var profileId = Guid.NewGuid();
         var testProfile = CreateTestProfile(profileId, requireClientCert: false);
+        _sut.HttpContext.Request.Headers["X-Activation-Code"] = "ACTIVATE123";
 
         _estProfileRepoMock
             .Setup(r => r.GetByPathAndHostnameAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
@@ -341,6 +344,7 @@ public class EstIntegrationTests
         var profileId = Guid.NewGuid();
         var testProfile = CreateTestProfile(profileId, requireClientCert: false);
         var csrBytes = CreateTestCsrBytes();
+        _sut.HttpContext.Request.Headers["X-Activation-Code"] = "ACTIVATE123";
 
         var bodyStream = new MemoryStream(Encoding.ASCII.GetBytes(Convert.ToBase64String(csrBytes)));
         _sut.HttpContext.Request.Body = bodyStream;
@@ -376,6 +380,7 @@ public class EstIntegrationTests
         var profileId = Guid.NewGuid();
         var testProfile = CreateTestProfile(profileId, requireClientCert: false);
         var csrBytes = CreateTestCsrBytes();
+        _sut.HttpContext.Request.Headers["X-Activation-Code"] = "ACTIVATE123";
 
         var bodyStream = new MemoryStream(Encoding.ASCII.GetBytes(Convert.ToBase64String(csrBytes)));
         _sut.HttpContext.Request.Body = bodyStream;
@@ -444,4 +449,3 @@ public class EstIntegrationTests
 
     #endregion
 }
-

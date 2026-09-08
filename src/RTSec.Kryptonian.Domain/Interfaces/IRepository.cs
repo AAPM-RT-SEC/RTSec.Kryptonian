@@ -26,6 +26,12 @@ public interface IUnitOfWork : IDisposable
     Task<int> SaveChangesAsync(CancellationToken ct = default);
 
     /// <summary>
+    /// Persists a one-time activation-code consumption, returning false when a concurrent
+    /// request already consumed the same code.
+    /// </summary>
+    Task<bool> TryConsumeActivationCodeAsync(Device device, CancellationToken ct = default);
+
+    /// <summary>
     /// Begins a database transaction for explicit transaction control.
     /// </summary>
     Task BeginTransactionAsync(CancellationToken ct = default);

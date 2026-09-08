@@ -1,4 +1,5 @@
 using System.Security.Cryptography.X509Certificates;
+using System.Text;
 using Microsoft.AspNetCore.Mvc;
 using RTSec.Kryptonian.Domain.Entities;
 using RTSec.Kryptonian.Domain.Interfaces;
@@ -136,6 +137,33 @@ public class EstController : ControllerBase
                 }
             }
 
+            var authorization = Request.Headers.Authorization.ToString();
+            var hasBasicCredentials = HasBasicScheme(authorization);
+            Guid basicDeviceId = default;
+            string? activationCode;
+            if (hasBasicCredentials)
+            {
+                if (!Request.IsHttps)
+                {
+                    return EstError(StatusCodes.Status403Forbidden, "Basic authentication requires TLS");
+                }
+
+                if (!TryParseBasicBootstrapCredentials(authorization, out basicDeviceId, out var basicActivationCode))
+                {
+                    return BasicUnauthorized("Invalid Basic authentication credentials");
+                }
+
+                activationCode = basicActivationCode;
+            }
+            else
+            {
+                activationCode = Request.Headers["X-Activation-Code"].ToString();
+                if (string.IsNullOrWhiteSpace(activationCode))
+                {
+                    return BasicUnauthorized("Activation code required");
+                }
+            }
+
             // Decode CSR from request body
             var contentTransferEncoding = Request.Headers["Content-Transfer-Encoding"].ToString();
             var csrBytes = await _pkcsService.DecodeEstRequestBodyAsync(
@@ -145,8 +173,9 @@ public class EstController : ControllerBase
                 cancellationToken: ct);
 
             // Get device ID from client cert (header fallback is informational only, logged but not trusted)
-            var deviceId = GetDeviceIdentifier(profile);
-            var activationCode = Request.Headers["X-Activation-Code"].ToString();
+            var deviceId = hasBasicCredentials
+                ? basicDeviceId.ToString("D")
+                : GetDeviceIdentifier(profile);
             var activationManufacturer = Request.Headers["X-Device-Manufacturer"].ToString();
             var activationModel = Request.Headers["X-Device-Model"].ToString();
             var activationSerialNumber = Request.Headers["X-Device-Serial-Number"].ToString();
@@ -297,6 +326,49 @@ public class EstController : ControllerBase
     private X509Certificate2? GetClientCertificate()
     {
         return HttpContext.Connection.ClientCertificate;
+    }
+
+    private static bool HasBasicScheme(string authorization) =>
+        authorization.Equals("Basic", StringComparison.OrdinalIgnoreCase) ||
+        authorization.StartsWith("Basic ", StringComparison.OrdinalIgnoreCase);
+
+    private static bool TryParseBasicBootstrapCredentials(
+        string authorization,
+        out Guid deviceId,
+        out string activationCode)
+    {
+        deviceId = default;
+        activationCode = string.Empty;
+
+        var separator = authorization.IndexOf(' ');
+        if (separator <= 0 || !authorization[..separator].Equals("Basic", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        try
+        {
+            var decoded = Encoding.UTF8.GetString(Convert.FromBase64String(authorization[(separator + 1)..].Trim()));
+            var colon = decoded.IndexOf(':');
+            if (colon <= 0 || colon == decoded.Length - 1 ||
+                !Guid.TryParseExact(decoded[..colon], "D", out deviceId))
+            {
+                return false;
+            }
+
+            activationCode = decoded[(colon + 1)..];
+            return !string.IsNullOrWhiteSpace(activationCode);
+        }
+        catch (FormatException)
+        {
+            return false;
+        }
+    }
+
+    private IActionResult BasicUnauthorized(string error)
+    {
+        Response.Headers["WWW-Authenticate"] = "Basic realm=\"EST\", charset=\"UTF-8\"";
+        return EstError(StatusCodes.Status401Unauthorized, error);
     }
 
     /// <summary>

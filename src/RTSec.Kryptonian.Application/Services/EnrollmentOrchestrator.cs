@@ -124,9 +124,23 @@ public class EnrollmentOrchestrator : IEnrollmentOrchestrator
         }
 
         var subjectCommonName = ExtractSubjectCommonName(csr.SubjectDn);
-        var device = string.IsNullOrWhiteSpace(subjectCommonName)
-            ? null
-            : await _unitOfWork.Devices.GetBySubjectCommonNameAsync(subjectCommonName, ct);
+        var hasBasicDeviceId = Guid.TryParseExact(deviceId, "D", out var basicDeviceId);
+        Device? device;
+        if (hasBasicDeviceId)
+        {
+            device = await _unitOfWork.Devices.GetByIdAsync(basicDeviceId, ct);
+        }
+        else
+        {
+            device = string.IsNullOrWhiteSpace(subjectCommonName)
+                ? null
+                : await _unitOfWork.Devices.GetBySubjectCommonNameAsync(subjectCommonName, ct);
+        }
+
+        if (device == null && hasBasicDeviceId)
+        {
+            return EnrollmentResult.Failed("Invalid activation credentials", 403);
+        }
 
         if (device == null)
         {
@@ -144,18 +158,32 @@ public class EnrollmentOrchestrator : IEnrollmentOrchestrator
                 device,
                 activationCode,
                 subjectCommonName,
-                activationSerialNumber,
                 ct);
             if (activationError != null)
             {
                 return await RejectEnrollmentAsync(profileId, device, csr.SubjectDn, clientIp, activationError, ct);
             }
 
+            if (!_pkcsService.ValidateCsrSignature(csr))
+            {
+                _logger.LogWarning("CSR signature validation failed");
+                return EnrollmentResult.Failed("CSR signature validation failed", 400);
+            }
+
             activationEnrollment = true;
-            device.SubjectCommonName = subjectCommonName!.Trim();
-            device.Manufacturer = NormalizeOptional(activationManufacturer);
-            device.Model = NormalizeOptional(activationModel);
-            device.SerialNumber = NormalizeOptional(activationSerialNumber)!;
+            if (IsPlaceholderSubjectCommonName(device))
+            {
+                device.SubjectCommonName = subjectCommonName!.Trim();
+            }
+            device.Manufacturer ??= NormalizeOptional(activationManufacturer);
+            device.Model ??= NormalizeOptional(activationModel);
+            device.SerialNumber ??= NormalizeOptional(activationSerialNumber);
+
+            if (!await TryConsumeActivationCodeAsync(device, ct))
+            {
+                _logger.LogWarning("Activation code was already consumed for device {DeviceId}", device.Id);
+                return EnrollmentResult.Failed("Activation code has already been used", 403);
+            }
         }
         else
         {
@@ -168,7 +196,15 @@ public class EnrollmentOrchestrator : IEnrollmentOrchestrator
                 ct);
         }
 
-        return await IssueForDeviceAsync(profileId, profile, device, csr, clientIp, activationEnrollment, ct);
+        return await IssueForDeviceAsync(
+            profileId,
+            profile,
+            device,
+            csr,
+            clientIp,
+            activationEnrollment,
+            ct,
+            csrSignatureValidated: activationEnrollment);
     }
 
     /// <inheritdoc />
@@ -398,7 +434,6 @@ public class EnrollmentOrchestrator : IEnrollmentOrchestrator
         Device device,
         string? activationCode,
         string? subjectCommonName,
-        string? serialNumber,
         CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(activationCode))
@@ -412,15 +447,16 @@ public class EnrollmentOrchestrator : IEnrollmentOrchestrator
         }
 
         var normalizedCn = subjectCommonName.Trim();
+        if (!IsPlaceholderSubjectCommonName(device) &&
+            !string.Equals(normalizedCn, device.SubjectCommonName, StringComparison.OrdinalIgnoreCase))
+        {
+            return "CSR subject common name does not match the registered device";
+        }
+
         var existing = await _unitOfWork.Devices.GetBySubjectCommonNameAsync(normalizedCn, ct);
         if (existing != null && existing.Id != device.Id)
         {
             return $"A device with subject common name '{normalizedCn}' already exists";
-        }
-
-        if (string.IsNullOrWhiteSpace(serialNumber))
-        {
-            return "Activation requires a device serial number";
         }
 
         if (string.IsNullOrWhiteSpace(device.ActivationCodeHash))
@@ -449,6 +485,19 @@ public class EnrollmentOrchestrator : IEnrollmentOrchestrator
 
     private static string? NormalizeOptional(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private static bool IsPlaceholderSubjectCommonName(Device device) =>
+        string.Equals(device.SubjectCommonName, $"pending-{device.Id:N}", StringComparison.OrdinalIgnoreCase);
+
+    private async Task<bool> TryConsumeActivationCodeAsync(Device device, CancellationToken ct)
+    {
+        device.ActivationCodeUsedAt = DateTime.UtcNow;
+        device.ActivationCodeHash = null;
+        device.ActivationCodeExpiresAt = null;
+        _unitOfWork.Devices.Update(device);
+
+        return await _unitOfWork.TryConsumeActivationCodeAsync(device, ct);
+    }
 
     /// <summary>
     /// Resolves the CA backend an EST profile is bound to via <see cref="EstProfile.CaBackendId"/>.
