@@ -75,11 +75,8 @@ public class EstProfile : BaseEntity
     /// Client certificates must be issued by one of these CAs when
     /// ValidateClientCertificateChain is true.
     ///
-    /// Hash algorithm: the current consumer compares these values against
-    /// X509Certificate2.GetCertHashString(), which returns a SHA-1 hex digest. So although
-    /// these were historically documented as SHA-256, today only legacy SHA-1 thumbprints
-    /// actually match. Do not paste a SHA-256 fingerprint here expecting it to work until
-    /// the comparison side is changed to hash with SHA-256 explicitly.
+    /// SHA-256 is preferred; legacy SHA-1 fingerprints remain accepted for configured
+    /// backend CA certificates. A leaf certificate fingerprint is not a trust anchor.
     /// </summary>
     public List<string> TrustedClientCaThumbprints { get; } = new List<string>();
 

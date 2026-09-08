@@ -1,4 +1,5 @@
 using System.Security.Cryptography.X509Certificates;
+using System.Security.Cryptography;
 using System.Text;
 using Microsoft.AspNetCore.Mvc;
 using RTSec.Kryptonian.Domain.Entities;
@@ -128,7 +129,7 @@ public class EstController : ControllerBase
 
             if (clientCert != null && profile != null)
             {
-                var validationResult = ValidateClientCertificate(clientCert, profile);
+                var validationResult = await ValidateClientCertificateAsync(clientCert, profile, ct);
                 if (!validationResult.IsValid)
                 {
                     _logger.LogWarning("Client certificate validation failed for profile {ProfileId}: {Reason}",
@@ -253,7 +254,7 @@ public class EstController : ControllerBase
             var profile = await _unitOfWork.EstProfiles.GetByIdAsync(profileId.Value, ct);
             if (profile != null)
             {
-                var validationResult = ValidateClientCertificate(clientCert, profile);
+                var validationResult = await ValidateClientCertificateAsync(clientCert, profile, ct);
                 if (!validationResult.IsValid)
                 {
                     _logger.LogWarning("Client certificate validation failed for re-enrollment on profile {ProfileId}: {Reason}",
@@ -377,7 +378,7 @@ public class EstController : ControllerBase
     /// <param name="clientCert">The client certificate to validate.</param>
     /// <param name="profile">The EST profile with validation requirements.</param>
     /// <returns>Validation result with reason if failed.</returns>
-    private (bool IsValid, string? Reason) ValidateClientCertificate(X509Certificate2 clientCert, EstProfile profile)
+    private async Task<(bool IsValid, string? Reason)> ValidateClientCertificateAsync(X509Certificate2 clientCert, EstProfile profile, CancellationToken ct)
     {
         // Check basic validity (not expired)
         var now = DateTime.UtcNow;
@@ -405,36 +406,39 @@ public class EstController : ControllerBase
             return (false, "No trusted CAs configured for client certificate validation");
         }
 
-        // Build and validate the certificate chain
-        using var chain = new X509Chain();
-        chain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck; // Can be made configurable
-        chain.ChainPolicy.VerificationFlags = X509VerificationFlags.AllowUnknownCertificateAuthority;
-
-        if (!chain.Build(clientCert))
+        var authorities = new X509Certificate2Collection();
+        try
         {
-            var errors = string.Join(", ", chain.ChainStatus.Select(s => s.StatusInformation));
-            _logger.LogWarning("Client certificate chain build failed: {Errors}", errors);
-            return (false, "Client certificate chain validation failed");
-        }
-
-        // Check if any certificate in the chain matches a trusted CA thumbprint
-        var trustedThumbprints = new HashSet<string>(
-            profile.TrustedClientCaThumbprints.Select(t => t.ToUpperInvariant().Replace(":", "")),
-            StringComparer.OrdinalIgnoreCase);
-
-        foreach (var chainElement in chain.ChainElements)
-        {
-            var thumbprint = chainElement.Certificate.GetCertHashString();
-            if (trustedThumbprints.Contains(thumbprint))
+            authorities.Import(await _orchestrator.GetCaCertsAsync(profile.Id, ct));
+            var fingerprints = profile.TrustedClientCaThumbprints
+                .Select(t => t.Replace(":", "").Replace(" ", "")).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            using var chain = new X509Chain();
+            chain.ChainPolicy.TrustMode = X509ChainTrustMode.CustomRootTrust;
+            chain.ChainPolicy.RevocationMode = X509RevocationMode.Online;
+            chain.ChainPolicy.RevocationFlag = X509RevocationFlag.ExcludeRoot;
+            chain.ChainPolicy.UrlRetrievalTimeout = TimeSpan.FromSeconds(5);
+            chain.ChainPolicy.ApplicationPolicy.Add(new Oid("1.3.6.1.5.5.7.3.2"));
+            chain.ChainPolicy.ExtraStore.AddRange(authorities);
+            foreach (var authority in authorities)
             {
-                _logger.LogDebug("Client certificate chains to trusted CA with thumbprint {Thumbprint}", thumbprint);
-                return (true, null);
+                if (authority.Extensions.OfType<X509BasicConstraintsExtension>().Any(e => e.CertificateAuthority)
+                    && (fingerprints.Contains(authority.GetCertHashString(HashAlgorithmName.SHA256))
+                        || fingerprints.Contains(authority.Thumbprint)))
+                    chain.ChainPolicy.CustomTrustStore.Add(authority);
             }
+            if (chain.ChainPolicy.CustomTrustStore.Count == 0 || !chain.Build(clientCert))
+                return (false, "Client certificate issuer, usage or revocation validation failed");
+            return (true, null);
         }
-
-        _logger.LogWarning("Client certificate does not chain to any trusted CA. Issuer: {Issuer}",
-            clientCert.Issuer);
-        return (false, "Client certificate not issued by a trusted CA");
+        catch (Exception ex) when (ex is CryptographicException or InvalidOperationException)
+        {
+            _logger.LogWarning(ex, "Client trust material unavailable for profile {ProfileId}", profile.Id);
+            return (false, "Client certificate trust validation failed");
+        }
+        finally
+        {
+            foreach (var authority in authorities) authority.Dispose();
+        }
     }
 
     /// <summary>

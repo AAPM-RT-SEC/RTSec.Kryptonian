@@ -38,11 +38,15 @@ try
     Log.Information("Starting RTSec.Kryptonian API");
 
     var builder = WebApplication.CreateBuilder(args);
+    var clientCaFiles = builder.Configuration.GetSection("Kryptonian:Tls:ClientCaFiles").Get<string[]>() ?? Array.Empty<string>();
+    var clientTrust = clientCaFiles.Length == 0 ? null : new ConfiguredClientCertificateTrust(clientCaFiles);
     builder.WebHost.ConfigureKestrel(options =>
     {
         options.ConfigureHttpsDefaults(httpsOptions =>
         {
             httpsOptions.ClientCertificateMode = ClientCertificateMode.AllowCertificate;
+            if (clientTrust != null)
+                httpsOptions.ClientCertificateValidation = (certificate, chain, _) => clientTrust.Validate(certificate, chain);
         });
     });
     builder.Services.AddCertificateForwarding(options =>
@@ -296,6 +300,19 @@ try
     builder.Services.AddInMemoryRateLimiting();
 
     var app = builder.Build();
+    if (builder.Configuration.GetValue<bool>("Kryptonian:Tls:CrlOnlyHttp"))
+    {
+        app.Use(async (context, next) =>
+        {
+            if (!context.Request.IsHttps && (!context.Request.Path.StartsWithSegments("/api/crl")
+                || context.Request.Method is not ("GET" or "HEAD")))
+            {
+                context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                return;
+            }
+            await next(context);
+        });
+    }
 
     // Build the schema directly from the EF model. Both Postgres and SQLite
     // use EnsureCreated — versioned migrations were removed when we switched
