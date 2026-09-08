@@ -136,7 +136,7 @@ public class EstProfileUpdateDto
     public string? Name { get; set; }
 
     [JsonPropertyName("hostnames")]
-    public List<string>? Hostnames { get; init; } = new();
+    public List<string>? Hostnames { get; init; }
 
     /// <summary>
     /// How hostnames should be matched: "exact", "suffix", or "wildcard".
@@ -160,7 +160,7 @@ public class EstProfileUpdateDto
     public string? CertificateTemplate { get; set; }
 
     [JsonPropertyName("allowedKeyUsages")]
-    public List<string>? AllowedKeyUsages { get; init; } = new();
+    public List<string>? AllowedKeyUsages { get; init; }
 
     [JsonPropertyName("validityDays")]
     public int? ValidityDays { get; set; }
@@ -178,7 +178,7 @@ public class EstProfileUpdateDto
     /// List of trusted CA certificate thumbprints (SHA-256) for client cert validation.
     /// </summary>
     [JsonPropertyName("trustedClientCaThumbprints")]
-    public List<string>? TrustedClientCaThumbprints { get; init; } = new();
+    public List<string>? TrustedClientCaThumbprints { get; init; }
 
     [JsonPropertyName("isEnabled")]
     public bool? IsEnabled { get; set; }
