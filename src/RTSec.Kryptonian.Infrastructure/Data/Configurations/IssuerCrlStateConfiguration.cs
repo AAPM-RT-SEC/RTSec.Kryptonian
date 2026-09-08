@@ -14,8 +14,10 @@ public class IssuerCrlStateConfiguration : IEntityTypeConfiguration<IssuerCrlSta
         builder.Property(e => e.CaBackendId).HasColumnName("ca_backend_id").IsRequired();
         builder.Property(e => e.IssuerFingerprint).HasColumnName("issuer_fingerprint").HasMaxLength(128).IsRequired();
         builder.Property(e => e.CrlNumber).HasColumnName("crl_number").IsRequired().IsConcurrencyToken();
-        builder.Property(e => e.ThisUpdate).HasColumnName("this_update").IsRequired();
-        builder.Property(e => e.NextUpdate).HasColumnName("next_update").IsRequired();
+        builder.Property(e => e.ThisUpdate).HasColumnName("this_update").IsRequired()
+            .HasConversion(value => value, value => DateTime.SpecifyKind(value, DateTimeKind.Utc));
+        builder.Property(e => e.NextUpdate).HasColumnName("next_update").IsRequired()
+            .HasConversion(value => value, value => DateTime.SpecifyKind(value, DateTimeKind.Utc));
         builder.Property(e => e.CrlDerBase64).HasColumnName("crl_der_base64").IsRequired();
         builder.Property(e => e.CreatedAt).HasColumnName("created_at");
         builder.Property(e => e.UpdatedAt).HasColumnName("updated_at");

@@ -51,7 +51,9 @@ public class CertificateConfiguration : IEntityTypeConfiguration<Certificate>
             .HasConversion<string>()
             .HasMaxLength(50);
 
-        builder.Property(e => e.RevokedAt).HasColumnName("revoked_at");
+        // SQLite drops DateTime.Kind; these instants are always stored in UTC.
+        builder.Property(e => e.RevokedAt).HasColumnName("revoked_at")
+            .HasConversion(value => value, value => value.HasValue ? DateTime.SpecifyKind(value.Value, DateTimeKind.Utc) : (DateTime?)null);
 
         builder.Property(e => e.RevocationReason)
             .HasColumnName("revocation_reason")

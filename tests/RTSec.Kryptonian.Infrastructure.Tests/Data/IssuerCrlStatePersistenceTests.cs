@@ -43,6 +43,9 @@ public class IssuerCrlStatePersistenceTests
         var crl = await read.IssuerCrlStates.SingleAsync();
         Assert.Equal(CertificateStatus.Revoked, certificate.Status);
         Assert.Equal(RevocationReason.KeyCompromise, certificate.RevocationReason);
+        Assert.Equal(DateTimeKind.Utc, certificate.RevokedAt!.Value.Kind);
+        Assert.Equal(DateTimeKind.Utc, crl.ThisUpdate.Kind);
+        Assert.Equal(DateTimeKind.Utc, crl.NextUpdate.Kind);
         Assert.Equal(2, crl.CrlNumber);
         Assert.Equal("AQID", crl.CrlDerBase64);
     }
