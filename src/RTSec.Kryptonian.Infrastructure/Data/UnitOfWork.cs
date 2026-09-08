@@ -18,6 +18,7 @@ public class UnitOfWork : IUnitOfWork
     private IEstProfileRepository? _estProfiles;
     private IDeviceRepository? _devices;
     private ICertificateRepository? _certificates;
+    private IIssuerCrlStateRepository? _issuerCrlStates;
     private IEnrollmentEventRepository? _enrollmentEvents;
     private IAcmeAccountRepository? _acmeAccounts;
     private IGatewaySettingsRepository? _gatewaySettings;
@@ -43,6 +44,9 @@ public class UnitOfWork : IUnitOfWork
     public ICertificateRepository Certificates =>
         _certificates ??= new CertificateRepository(_context);
 
+    public IIssuerCrlStateRepository IssuerCrlStates =>
+        _issuerCrlStates ??= new IssuerCrlStateRepository(_context);
+
     public IEnrollmentEventRepository EnrollmentEvents =>
         _enrollmentEvents ??= new EnrollmentEventRepository(_context);
 
@@ -67,6 +71,17 @@ public class UnitOfWork : IUnitOfWork
     public async Task<int> SaveChangesAsync(CancellationToken ct = default)
     {
         return await _context.SaveChangesAsync(ct);
+    }
+
+    public async Task<bool> TryPersistRevocationStateAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            await _context.SaveChangesAsync(ct);
+            return true;
+        }
+        catch (DbUpdateConcurrencyException) { return false; }
+        catch (DbUpdateException) { return false; }
     }
 
     public async Task<bool> TryConsumeActivationCodeAsync(Device device, CancellationToken ct = default)

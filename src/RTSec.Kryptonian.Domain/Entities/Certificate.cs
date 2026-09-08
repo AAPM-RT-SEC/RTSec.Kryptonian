@@ -47,6 +47,10 @@ public class Certificate : BaseEntity
     /// </summary>
     public CertificateStatus Status { get; set; } = CertificateStatus.Valid;
 
+    public DateTime? RevokedAt { get; set; }
+
+    public RevocationReason? RevocationReason { get; set; }
+
     /// <summary>
     /// Reference to the EST profile used for issuance.
     /// </summary>

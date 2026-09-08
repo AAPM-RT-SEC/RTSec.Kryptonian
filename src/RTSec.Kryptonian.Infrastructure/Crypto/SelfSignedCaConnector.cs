@@ -26,17 +26,20 @@ public class SelfSignedCaConnector : ICaConnector
 {
     private readonly ILogger<SelfSignedCaConnector> _logger;
     private readonly X509Certificate2 _caCertificate;
-    private readonly AsymmetricKeyParameter _caPrivateKey;
+    private AsymmetricKeyParameter? _caPrivateKey;
     private readonly BcX509Certificate _bcCaCertificate;
+    private readonly string? _crlDistributionPointUrl;
 
     public CaBackendType Type => CaBackendType.SelfSigned;
 
     public SelfSignedCaConnector(
         ILogger<SelfSignedCaConnector> logger,
-        X509Certificate2 caCertificate)
+        X509Certificate2 caCertificate,
+        string? crlDistributionPointUrl = null)
     {
         _logger = logger;
         _caCertificate = caCertificate ?? throw new ArgumentNullException(nameof(caCertificate));
+        _crlDistributionPointUrl = crlDistributionPointUrl;
 
         if (!_caCertificate.HasPrivateKey)
             throw new ArgumentException("CA certificate must have a private key", nameof(caCertificate));
@@ -44,7 +47,6 @@ public class SelfSignedCaConnector : ICaConnector
         // Convert to BouncyCastle format for signing
         var parser = new X509CertificateParser();
         _bcCaCertificate = parser.ReadCertificate(_caCertificate.RawData);
-        _caPrivateKey = ConvertToBouncyCastlePrivateKey(_caCertificate);
 
         _logger.LogInformation("SelfSignedCaConnector initialized with CA: {Subject}, Serial: {Serial}",
             _caCertificate.Subject, _caCertificate.SerialNumber);
@@ -99,8 +101,9 @@ public class SelfSignedCaConnector : ICaConnector
             AddCertificateExtensions(certGen, csrInfo, profile);
 
             // Sign the certificate
-            var signatureAlgorithm = DetermineSignatureAlgorithm(_caPrivateKey);
-            var signatureFactory = new Asn1SignatureFactory(signatureAlgorithm, _caPrivateKey);
+            var privateKey = _caPrivateKey ??= ConvertToBouncyCastlePrivateKey(_caCertificate);
+            var signatureAlgorithm = DetermineSignatureAlgorithm(privateKey);
+            var signatureFactory = new Asn1SignatureFactory(signatureAlgorithm, privateKey);
             var bcCert = certGen.Generate(signatureFactory);
 
             // Convert to .NET X509Certificate2
@@ -128,12 +131,51 @@ public class SelfSignedCaConnector : ICaConnector
         RevocationReason reason,
         CancellationToken ct = default)
     {
-        _logger.LogWarning("Revocation not implemented for self-signed CA. Serial: {Serial}, Reason: {Reason}",
-            serial, reason);
-
-        // Self-signed CA doesn't have CRL/OCSP infrastructure
-        // This would require implementing CRL generation
+        // State-backed CRL updates require all issuer entries and are coordinated by
+        // CertificateRevocationService through GenerateCrlAsync.
         return Task.FromResult(false);
+    }
+
+    /// <inheritdoc />
+    public Task<CrlGenerationResult> GenerateCrlAsync(CrlGenerationRequest request, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var issuerFingerprint = Convert.ToHexString(SHA256.HashData(_caCertificate.RawData));
+        if (!string.Equals(issuerFingerprint, request.ExpectedIssuerFingerprint, StringComparison.OrdinalIgnoreCase))
+        {
+            return Task.FromResult(CrlGenerationResult.Unsupported("Configured CA certificate does not match the CRL issuer."));
+        }
+
+        if (request.CrlNumber <= 0 || request.NextUpdate <= request.ThisUpdate)
+        {
+            return Task.FromResult(CrlGenerationResult.Unsupported("Invalid CRL timing or number."));
+        }
+
+        try
+        {
+            var builder = new CertificateRevocationListBuilder();
+            foreach (var entry in request.Entries)
+            {
+                builder.AddEntry(
+                    Convert.FromHexString(entry.SerialNumber),
+                    new DateTimeOffset(entry.RevokedAt.ToUniversalTime()),
+                    ToX509Reason(entry.Reason));
+            }
+
+            var der = builder.Build(
+                _caCertificate,
+                new System.Numerics.BigInteger(request.CrlNumber),
+                new DateTimeOffset(request.NextUpdate.ToUniversalTime()),
+                HashAlgorithmName.SHA256,
+                RSASignaturePadding.Pkcs1,
+                new DateTimeOffset(request.ThisUpdate.ToUniversalTime()));
+            return Task.FromResult(CrlGenerationResult.Successful(issuerFingerprint, der));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to build CRL");
+            return Task.FromResult(CrlGenerationResult.Unsupported("Local CA could not generate a CRL."));
+        }
     }
 
     /// <inheritdoc />
@@ -198,7 +240,30 @@ public class SelfSignedCaConnector : ICaConnector
 
         // Copy SANs from CSR if present
         CopySansFromCsr(certGen, csrInfo);
+
+        if (!string.IsNullOrWhiteSpace(_crlDistributionPointUrl))
+        {
+            var cdp = CertificateRevocationListBuilder.BuildCrlDistributionPointExtension(
+                new[] { _crlDistributionPointUrl }, critical: false);
+            certGen.AddExtension(
+                new DerObjectIdentifier(cdp.Oid!.Value!),
+                cdp.Critical,
+                Asn1Object.FromByteArray(cdp.RawData));
+        }
     }
+
+    private static X509RevocationReason ToX509Reason(RevocationReason reason) => reason switch
+    {
+        RevocationReason.KeyCompromise => X509RevocationReason.KeyCompromise,
+        RevocationReason.CaCompromise => X509RevocationReason.CACompromise,
+        RevocationReason.AffiliationChanged => X509RevocationReason.AffiliationChanged,
+        RevocationReason.Superseded => X509RevocationReason.Superseded,
+        RevocationReason.CessationOfOperation => X509RevocationReason.CessationOfOperation,
+        RevocationReason.CertificateHold => X509RevocationReason.CertificateHold,
+        RevocationReason.PrivilegeWithdrawn => X509RevocationReason.PrivilegeWithdrawn,
+        RevocationReason.AaCompromise => X509RevocationReason.AACompromise,
+        _ => X509RevocationReason.Unspecified
+    };
 
     private static byte[] ComputeSubjectKeyIdentifier(SubjectPublicKeyInfo publicKeyInfo)
     {
