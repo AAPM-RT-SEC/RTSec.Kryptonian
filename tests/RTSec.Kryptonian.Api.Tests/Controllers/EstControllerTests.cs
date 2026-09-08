@@ -153,6 +153,93 @@ public class EstControllerTests
         notFoundResult.StatusCode.Should().Be(404);
     }
 
+    [Fact]
+    public async Task GetCaCertsWithUnknownLabelReturns404WithoutFallingBackToDefaultProfile()
+    {
+        // Arrange
+        var defaultProfileId = Guid.NewGuid();
+        var defaultProfile = CreateTestProfile(defaultProfileId);
+
+        // Only the unlabeled default profile exists; the requested label does not.
+        _estProfileRepoMock
+            .Setup(r => r.GetByPathAndHostnameAsync("/.well-known/est", "localhost", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(defaultProfile);
+
+        _estProfileRepoMock
+            .Setup(r => r.GetByPathAndHostnameAsync("/.well-known/est/gone", "localhost", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((EstProfile?)null);
+
+        // Act
+        var result = await _sut.GetCaCerts("gone", CancellationToken.None);
+
+        // Assert: a mistyped or revoked label must not silently enroll against the default CA.
+        result.Should().BeOfType<NotFoundObjectResult>();
+        _orchestratorMock.Verify(
+            o => o.GetCaCertsAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+        _estProfileRepoMock.Verify(r => r.GetByPathAndHostnameAsync(
+            "/.well-known/est", "localhost", It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task SimpleEnrollWithUnknownLabelReturns404WithoutFallingBackToDefaultProfile()
+    {
+        // Arrange
+        var defaultProfile = CreateTestProfile(Guid.NewGuid(), requireClientCert: false);
+
+        _estProfileRepoMock
+            .Setup(r => r.GetByPathAndHostnameAsync("/.well-known/est", "localhost", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(defaultProfile);
+
+        _estProfileRepoMock
+            .Setup(r => r.GetByPathAndHostnameAsync("/.well-known/est/typo", "localhost", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((EstProfile?)null);
+
+        // Act
+        var result = await _sut.SimpleEnroll("typo", CancellationToken.None);
+
+        // Assert
+        result.Should().BeOfType<NotFoundObjectResult>();
+        _orchestratorMock.Verify(
+            o => o.EnrollAsync(It.IsAny<Guid>(), It.IsAny<byte[]>(), It.IsAny<string?>(), It.IsAny<string?>(),
+                It.IsAny<CancellationToken>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task SimpleEnrollWithUnlabeledRequestStillResolvesDefaultPathPrefix()
+    {
+        // Arrange: the real default path devices use must keep working.
+        var profileId = Guid.NewGuid();
+        var defaultProfile = CreateTestProfile(profileId, requireClientCert: false);
+        var csrBytes = CreateTestCsrBytes();
+
+        _sut.HttpContext.Request.Body = new MemoryStream(Encoding.ASCII.GetBytes(Convert.ToBase64String(csrBytes)));
+
+        _estProfileRepoMock
+            .Setup(r => r.GetByPathAndHostnameAsync("/.well-known/est", "localhost", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(defaultProfile);
+
+        _estProfileRepoMock
+            .Setup(r => r.GetByIdAsync(profileId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(defaultProfile);
+
+        _pkcsServiceMock
+            .Setup(p => p.DecodeEstRequestBodyAsync(It.IsAny<Stream>(), It.IsAny<string?>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(csrBytes);
+
+        _orchestratorMock
+            .Setup(o => o.EnrollAsync(profileId, csrBytes, It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>()))
+            .ReturnsAsync(EnrollmentResult.Successful(new byte[] { 0x30 }, Guid.NewGuid()));
+
+        // Act
+        var result = await _sut.SimpleEnroll(null, CancellationToken.None);
+
+        // Assert
+        result.Should().BeOfType<FileContentResult>();
+        _estProfileRepoMock.Verify(r => r.GetByPathAndHostnameAsync(
+            "/.well-known/est", "localhost", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
     #endregion
 
     #region /simpleenroll Tests

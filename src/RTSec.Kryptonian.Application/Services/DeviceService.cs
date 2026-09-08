@@ -207,8 +207,10 @@ public class DeviceService : IDeviceService
             throw new InvalidOperationException("Only active devices can be demo enrolled.");
         }
 
-        var activeBackend = await _unitOfWork.CaBackends.GetActiveAsync(ct)
-            ?? throw new InvalidOperationException("No active CA backend is configured.");
+        var profile = await _unitOfWork.EstProfiles.GetByIdAsync(profileId, ct)
+            ?? throw new InvalidOperationException("EST profile was not found.");
+        var activeBackend = await _unitOfWork.CaBackends.GetByIdAsync(profile.CaBackendId, ct)
+            ?? throw new InvalidOperationException("The profile CA backend was not found.");
 
         var (csr, privateKeyPem) = CreateDemoCsr(device.SubjectCommonName);
         var result = await _orchestrator.EnrollAsync(profileId, csr, device.SubjectCommonName, "demo-ui", ct);

@@ -266,34 +266,30 @@ public class EstController : ControllerBase
 
     /// <summary>
     /// Resolves the EST profile ID from the label and hostname.
-    /// Uses hostname matching based on profile configuration.
+    /// A label is part of the profile identity: an unlabeled request resolves against the
+    /// default path prefix "/.well-known/est", and a labeled request resolves against
+    /// "/.well-known/est/{label}" only. Unknown labels are rejected rather than silently
+    /// falling back to the default profile, which would let a mistyped or revoked label
+    /// enroll against the wrong CA.
     /// </summary>
     private async Task<Guid?> ResolveProfileIdAsync(string? label, CancellationToken ct)
     {
         var hostname = Request.Host.Host;
-        var pathPrefix = string.IsNullOrEmpty(label) ? "/.well-known/est" : $"/.well-known/est/{label}";
+        var pathPrefix = string.IsNullOrEmpty(label) ? DefaultPathPrefix : $"{DefaultPathPrefix}/{label}";
 
         _logger.LogDebug("Resolving profile for hostname={Hostname}, path={Path}", hostname, pathPrefix);
 
-        // Try exact match first
         var profile = await _unitOfWork.EstProfiles.GetByPathAndHostnameAsync(pathPrefix, hostname, ct);
         if (profile != null && profile.IsEnabled)
         {
             return profile.Id;
         }
 
-        // If no label specified, try default path
-        if (!string.IsNullOrEmpty(label))
-        {
-            profile = await _unitOfWork.EstProfiles.GetByPathAndHostnameAsync("/.well-known/est", hostname, ct);
-            if (profile != null && profile.IsEnabled)
-            {
-                return profile.Id;
-            }
-        }
-
         return null;
     }
+
+    /// <summary>The unlabeled EST path prefix devices use by default.</summary>
+    private const string DefaultPathPrefix = "/.well-known/est";
 
     /// <summary>
     /// Gets the client certificate from the TLS connection.
