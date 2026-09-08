@@ -28,6 +28,17 @@ public interface IEnrollmentOrchestrator
         string? activationSerialNumber = null);
 
     /// <summary>
+    /// Issues a certificate for an already-authorized device record.
+    /// This is for the authenticated local admin workflow, not public EST.
+    /// </summary>
+    Task<EnrollmentResult> EnrollAdminAsync(
+        Guid profileId,
+        Guid deviceRecordId,
+        byte[] csrBytes,
+        string? clientIp,
+        CancellationToken ct = default);
+
+    /// <summary>
     /// Re-enrolls a device (renewal) using existing certificate for auth.
     /// </summary>
     Task<EnrollmentResult> ReenrollAsync(

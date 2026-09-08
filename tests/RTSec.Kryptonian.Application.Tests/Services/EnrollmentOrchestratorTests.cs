@@ -189,7 +189,7 @@ public class EnrollmentOrchestratorTests : IDisposable
     #region EnrollAsync Tests
 
     [Fact]
-    public async Task EnrollAsyncWithValidCsrReturnsSuccessful()
+    public async Task EnrollAdminAsyncWithValidCsrReturnsSuccessful()
     {
         // Arrange
         var profileId = Guid.NewGuid();
@@ -208,7 +208,7 @@ public class EnrollmentOrchestratorTests : IDisposable
         _caBackendRepoMock
             .Setup(r => r.GetByIdAsync(backendId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(backend);
-        SetupActiveDeviceAndBackend(backend);
+        var device = SetupAdminDeviceAndBackend(backend);
 
         _pkcsServiceMock
             .Setup(p => p.ParsePkcs10(csrBytes))
@@ -239,7 +239,7 @@ public class EnrollmentOrchestratorTests : IDisposable
             .Returns(encodedPkcs7);
 
         // Act
-        var result = await _sut.EnrollAsync(profileId, csrBytes, "device-1", "192.168.1.1");
+        var result = await _sut.EnrollAdminAsync(profileId, device.Id, csrBytes, "192.168.1.1");
 
         // Assert
         result.Success.Should().BeTrue();
@@ -269,6 +269,29 @@ public class EnrollmentOrchestratorTests : IDisposable
         // Assert
         result.Success.Should().BeFalse();
         result.StatusCode.Should().Be(404);
+    }
+
+    [Fact]
+    public async Task EnrollAsyncWithActiveDeviceCommonNameRejectsBeforeConnectorDispatch()
+    {
+        var profileId = Guid.NewGuid();
+        var profile = CreateEstProfile(profileId, Guid.NewGuid());
+        var csrBytes = CreateTestCsrBytes();
+        var parsedCsr = new ParsedCsr { SubjectDn = "CN=TestDevice", RawData = csrBytes };
+
+        _estProfileRepoMock
+            .Setup(r => r.GetByIdAsync(profileId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(profile);
+        _deviceRepoMock
+            .Setup(r => r.GetBySubjectCommonNameAsync("TestDevice", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CreateActiveDevice("TestDevice"));
+        _pkcsServiceMock.Setup(p => p.ParsePkcs10(csrBytes)).Returns(parsedCsr);
+
+        var result = await _sut.EnrollAsync(profileId, csrBytes, null, null);
+
+        result.StatusCode.Should().Be(403);
+        result.ErrorMessage.Should().Contain("authenticated re-enrollment");
+        _connectorFactoryMock.Verify(f => f.CreateConnector(It.IsAny<CaBackend>()), Times.Never);
     }
 
     [Fact]
@@ -538,7 +561,7 @@ public class EnrollmentOrchestratorTests : IDisposable
     }
 
     [Fact]
-    public async Task EnrollAsyncRoutesToProfileBackendEvenWhenADifferentBackendIsActive()
+    public async Task EnrollAdminAsyncRoutesToProfileBackendEvenWhenADifferentBackendIsActive()
     {
         // Arrange
         var profileId = Guid.NewGuid();
@@ -563,9 +586,10 @@ public class EnrollmentOrchestratorTests : IDisposable
             .Setup(r => r.GetByIdAsync(profileBackendId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(profileBackend);
 
+        var device = CreateActiveDevice("TestDevice");
         _deviceRepoMock
-            .Setup(r => r.GetBySubjectCommonNameAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(CreateActiveDevice("TestDevice"));
+            .Setup(r => r.GetByIdAsync(device.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(device);
 
         _pkcsServiceMock
             .Setup(p => p.ParsePkcs10(csrBytes))
@@ -596,7 +620,7 @@ public class EnrollmentOrchestratorTests : IDisposable
             .Returns([0x31]);
 
         // Act
-        var result = await _sut.EnrollAsync(profileId, csrBytes, null, null);
+        var result = await _sut.EnrollAdminAsync(profileId, device.Id, csrBytes, null);
 
         // Assert: issuance used the profile's own CA, never the globally active one.
         result.Success.Should().BeTrue();
@@ -609,7 +633,7 @@ public class EnrollmentOrchestratorTests : IDisposable
     }
 
     [Fact]
-    public async Task EnrollAsyncWhenProfileBackendMissingReturns503WithoutConsultingActiveBackend()
+    public async Task EnrollAdminAsyncWhenProfileBackendMissingReturns503WithoutConsultingActiveBackend()
     {
         // Arrange
         var profileId = Guid.NewGuid();
@@ -623,7 +647,7 @@ public class EnrollmentOrchestratorTests : IDisposable
             .Setup(r => r.GetByIdAsync(profileId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(profile);
 
-        SetupActiveDeviceAndBackend(unrelatedActive);
+        var device = SetupAdminDeviceAndBackend(unrelatedActive);
 
         _pkcsServiceMock
             .Setup(p => p.ParsePkcs10(csrBytes))
@@ -634,7 +658,7 @@ public class EnrollmentOrchestratorTests : IDisposable
             .Returns(true);
 
         // Act
-        var result = await _sut.EnrollAsync(profileId, csrBytes, null, null);
+        var result = await _sut.EnrollAdminAsync(profileId, device.Id, csrBytes, null);
 
         // Assert: no silent failover to the active backend.
         result.Success.Should().BeFalse();
@@ -644,7 +668,7 @@ public class EnrollmentOrchestratorTests : IDisposable
     }
 
     [Fact]
-    public async Task EnrollAsyncWhenProfileBackendDisabledReturns503()
+    public async Task EnrollAdminAsyncWhenProfileBackendDisabledReturns503()
     {
         // Arrange
         var profileId = Guid.NewGuid();
@@ -662,9 +686,7 @@ public class EnrollmentOrchestratorTests : IDisposable
             .Setup(r => r.GetByIdAsync(backendId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(disabledBackend);
 
-        _deviceRepoMock
-            .Setup(r => r.GetBySubjectCommonNameAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(CreateActiveDevice("TestDevice"));
+        var device = SetupAdminDeviceAndBackend(disabledBackend);
 
         _pkcsServiceMock
             .Setup(p => p.ParsePkcs10(csrBytes))
@@ -675,7 +697,7 @@ public class EnrollmentOrchestratorTests : IDisposable
             .Returns(true);
 
         // Act
-        var result = await _sut.EnrollAsync(profileId, csrBytes, null, null);
+        var result = await _sut.EnrollAdminAsync(profileId, device.Id, csrBytes, null);
 
         // Assert
         result.Success.Should().BeFalse();
@@ -685,7 +707,7 @@ public class EnrollmentOrchestratorTests : IDisposable
     }
 
     [Fact]
-    public async Task EnrollAsyncWithInvalidCsrSignatureReturns400()
+    public async Task EnrollAdminAsyncWithInvalidCsrSignatureReturns400()
     {
         // Arrange
         var profileId = Guid.NewGuid();
@@ -693,7 +715,7 @@ public class EnrollmentOrchestratorTests : IDisposable
         var profile = CreateEstProfile(profileId, backendId);
         var backend = CreateCaBackend(backendId);
         var csrBytes = new byte[] { 1, 2, 3 };
-        var parsedCsr = new ParsedCsr { SubjectDn = "CN=Test", RawData = csrBytes };
+        var parsedCsr = new ParsedCsr { SubjectDn = "CN=TestDevice", RawData = csrBytes };
 
         _estProfileRepoMock
             .Setup(r => r.GetByIdAsync(profileId, It.IsAny<CancellationToken>()))
@@ -702,7 +724,7 @@ public class EnrollmentOrchestratorTests : IDisposable
         _caBackendRepoMock
             .Setup(r => r.GetByIdAsync(backendId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(backend);
-        SetupActiveDeviceAndBackend(backend);
+        var device = SetupAdminDeviceAndBackend(backend);
 
         _pkcsServiceMock
             .Setup(p => p.ParsePkcs10(csrBytes))
@@ -713,7 +735,7 @@ public class EnrollmentOrchestratorTests : IDisposable
             .Returns(false);
 
         // Act
-        var result = await _sut.EnrollAsync(profileId, csrBytes, null, null);
+        var result = await _sut.EnrollAdminAsync(profileId, device.Id, csrBytes, null);
 
         // Assert
         result.Success.Should().BeFalse();
@@ -722,7 +744,7 @@ public class EnrollmentOrchestratorTests : IDisposable
     }
 
     [Fact]
-    public async Task EnrollAsyncWhenCaIssuanceFailsReturns500()
+    public async Task EnrollAdminAsyncWhenCaIssuanceFailsReturns500()
     {
         // Arrange
         var profileId = Guid.NewGuid();
@@ -739,7 +761,7 @@ public class EnrollmentOrchestratorTests : IDisposable
         _caBackendRepoMock
             .Setup(r => r.GetByIdAsync(backendId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(backend);
-        SetupActiveDeviceAndBackend(backend);
+        var device = SetupAdminDeviceAndBackend(backend);
 
         _pkcsServiceMock
             .Setup(p => p.ParsePkcs10(csrBytes))
@@ -758,7 +780,7 @@ public class EnrollmentOrchestratorTests : IDisposable
             .ReturnsAsync(CertificateIssuanceResult.Failed("CA error"));
 
         // Act
-        var result = await _sut.EnrollAsync(profileId, csrBytes, null, null);
+        var result = await _sut.EnrollAdminAsync(profileId, device.Id, csrBytes, null);
 
         // Assert
         result.Success.Should().BeFalse();
@@ -860,7 +882,7 @@ public class EnrollmentOrchestratorTests : IDisposable
             .ReturnsAsync(profile);
 
         _certificateRepoMock
-            .Setup(r => r.GetBySerialNumberAsync(_testCert.SerialNumber, It.IsAny<CancellationToken>()))
+            .Setup(r => r.GetByThumbprintAsync(_testCert.GetCertHashString(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(existingDbCert);
 
         // Act
@@ -886,7 +908,7 @@ public class EnrollmentOrchestratorTests : IDisposable
             .ReturnsAsync(profile);
 
         _certificateRepoMock
-            .Setup(r => r.GetBySerialNumberAsync(_testCert.SerialNumber, It.IsAny<CancellationToken>()))
+            .Setup(r => r.GetByThumbprintAsync(_testCert.GetCertHashString(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(existingDbCert);
 
         // Act
@@ -895,6 +917,34 @@ public class EnrollmentOrchestratorTests : IDisposable
         // Assert
         result.Success.Should().BeFalse();
         result.StatusCode.Should().Be(403);
+    }
+
+    [Fact]
+    public async Task ReenrollAsyncWithForgedCertificateDoesNotFallBackToSerialNumber()
+    {
+        using var forgedCert = CreateTestCertificate("TestDevice");
+        var profileId = Guid.NewGuid();
+        var profile = CreateEstProfile(profileId, Guid.NewGuid());
+        var device = CreateActiveDevice("TestDevice");
+        var storedCert = CreateStoredCertificate(_testCert, profileId, device);
+        storedCert.SerialNumber = forgedCert.SerialNumber;
+
+        _estProfileRepoMock
+            .Setup(r => r.GetByIdAsync(profileId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(profile);
+        _certificateRepoMock
+            .Setup(r => r.GetByThumbprintAsync(forgedCert.GetCertHashString(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Certificate?)null);
+        _certificateRepoMock
+            .Setup(r => r.GetBySerialNumberAsync(forgedCert.SerialNumber, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(storedCert);
+
+        var result = await _sut.ReenrollAsync(profileId, new byte[] { 1 }, forgedCert, null);
+
+        result.StatusCode.Should().Be(403);
+        result.ErrorMessage.Should().Contain("not registered");
+        _certificateRepoMock.Verify(r => r.GetBySerialNumberAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        _connectorFactoryMock.Verify(f => f.CreateConnector(It.IsAny<CaBackend>()), Times.Never);
     }
 
     [Fact]
@@ -1058,6 +1108,16 @@ public class EnrollmentOrchestratorTests : IDisposable
             .ReturnsAsync(CreateActiveDevice("TestDevice"));
     }
 
+    private Device SetupAdminDeviceAndBackend(CaBackend backend)
+    {
+        SetupProfileBackend(backend);
+        var device = CreateActiveDevice("TestDevice");
+        _deviceRepoMock
+            .Setup(r => r.GetByIdAsync(device.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(device);
+        return device;
+    }
+
     /// <summary>
     /// Stubs a conflicting globally active backend. Used only by tests that must prove
     /// enrollment ignores it.
@@ -1116,6 +1176,7 @@ public class EnrollmentOrchestratorTests : IDisposable
         EstProfileId = profileId,
         DeviceId = device.SubjectCommonName,
         DeviceRecordId = device.Id,
+        CertificateDerBase64 = Convert.ToBase64String(certificate.RawData),
         CreatedAt = DateTime.UtcNow,
         UpdatedAt = DateTime.UtcNow
     };
