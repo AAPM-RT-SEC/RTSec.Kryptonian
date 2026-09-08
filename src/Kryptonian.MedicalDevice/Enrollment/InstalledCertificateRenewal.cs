@@ -53,7 +53,10 @@ public sealed class InstalledCertificateRenewal
                         using var renewed = result.Certificate;
                         try
                         {
-                            store.Add(renewed);
+                            var password = Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
+                            using var persisted = X509CertificateLoader.LoadPkcs12(renewed.Export(X509ContentType.Pfx, password), password,
+                                X509KeyStorageFlags.UserKeySet | X509KeyStorageFlags.PersistKeySet | X509KeyStorageFlags.Exportable);
+                            store.Add(persisted);
                             // Persist the new selection only after installation succeeds.
                             await SaveAsync(state with { Thumbprint = renewed.Thumbprint }, ct);
                             report($"Automatically renewed installed certificate: {renewed.Thumbprint}");

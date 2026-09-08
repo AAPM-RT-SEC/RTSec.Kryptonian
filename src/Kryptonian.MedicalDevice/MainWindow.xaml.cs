@@ -196,9 +196,12 @@ public partial class MainWindow : Window
 
     private static void InstallCertificate(X509Certificate2 certificate)
     {
+        var password = Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
+        using var persisted = X509CertificateLoader.LoadPkcs12(certificate.Export(X509ContentType.Pfx, password), password,
+            X509KeyStorageFlags.UserKeySet | X509KeyStorageFlags.PersistKeySet | X509KeyStorageFlags.Exportable);
         using var store = new X509Store(StoreName.My, StoreLocation.CurrentUser);
         store.Open(OpenFlags.ReadWrite);
-        store.Add(certificate);
+        store.Add(persisted);
         store.Close();
     }
 
