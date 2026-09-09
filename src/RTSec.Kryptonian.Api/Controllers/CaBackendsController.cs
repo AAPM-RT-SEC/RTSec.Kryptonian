@@ -15,6 +15,34 @@ namespace RTSec.Kryptonian.Api.Controllers;
 [Authorize]
 public class CaBackendsController : ControllerBase
 {
+    public sealed record GenerateSelfSignedCaRequest(string PfxPath, string Password, string CommonName);
+
+    [HttpPost("generate-selfsigned")]
+    [Authorize(Policy = "SystemAdmin")]
+    public IActionResult GenerateSelfSigned([FromBody] GenerateSelfSignedCaRequest request)
+    {
+        try
+        {
+            return Ok(SelfSignedCaGenerator.Generate(request.PfxPath, request.Password, request.CommonName));
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return BadRequest(new { error = "The gateway service cannot write to this directory. Choose a directory it owns." });
+        }
+        catch (IOException)
+        {
+            return Conflict(new { error = "Cannot create the PFX. Choose an unused filename in an existing writable directory. Existing files are never overwritten; a failed write may leave an incomplete file." });
+        }
+        catch (System.Security.Cryptography.CryptographicException)
+        {
+            return StatusCode(500, new { error = "Certificate generation failed. Check the server cryptography configuration." });
+        }
+    }
+
     private readonly ICaBackendService _caBackendService;
     private readonly ILogger<CaBackendsController> _logger;
 

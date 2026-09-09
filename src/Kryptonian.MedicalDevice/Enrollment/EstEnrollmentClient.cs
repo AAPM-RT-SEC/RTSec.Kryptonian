@@ -97,18 +97,14 @@ public sealed class EstEnrollmentClient
         Uri gateway,
         X509Certificate2 existingClientCert,
         string commonName,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        GatewayTrust? gatewayTrust = null)
     {
         ArgumentNullException.ThrowIfNull(gateway);
         ArgumentNullException.ThrowIfNull(existingClientCert);
         ArgumentException.ThrowIfNullOrWhiteSpace(commonName);
 
-        using var handler = new HttpClientHandler
-        {
-            ClientCertificateOptions = ClientCertificateOption.Manual
-        };
-        handler.ClientCertificates.Add(existingClientCert);
-        using var http = new HttpClient(handler);
+        using var http = GatewayTrust.CreateClient(gatewayTrust, existingClientCert);
 
         // Renewal rebuilds subject and SANs from the certificate itself, so the full
         // identity survives; commonName remains for caller compatibility.

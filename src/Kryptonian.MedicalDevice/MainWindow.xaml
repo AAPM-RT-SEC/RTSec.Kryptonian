@@ -2,37 +2,57 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Kryptonian Medical Device"
-        Width="560" Height="780"
+        Width="900" Height="780" MinWidth="800" MinHeight="740"
         WindowStartupLocation="CenterScreen"
         Background="#F4F4F4"
-        ResizeMode="CanMinimize"
+        ResizeMode="CanResize"
         UseLayoutRounding="True"
         SnapsToDevicePixels="True">
-    <Border Margin="18" Padding="28" Background="{StaticResource PanelBackground}" BorderBrush="#1A1A1A" BorderThickness="1.5" CornerRadius="22">
-        <ScrollViewer VerticalScrollBarVisibility="Auto">
+    <Border Margin="14" Padding="20" Background="{StaticResource PanelBackground}" BorderBrush="#1A1A1A" BorderThickness="1.5" CornerRadius="22">
             <StackPanel>
                 <TextBlock Text="Kryptonian Medical Device"
                            HorizontalAlignment="Center"
                            FontSize="24" FontWeight="SemiBold"
-                           Margin="0,4,0,24"/>
+                           Margin="0,0,0,12"/>
 
                 <TextBlock Text="Kryptonian Gateway" Style="{StaticResource FieldLabel}"/>
-                <TextBox x:Name="GatewayText" Text="https://localhost:8443"/>
+                <TextBox x:Name="GatewayText" Text="https://localhost:7443"/>
 
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                    <Button x:Name="ChooseCaButton" Content="Choose trusted gateway CA..." Padding="12,6" Click="OnChooseCaClicked"/>
+                    <Button x:Name="ClearCaButton" Content="Use Windows trust" Padding="12,6" Margin="8,0,0,0" Click="OnClearCaClicked"/>
+                </StackPanel>
+                <TextBlock x:Name="CaStatusText" Text="Using Windows trust. Choose the EST server's public root CA for a private gateway." TextWrapping="Wrap" FontSize="12" Margin="0,0,0,6"/>
+                <CheckBox x:Name="LabRevocationToggle" IsEnabled="False" Margin="0,0,0,14">
+                    <TextBlock Text="Lab only: skip EST server revocation checks (sandbox CA has no CRL). Hostname, issuer and expiry are still checked." TextWrapping="Wrap" FontSize="12"/>
+                </CheckBox>
+
+                <UniformGrid Columns="2">
+                <StackPanel Margin="0,0,12,0">
                 <TextBlock Text="CN" Style="{StaticResource FieldLabel}"/>
                 <TextBox x:Name="CommonNameText"/>
+                </StackPanel>
 
+                <StackPanel>
                 <TextBlock Text="Manufacturer" Style="{StaticResource FieldLabel}"/>
                 <TextBox x:Name="ManufacturerText"/>
+                </StackPanel>
 
+                <StackPanel Margin="0,0,12,0">
                 <TextBlock Text="Model" Style="{StaticResource FieldLabel}"/>
                 <TextBox x:Name="ModelText"/>
+                </StackPanel>
 
+                <StackPanel>
                 <TextBlock Text="Serial" Style="{StaticResource FieldLabel}"/>
                 <TextBox x:Name="SerialText"/>
+                </StackPanel>
 
+                <StackPanel Margin="0,0,12,0">
                 <TextBlock Text="Activation Code" Style="{StaticResource FieldLabel}"/>
                 <PasswordBox x:Name="ActivationCodeBox" PasswordChanged="OnInputChanged"/>
+                </StackPanel>
+                </UniformGrid>
 
                 <Grid Margin="0,4,0,8">
                     <Grid.ColumnDefinitions>
@@ -92,6 +112,5 @@
                            FontSize="11"
                            Margin="0,8,0,0"/>
             </StackPanel>
-        </ScrollViewer>
     </Border>
 </Window>

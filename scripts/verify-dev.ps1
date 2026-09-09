@@ -6,8 +6,14 @@ Requires start-dev.ps1 already running. Does not change OS trust or delete exist
 [CmdletBinding()]
 param(
     [int]$Port = 7443,
+    # Admin listener. Defaults to -Port so single-listener dev setups behave exactly as before.
+    [int]$AdminPort,
     [int]$CrlPort = 7444,
     [string]$DataDirectory = (Join-Path (Split-Path -Parent $PSScriptRoot) 'artifacts\developer'),
+    # PEM CA for the ADMIN listener. Defaults to the gateway ca.pem in the data directory.
+    [string]$AdminCaPath,
+    # Prebuilt DICOM demo executable (packaged sandbox). When absent, falls back to dotnet run.
+    [string]$DicomExecutable,
     [switch]$SkipDicom,
     [switch]$CheckRevocation
 )
@@ -17,9 +23,14 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 $state = [IO.Path]::GetFullPath($DataDirectory)
 $secrets = Get-Content -Raw -LiteralPath (Join-Path $state 'secrets.json') | ConvertFrom-Json
 $caPath = Join-Path $state 'ca.pem'
+# Admin trust defaults to the same CA; packaged sandboxes pass a separate admin-ca.pem.
+if (-not $AdminCaPath) { $AdminCaPath = $caPath }
+if (-not $AdminPort) { $AdminPort = $Port }
+$adminCa = [Security.Cryptography.X509Certificates.X509Certificate2]::CreateFromPem([IO.File]::ReadAllText($AdminCaPath))
 $ca = [Security.Cryptography.X509Certificates.X509Certificate2]::CreateFromPem([IO.File]::ReadAllText($caPath))
 $fingerprint = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($ca.RawData))
-$baseUrl = "https://localhost:$Port"
+$baseUrl = "https://localhost:$Port"          # device-facing EST listener
+$adminUrl = "https://localhost:$AdminPort"    # admin API listener
 $crlUrl = "http://localhost:$CrlPort/api/crl/$fingerprint.crl"
 $runName = 'verify-' + [Guid]::NewGuid().ToString('N')
 $output = Join-Path $state $runName
@@ -54,11 +65,12 @@ public static class KryptonianDeveloperHttp {
 }
 '@
 }
-$http = [KryptonianDeveloperHttp]::Create($ca.RawData, $null)
+# Admin traffic trusts the ADMIN CA; EST/curl and renewal keep trusting the device CA.
+$http = [KryptonianDeveloperHttp]::Create($adminCa.RawData, $null)
 $http.DefaultRequestHeaders.Add('X-API-Key', $secrets.adminApiKey)
 
 function Invoke-AdminJson([string]$Method, [string]$Path, $Body = $null) {
-    $request = [Net.Http.HttpRequestMessage]::new([Net.Http.HttpMethod]::new($Method), "$baseUrl$Path")
+    $request = [Net.Http.HttpRequestMessage]::new([Net.Http.HttpMethod]::new($Method), "$adminUrl$Path")
     try {
         if ($null -ne $Body) {
             $request.Content = [Net.Http.StringContent]::new(($Body | ConvertTo-Json -Depth 8 -Compress), [Text.Encoding]::UTF8, 'application/json')
@@ -120,10 +132,11 @@ function Decode-Leaf([string]$Body, [Security.Cryptography.RSA]$Key) {
 }
 
 try {
-    $health = $http.GetAsync("$baseUrl/api/status/health").GetAwaiter().GetResult()
+    $health = $http.GetAsync("$adminUrl/api/status/health").GetAwaiter().GetResult()
     if ([int]$health.StatusCode -ne 200) { throw 'Gateway is not healthy.' }
     $health.Dispose()
-    Write-Host 'PASS HTTPS health (explicit CA and hostname; developer SERVER revocation exception).'
+    Write-Host "PASS HTTPS health on admin listener $adminUrl (explicit CA and hostname; developer SERVER revocation exception)."
+    if ($adminUrl -ne $baseUrl) { Write-Host "Device EST listener: $baseUrl" }
 
     $backend = @(Invoke-AdminJson GET '/api/cas') | Where-Object name -eq 'Developer CA' | Select-Object -First 1
     if (-not $backend) {
@@ -152,7 +165,7 @@ try {
     if ($crl.StatusCode -ne 200) { throw 'Initial CRL is unavailable.' }
     Write-Host 'PASS configured issuer/profile and anonymous signed CRL endpoint.'
     $httpOnly = Invoke-WebRequest -Uri "http://localhost:$CrlPort/api/status/health" -SkipHttpErrorCheck
-    if ($httpOnly.StatusCode -ne 403) { throw 'CRL HTTP listener allowed a non-CRL request.' }
+    if ($httpOnly.StatusCode -notin @(403,404)) { throw 'CRL HTTP listener allowed a non-CRL request.' }
 
     $device = Invoke-AdminJson POST '/api/devices' @{ displayName = $runName; subjectCommonName = $runName; manufacturer = 'Synthetic'; model = 'Developer test'; serialNumber = $runName }
     $activation = Invoke-AdminJson POST "/api/devices/$($device.id)/activation-code" @{ validForMinutes = 15 }
@@ -190,7 +203,7 @@ try {
     $device = Invoke-AdminJson GET "/api/devices/$($device.id)"
     Write-Host "PASS mTLS renewal with online CLIENT revocation, new key, retained identity; registry certificate $($device.lastCertificateId)."
 
-    $spoof = [Net.Http.HttpRequestMessage]::new([Net.Http.HttpMethod]::Get, "$baseUrl/api/status/health")
+    $spoof = [Net.Http.HttpRequestMessage]::new([Net.Http.HttpMethod]::Get, "$adminUrl/api/status/health")
     $spoof.Headers.Add('X-Forwarded-Client-Cert', 'Cert="spoofed"')
     $spoofResponse = $http.SendAsync($spoof).GetAwaiter().GetResult()
     if ([int]$spoofResponse.StatusCode -ne 403) { throw 'Forwarded identity spoof was not rejected.' }
@@ -201,7 +214,21 @@ try {
         $savedKey = $env:KRYPTONIAN_ADMIN_API_KEY
         try {
             $env:KRYPTONIAN_ADMIN_API_KEY = $secrets.adminApiKey
-            & dotnet run --project (Join-Path $repoRoot 'src\Kryptonian.DICOMTls') --no-build -- --gateway "$baseUrl/.well-known/est/developer-operational" --gateway-ca $caPath --non-interactive --count 2 --output (Join-Path $output 'dicom')
+            # EST stays on the device listener; admin API and its CA follow the admin origin.
+            $demoArgs = @(
+                '--gateway', "$baseUrl/.well-known/est/developer-operational"
+                '--gateway-ca', $caPath
+                '--admin-gateway', $adminUrl
+                '--admin-ca', $AdminCaPath
+                '--non-interactive', '--count', '2'
+                '--output', (Join-Path $output 'dicom')
+            )
+            if ($DicomExecutable) {
+                if (-not (Test-Path -LiteralPath $DicomExecutable)) { throw "DICOM executable not found: $DicomExecutable" }
+                & $DicomExecutable @demoArgs
+            } else {
+                & dotnet run --project (Join-Path $repoRoot 'src\Kryptonian.DICOMTls') --no-build -- @demoArgs
+            }
             if ($LASTEXITCODE -ne 0) { throw 'Live DICOM TLS transfer failed.' }
         } finally { $env:KRYPTONIAN_ADMIN_API_KEY = $savedKey }
     }
@@ -232,4 +259,4 @@ try {
     @{ run = $runName; deviceId = $device.id; certificateId = $device.lastCertificateId; issuerFingerprint = $fingerprint; crlUrl = $crlUrl; revocationChecked = [bool]$CheckRevocation; utc = [DateTime]::UtcNow.ToString('O') } |
         ConvertTo-Json | Set-Content -LiteralPath (Join-Path $output 'evidence.json')
     Write-Host "Developer evidence: $output"
-} finally { $http.Dispose(); $ca.Dispose() }
+} finally { $http.Dispose(); $adminCa.Dispose(); $ca.Dispose() }

@@ -9,6 +9,13 @@ internal sealed class DemoOptions
     /// <summary>Optional PEM CA used ONLY for gateway HTTPS trust in this demo.</summary>
     public string? GatewayCaPemPath { get; private init; }
 
+    /// <summary>Admin API origin. Defaults to <see cref="Gateway"/>; set separately when the
+    /// gateway serves EST and administration on different listeners.</summary>
+    public Uri? AdminGateway { get; private init; }
+
+    /// <summary>PEM CA trusting the admin listener; defaults to <see cref="GatewayCaPemPath"/>.</summary>
+    public string? AdminCaPemPath { get; private init; }
+
     /// <summary>Skip the interactive cleanup prompt; devices stay registered unless an
     /// explicit archive/delete option was passed.</summary>
     public bool NonInteractive { get; private init; }
@@ -90,11 +97,18 @@ internal sealed class DemoOptions
             ?? Environment.GetEnvironmentVariable("KRYPTONIAN_GATEWAY_URL")
             ?? DefaultGateway;
 
+        // Admin defaults to the EST origin, so existing single-listener usage is unchanged.
+        var adminGateway = GetValue(values, "admin-gateway")
+            ?? Environment.GetEnvironmentVariable("KRYPTONIAN_ADMIN_GATEWAY_URL")
+            ?? gateway;
+
         return new DemoOptions
         {
             ShowHelp = showHelp,
             Gateway = Uri.TryCreate(gateway.TrimEnd('/'), UriKind.Absolute, out var gatewayUri) ? gatewayUri : null,
             GatewayCaPemPath = GetValue(values, "gateway-ca") ?? Environment.GetEnvironmentVariable("KRYPTONIAN_GATEWAY_CA_PEM"),
+            AdminGateway = Uri.TryCreate(adminGateway.TrimEnd('/'), UriKind.Absolute, out var adminUri) ? adminUri : null,
+            AdminCaPemPath = GetValue(values, "admin-ca") ?? Environment.GetEnvironmentVariable("KRYPTONIAN_ADMIN_CA_PEM"),
             NonInteractive = HasFlag(values, "non-interactive"),
             ActivationCodeA = GetValue(values, "activation-code-a") ?? Environment.GetEnvironmentVariable("KRYPTONIAN_ACTIVATION_CODE_A"),
             ActivationCodeB = GetValue(values, "activation-code-b") ?? Environment.GetEnvironmentVariable("KRYPTONIAN_ACTIVATION_CODE_B"),
@@ -122,6 +136,12 @@ internal sealed class DemoOptions
         if (Gateway == null || Gateway.Scheme != Uri.UriSchemeHttps)
         {
             error = "Gateway must be an absolute HTTPS URL.";
+            return false;
+        }
+
+        if (AdminGateway == null || AdminGateway.Scheme != Uri.UriSchemeHttps)
+        {
+            error = "Admin gateway must be an absolute HTTPS URL.";
             return false;
         }
 
@@ -178,6 +198,8 @@ internal sealed class DemoOptions
         Console.WriteLine("  --gateway <url>             Gateway base URL. Default: https://localhost:7443.");
         Console.WriteLine("  --gateway-ca <pem>          PEM CA used to trust the gateway HTTPS endpoint (EST + admin API).");
         Console.WriteLine("                              Revocation is NoCheck for this path; DICOM peer trust is unchanged.");
+        Console.WriteLine("  --admin-gateway <url>         Admin API origin when separate from EST. Default: --gateway.");
+        Console.WriteLine("  --admin-ca <pem>              PEM CA trusting the admin listener. Default: --gateway-ca.");
         Console.WriteLine("  --non-interactive           Leave created devices registered; no cleanup prompt.");
         Console.WriteLine("  --activation-code-a <token> Activation token for the sending device.");
         Console.WriteLine("  --activation-code-b <token> Activation token for the receiving device.");

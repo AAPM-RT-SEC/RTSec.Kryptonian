@@ -9,11 +9,13 @@ using Microsoft.AspNetCore.Server.Kestrel.Https;
 using System.Security.Cryptography.X509Certificates;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
+using Microsoft.Extensions.Hosting.WindowsServices;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using RTSec.Kryptonian.Api.Authentication;
 using RTSec.Kryptonian.Api.Logging;
 using RTSec.Kryptonian.Api.Middleware;
+using RTSec.Kryptonian.Api;
 using RTSec.Kryptonian.Application;
 using RTSec.Kryptonian.Application.DTOs;
 using RTSec.Kryptonian.Application.Services;
@@ -37,11 +39,43 @@ try
 {
     Log.Information("Starting RTSec.Kryptonian API");
 
-    var builder = WebApplication.CreateBuilder(args);
+    var builderOptions = WindowsServiceHelpers.IsWindowsService()
+        ? new WebApplicationOptions { Args = args, ContentRootPath = AppContext.BaseDirectory }
+        : new WebApplicationOptions { Args = args };
+    var builder = WebApplication.CreateBuilder(builderOptions);
+    SandboxBootstrap? sandbox = null;
+    if (builder.Configuration.GetValue<bool>("Kryptonian:Sandbox:Enabled"))
+    {
+        sandbox = SandboxBootstrap.Initialize(builder.Configuration);
+        if (!builder.Environment.IsProduction())
+            throw new InvalidOperationException("Kryptonian sandbox services must run in Production.");
+        builder.Configuration.AddInMemoryCollection(sandbox.Configuration);
+        builder.Host.UseWindowsService(options => options.ServiceName = "KryptonianSandbox");
+    }
+    using var sandboxAdminCertificate = sandbox is null ? null : SandboxBootstrap.LoadServerCertificate(sandbox.AdminPfxPath, sandbox.AdminPfxPassword);
+    using var sandboxEstCertificate = sandbox is null ? null : SandboxBootstrap.LoadServerCertificate(sandbox.ServerPfxPath, sandbox.ServerPfxPassword);
     var clientCaFiles = builder.Configuration.GetSection("Kryptonian:Tls:ClientCaFiles").Get<string[]>() ?? Array.Empty<string>();
     var clientTrust = clientCaFiles.Length == 0 ? null : new ConfiguredClientCertificateTrust(clientCaFiles);
+    var logPath = sandbox is null
+        ? "logs/kryptonian-.log"
+        : Path.Combine(sandbox.DataDirectory, "logs", "kryptonian-.log");
     builder.WebHost.ConfigureKestrel(options =>
     {
+        if (sandbox is { } sandboxOptions)
+        {
+            options.ListenLocalhost(sandboxOptions.AdminPort, listen => listen.UseHttps(sandboxAdminCertificate!,
+                https => https.ClientCertificateMode = ClientCertificateMode.NoCertificate));
+            options.ListenLocalhost(sandboxOptions.EstPort, listen => listen.UseHttps(sandboxEstCertificate!,
+                https =>
+                {
+                    https.ClientCertificateMode = ClientCertificateMode.AllowCertificate;
+                    if (clientTrust is not null)
+                        https.ClientCertificateValidation = (certificate, chain, _) => clientTrust.Validate(certificate, chain);
+                }));
+            options.ListenLocalhost(sandboxOptions.CrlPort);
+            return;
+        }
+
         options.ConfigureHttpsDefaults(httpsOptions =>
         {
             httpsOptions.ClientCertificateMode = ClientCertificateMode.AllowCertificate;
@@ -84,7 +118,7 @@ try
         .Enrich.WithProperty("Application", "Kryptonian")
         .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] [{CorrelationId}] {Message:lj}{NewLine}{Exception}")
         .WriteTo.File(
-            "logs/kryptonian-.log",
+            logPath,
             rollingInterval: RollingInterval.Day,
             outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] [{CorrelationId}] [{RequestId}] {ClientIp} {Message:lj}{NewLine}{Exception}")
         .WriteTo.Sink(new LiveLogSink(services.GetRequiredService<LiveLogBroadcaster>()), Serilog.Events.LogEventLevel.Information));
@@ -265,8 +299,10 @@ try
     builder.Services.AddSingleton<IPkcsService, PkcsService>();
 
     // Configure Data Protection (for encrypting ACME account keys in DB)
-    builder.Services.AddDataProtection()
+    var dataProtection = builder.Services.AddDataProtection()
         .SetApplicationName("RTSec.Kryptonian");
+    if (sandbox is not null)
+        dataProtection.PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(sandbox.DataDirectory, "dataprotection")));
     builder.Services.AddSingleton<IDataProtectionService, DataProtectionService>();
 
     // Notification SMTP transport (on-prem friendly — MailKit, no cloud APIs)
@@ -300,6 +336,19 @@ try
     builder.Services.AddInMemoryRateLimiting();
 
     var app = builder.Build();
+    if (sandbox is { } sandboxOptions)
+    {
+        app.Use(async (context, next) =>
+        {
+            if (!SandboxBootstrap.AllowsRequest(context.Connection.LocalPort, sandboxOptions.AdminPort, sandboxOptions.EstPort,
+                    sandboxOptions.CrlPort, context.Request.Path, context.Request.Method))
+            {
+                context.Response.StatusCode = StatusCodes.Status404NotFound;
+                return;
+            }
+            await next(context);
+        });
+    }
     if (builder.Configuration.GetValue<bool>("Kryptonian:Tls:CrlOnlyHttp"))
     {
         app.Use(async (context, next) =>
@@ -487,6 +536,7 @@ try
 catch (Exception ex)
 {
     Log.Fatal(ex, "Application terminated unexpectedly");
+    Environment.ExitCode = 1;
 }
 finally
 {
