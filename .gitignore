@@ -62,6 +62,18 @@ wwwroot/lib/
 wwwroot/css/site.min.css.map
 node_modules/
 src/RTSec.Kryptonian.Ui/dist/
+*.tsbuildinfo
+
+# Local development captures and generated demo credentials
+/demo-output/
+/scripts/demo-output/
+/hackathon-codex-test/
+/.playwright-mcp/
+/logs/
+/.task/impl-result.json
+/device-test.*
+/ca-backend-dialog-fixed.png
+/typescript-ui-devices.png
 
 # Misc
 launchSettings.json
