@@ -1,0 +1,5 @@
+*.md text eol=lf
+*.py text eol=lf
+*.mjs text eol=lf
+*.json text eol=lf
+.gitignore text eol=lf

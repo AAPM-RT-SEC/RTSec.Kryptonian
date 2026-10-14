@@ -1,0 +1,131 @@
+{
+  "checked_at_utc": "2026-10-14T02:23:48.829413+00:00",
+  "application_baseline": "682f996c8447afec13bc1fce5b7f59e6a06efa25",
+  "source_documents": 17,
+  "requirement_count": 154,
+  "user_requirement_status": {
+    "Existing": 31,
+    "Partial": 6,
+    "Missing": 1
+  },
+  "requirement_status": {
+    "Existing": 108,
+    "Missing": 18,
+    "Partial": 25,
+    "Proposed": 3
+  },
+  "verification_cases": 60,
+  "vt_evidence": {
+    "Covered": 39,
+    "Partially covered": 7,
+    "Proposed": 14
+  },
+  "vt_linked_requirements": 114,
+  "without_vt_link": [
+    "SR-F-CAI.010",
+    "SR-F-ADM.001",
+    "SR-F-ADM.002",
+    "SR-F-ADM.005",
+    "SR-F-ADM.006",
+    "SR-F-ADM.007",
+    "SR-F-ADM.008",
+    "SR-F-ADM.009",
+    "SR-F-INT.001",
+    "SR-F-INT.003",
+    "SR-F-INT.004",
+    "SR-F-INT.006",
+    "SR-S.008",
+    "SR-S.010",
+    "SR-S.011",
+    "SR-S.012",
+    "SR-A.009",
+    "SR-Z.007",
+    "SR-Z.009",
+    "SR-C.008",
+    "SR-C.009",
+    "SR-D.004",
+    "SR-D.007",
+    "SR-D.008",
+    "SR-D.009",
+    "SR-P.003",
+    "SR-P.004",
+    "SR-P.005",
+    "SR-V.004",
+    "SR-U.003",
+    "SR-U.004",
+    "SR-U.005",
+    "SR-U.006",
+    "SR-U.007",
+    "SR-B.006",
+    "SR-O.001",
+    "SR-O.002",
+    "SR-O.004",
+    "SR-X.004",
+    "SR-X.006"
+  ],
+  "fresh_tests": {
+    "RTSec.Kryptonian.Api.Tests.dll": {
+      "file": "rexca_RED1_2026-10-13_21_03_08_net8.0[1].trx",
+      "total": 72,
+      "passed": 72,
+      "failed": 0,
+      "skipped": 0
+    },
+    "Kryptonian.MedicalDevice.Enrollment.Tests.dll": {
+      "file": "rexca_RED1_2026-10-13_21_03_03_net10.0.trx",
+      "total": 21,
+      "passed": 21,
+      "failed": 0,
+      "skipped": 0
+    },
+    "RTSec.Kryptonian.Bridge.Tests.dll": {
+      "file": "rexca_RED1_2026-10-13_21_03_03_net8.0.trx",
+      "total": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    "RTSec.Kryptonian.DimseTlsProxy.Tests.dll": {
+      "file": "rexca_RED1_2026-10-13_21_03_04_net8.0.trx",
+      "total": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0
+    },
+    "RTSec.Kryptonian.CaHarness.Tests.dll": {
+      "file": "rexca_RED1_2026-10-13_21_03_06_net8.0.trx",
+      "total": 49,
+      "passed": 49,
+      "failed": 0,
+      "skipped": 0
+    },
+    "RTSec.Kryptonian.Domain.Tests.dll": {
+      "file": "rexca_RED1_2026-10-13_21_03_08_net8.0.trx",
+      "total": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    "RTSec.Kryptonian.Infrastructure.Tests.dll": {
+      "file": "rexca_RED1_2026-10-13_21_03_08_net8.0[2].trx",
+      "total": 100,
+      "passed": 82,
+      "failed": 0,
+      "skipped": 18
+    },
+    "RTSec.Kryptonian.Application.Tests.dll": {
+      "file": "rexca_RED1_2026-10-13_21_03_08_net8.0[3].trx",
+      "total": 102,
+      "passed": 102,
+      "failed": 0,
+      "skipped": 0
+    }
+  },
+  "errors": [],
+  "fresh_test_totals": {
+    "total": 355,
+    "passed": 337,
+    "failed": 0,
+    "skipped": 18
+  }
+}
