@@ -12,11 +12,11 @@ public sealed class InstalledCertificateRenewal
 
     public InstalledCertificateRenewal(string statePath) => _statePath = statePath;
 
-    public async Task TrackAsync(Uri gateway, X509Certificate2 installedCertificate, CancellationToken ct = default)
+    public async Task TrackAsync(Uri gateway, X509Certificate2 installedCertificate, CancellationToken ct = default, GatewayTrust? gatewayTrust = null)
     {
         if (gateway.Scheme != Uri.UriSchemeHttps) throw new ArgumentException("Renewal requires HTTPS.", nameof(gateway));
         await _gate.WaitAsync(ct);
-        try { await SaveAsync(new RenewalState(gateway.AbsoluteUri, installedCertificate.Thumbprint), ct); }
+        try { await SaveAsync(new RenewalState(gateway.AbsoluteUri, installedCertificate.Thumbprint, gatewayTrust), ct); }
         finally { _gate.Release(); }
     }
 
@@ -49,7 +49,7 @@ public sealed class InstalledCertificateRenewal
                         if (current.NotAfter.ToUniversalTime() <= DateTime.UtcNow)
                             throw new InvalidOperationException("Managed certificate expired; attended activation is required.");
                         if (!IsDue(DateTime.UtcNow, current.NotBefore.ToUniversalTime(), current.NotAfter.ToUniversalTime())) continue;
-                        var result = await EstEnrollmentClient.ReenrollAsync(gateway, current, current.Subject, ct);
+                        var result = await EstEnrollmentClient.ReenrollAsync(gateway, current, current.Subject, ct, state.GatewayTrust);
                         using var renewed = result.Certificate;
                         try
                         {
@@ -87,5 +87,5 @@ public sealed class InstalledCertificateRenewal
         File.Move(temporary, _statePath, overwrite: true);
     }
 
-    private sealed record RenewalState(string Gateway, string Thumbprint);
+    private sealed record RenewalState(string Gateway, string Thumbprint, GatewayTrust? GatewayTrust = null);
 }

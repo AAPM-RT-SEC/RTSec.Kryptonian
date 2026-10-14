@@ -1,0 +1,6 @@
+tools/node_modules/
+validation/test-results/
+validation/*.log
+validation/rendered/
+validation/diagrams/
+__pycache__/

@@ -11,7 +11,7 @@ namespace Kryptonian.MedicalDevice;
 
 public partial class MainWindow : Window
 {
-    private readonly EstEnrollmentClient _estEnrollment = new();
+    private GatewayTrust? _gatewayTrust;
     private readonly CancellationTokenSource _renewalCancellation = new();
     private readonly InstalledCertificateRenewal _renewal = new(Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Kryptonian", "renewal.json"));
@@ -50,6 +50,35 @@ public partial class MainWindow : Window
             && ActivationCodeBox.Password.Length > 0;
     }
 
+    private void OnChooseCaClicked(object sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFileDialog { Title = "Choose EST gateway public root CA", Filter = "Public CA certificate|*.pem;*.cer;*.crt", CheckFileExists = true };
+        if (dialog.ShowDialog() != true) return;
+        try
+        {
+            var trust = GatewayTrust.FromFile(dialog.FileName);
+            using var ca = X509CertificateLoader.LoadCertificate(trust.CertificateDer);
+            var fingerprint = ca.GetCertHashString(System.Security.Cryptography.HashAlgorithmName.SHA256);
+            if (MessageBox.Show(this, $"Trust this CA for this app's EST connections only?\n\n{ca.Subject}\nSHA-256: {fingerprint}\n\nVerify this fingerprint with the gateway administrator. Windows trust is not changed.",
+                "Confirm gateway CA", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+            _gatewayTrust = trust;
+            CaStatusText.Text = $"{ca.Subject}\nSHA-256: {fingerprint}";
+            LabRevocationToggle.IsEnabled = true;
+        }
+        catch (Exception ex) { SetStatus($"CA selection failed: {ex.GetBaseException().Message}", error: true); }
+    }
+
+    private void OnClearCaClicked(object sender, RoutedEventArgs e)
+    {
+        _gatewayTrust = null;
+        LabRevocationToggle.IsChecked = false;
+        LabRevocationToggle.IsEnabled = false;
+        CaStatusText.Text = "Using Windows trust. Choose the EST server's public root CA for a private gateway.";
+    }
+
+    private GatewayTrust? SelectedTrust() => _gatewayTrust is null ? null :
+        _gatewayTrust with { SkipServerRevocation = LabRevocationToggle.IsChecked == true };
+
     private async void OnEnrollClicked(object sender, RoutedEventArgs e)
     {
         if (!AllFieldsFilled())
@@ -61,7 +90,7 @@ public partial class MainWindow : Window
         if (!Uri.TryCreate(GatewayText.Text.Trim().TrimEnd('/'), UriKind.Absolute, out var gatewayUri)
             || (gatewayUri.Scheme != Uri.UriSchemeHttp && gatewayUri.Scheme != Uri.UriSchemeHttps))
         {
-            SetStatus("Gateway must be an absolute HTTPS URL, e.g. https://localhost:8443.", error: true);
+            SetStatus("Gateway must be an absolute HTTPS URL, e.g. https://localhost:7443.", error: true);
             return;
         }
 
@@ -84,7 +113,9 @@ public partial class MainWindow : Window
             SetStatus("Generating key pair and submitting CSR...");
 
             SetStatus("Enrolling with activation code...");
-            var result = await _estEnrollment.EnrollAsync(
+            var trust = SelectedTrust();
+            using var http = GatewayTrust.CreateClient(trust);
+            var result = await new EstEnrollmentClient(http).EnrollAsync(
                 gatewayUri,
                 new DeviceEnrollmentRequest(commonName, manufacturer, model, serial, activationCode));
             var certificate = result.Certificate;
@@ -92,7 +123,7 @@ public partial class MainWindow : Window
             if (install)
             {
                 InstallCertificate(certificate);
-                await _renewal.TrackAsync(gatewayUri, certificate, _renewalCancellation.Token);
+                await _renewal.TrackAsync(gatewayUri, certificate, _renewalCancellation.Token, trust);
                 SetStatus($"Certificate installed to CurrentUser\\My. Thumbprint: {certificate.Thumbprint}", success: true);
             }
             else
@@ -109,7 +140,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            SetStatus($"Enrollment failed: {ex.Message}", error: true);
+            SetStatus($"Enrollment failed: {ex.Message}\n{ex.GetBaseException().Message}", error: true);
         }
         finally
         {
@@ -159,13 +190,14 @@ public partial class MainWindow : Window
             var commonName = EstEnrollmentClient.ExtractCommonName(existing.SubjectName) ?? existing.Subject;
             SetStatus($"Generating new key pair for {commonName} and submitting re-enrollment CSR...");
 
-            var result = await EstEnrollmentClient.ReenrollAsync(gatewayUri, existing, commonName);
+            var trust = SelectedTrust();
+            var result = await EstEnrollmentClient.ReenrollAsync(gatewayUri, existing, commonName, gatewayTrust: trust);
             var renewed = result.Certificate;
 
             if (install)
             {
                 InstallCertificate(renewed);
-                await _renewal.TrackAsync(gatewayUri, renewed, _renewalCancellation.Token);
+                await _renewal.TrackAsync(gatewayUri, renewed, _renewalCancellation.Token, trust);
                 SetStatus($"Renewed certificate installed to CurrentUser\\My. New thumbprint: {renewed.Thumbprint}", success: true);
             }
             else
@@ -182,7 +214,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            SetStatus($"Re-enrollment failed: {ex.Message}", error: true);
+            SetStatus($"Re-enrollment failed: {ex.Message}\n{ex.GetBaseException().Message}", error: true);
         }
         finally
         {
@@ -249,10 +281,11 @@ public partial class MainWindow : Window
         var gatewayValid = Uri.TryCreate(GatewayText.Text.Trim().TrimEnd('/'), UriKind.Absolute, out _);
         EnrollButton.IsEnabled = !busy && AllFieldsFilled() && gatewayValid;
         RenewButton.IsEnabled = !busy && gatewayValid;
-        foreach (var control in new Control[] { GatewayText, CommonNameText, ManufacturerText, ModelText, SerialText, ActivationCodeBox, InstallToggle })
+        foreach (var control in new Control[] { GatewayText, CommonNameText, ManufacturerText, ModelText, SerialText, ActivationCodeBox, InstallToggle, ChooseCaButton, ClearCaButton })
         {
             control.IsEnabled = !busy;
         }
+        LabRevocationToggle.IsEnabled = !busy && _gatewayTrust != null;
     }
 
     private void SetStatus(string text, bool error = false, bool success = false)

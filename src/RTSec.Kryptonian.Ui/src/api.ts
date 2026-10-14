@@ -21,6 +21,12 @@ export interface CaBackendInput {
   isActive?: boolean;
 }
 
+export interface GeneratedSelfSignedCa {
+  pfxPath: string;
+  thumbprint: string;
+  notAfter: string;
+}
+
 export interface Device {
   id: string;
   displayName: string;
@@ -390,6 +396,8 @@ export const api = {
   deleteCaBackend: (id: string) => request<void>(`/api/cas/${id}`, { method: 'DELETE' }),
   testCaBackend: (id: string) =>
     request<{ success: boolean }>(`/api/cas/${id}/test`, { method: 'POST' }),
+  generateSelfSignedCa: (input: { pfxPath: string; password: string; commonName: string }) =>
+    request<GeneratedSelfSignedCa>('/api/cas/generate-selfsigned', jsonBody(input)),
   activateCaBackend: (id: string) =>
     request<CaBackend>(`/api/cas/${id}/activate`, { method: 'POST' }),
 

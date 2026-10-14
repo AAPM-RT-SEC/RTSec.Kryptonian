@@ -82,3 +82,5 @@ launchSettings.json
 *.swp
 *.orig
 *.tmp
+# Advanced Installer build caches are local artifacts, not release source.
+installer/windows/*-cache/

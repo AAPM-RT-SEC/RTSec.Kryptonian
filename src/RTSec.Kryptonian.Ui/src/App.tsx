@@ -1526,6 +1526,9 @@ function BackendModal({ backend, onClose, run }: { backend: CaBackend | null; on
   const [isEnabled, setIsEnabled] = useState(backend?.isEnabled ?? true);
   const [isActive, setIsActive] = useState(backend?.isActive ?? false);
   const [error, setError] = useState<string | null>(null);
+  const [generating, setGenerating] = useState(false);
+  const [generateError, setGenerateError] = useState<string | null>(null);
+  const [generateNotice, setGenerateNotice] = useState<string | null>(null);
 
   const updateType = (nextType: string) => {
     setType(nextType);
@@ -1559,8 +1562,41 @@ function BackendModal({ backend, onClose, run }: { backend: CaBackend | null; on
     });
   };
 
+  const generateCa = async () => {
+    if (generating) return;
+    setGenerateError(null);
+    setGenerateNotice(null);
+    setGenerating(true);
+    try {
+      const parsedConfig = JSON.parse(rawConfig || '{}') as Record<string, unknown>;
+      if (!parsedConfig || typeof parsedConfig !== 'object' || Array.isArray(parsedConfig))
+        throw new Error('Config JSON must be an object.');
+      if (url.trim() || String(parsedConfig.HarnessBaseUrl ?? '').trim())
+        throw new Error('Clear the harness URL to generate a local CA.');
+      const result = await api.generateSelfSignedCa({
+        pfxPath: String(parsedConfig.PfxPath ?? '').trim(),
+        password: String(parsedConfig.PfxPassword ?? ''),
+        commonName: name.trim(),
+      });
+      // Sync the authoritative absolute path returned by the server into both editors.
+      const next = { ...parsedConfig, PfxPath: result.pfxPath };
+      setConfig(next);
+      setRawConfig(JSON.stringify(next, null, 2));
+      setGenerateNotice(
+        `CA file created at ${result.pfxPath} (thumbprint ${result.thumbprint}, valid to `
+        + `${new Date(result.notAfter).toISOString().slice(0, 10)}). Backend configuration is not saved `
+        + 'until you press Save; cancelling still leaves the generated file on disk.',
+      );
+    } catch (err) {
+      setGenerateError(describeError(err));
+    } finally {
+      setGenerating(false);
+    }
+  };
+
   const submit = async (event: FormEvent) => {
     event.preventDefault();
+    if (generating) return;   // never race an in-flight CA generation
     try {
       const parsedConfig = JSON.parse(rawConfig || '{}') as Record<string, unknown>;
       const input: CaBackendInput = {
@@ -1582,8 +1618,9 @@ function BackendModal({ backend, onClose, run }: { backend: CaBackend | null; on
   };
 
   return (
-    <Modal title={backend ? 'Edit CA Backend' : 'Add CA Backend'} onClose={onClose}>
+    <Modal title={backend ? 'Edit CA Backend' : 'Add CA Backend'} onClose={() => { if (!generating) onClose(); }}>
       <form onSubmit={(event) => void submit(event)} className="form">
+        <fieldset disabled={generating} className="form" style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
         {error && <p className="formError">{error}</p>}
         <label>Name<input value={name} onChange={(e) => setName(e.target.value)} required /></label>
         <label>Type<select value={type} onChange={(e) => updateType(e.target.value)}>{backendTypes.map((item) => <option key={item}>{item}</option>)}</select></label>
@@ -1594,14 +1631,26 @@ function BackendModal({ backend, onClose, run }: { backend: CaBackend | null; on
         {type === 'selfsigned' && (
           <p className="formHint">Leave this blank to sign with the local CA certificate below. Only enter a URL when using the external self-signed EST harness.</p>
         )}
-        <BackendConfigFields type={type} config={config} certMode={certMode} updateCertMode={updateCertMode} updateConfig={updateConfig} />
+        <BackendConfigFields
+          type={type}
+          config={config}
+          certMode={certMode}
+          updateCertMode={updateCertMode}
+          updateConfig={updateConfig}
+          generating={generating}
+          canGenerate={!url.trim() && !String(config.HarnessBaseUrl ?? '').trim()}
+          generateError={generateError}
+          generateNotice={generateNotice}
+          onGenerate={() => void generateCa()}
+        />
         <details className="advancedConfig" open={showRawConfig} onToggle={(e) => setShowRawConfig(e.currentTarget.open)}>
           <summary>Advanced JSON config</summary>
           <label>Config JSON<textarea value={rawConfig} onChange={(e) => setRawConfig(e.target.value)} rows={8} /></label>
         </details>
         <label className="check"><input type="checkbox" checked={isEnabled} onChange={(e) => setIsEnabled(e.target.checked)} /> Enabled</label>
         <label className="check"><input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} /> Activate after save</label>
-        <div className="modalActions"><button type="button" onClick={onClose}>Cancel</button><button className="primary" type="submit">Save</button></div>
+        <div className="modalActions"><button type="button" onClick={onClose} disabled={generating}>Cancel</button><button className="primary" type="submit" disabled={generating}>Save</button></div>
+        </fieldset>
       </form>
     </Modal>
   );
@@ -1613,19 +1662,29 @@ function BackendConfigFields({
   certMode,
   updateCertMode,
   updateConfig,
+  generating,
+  canGenerate,
+  generateError,
+  generateNotice,
+  onGenerate,
 }: {
   type: string;
   config: Record<string, unknown>;
   certMode: SelfSignedCertMode;
   updateCertMode: (mode: SelfSignedCertMode) => void;
   updateConfig: (key: string, value: string | number) => void;
+  generating: boolean;
+  canGenerate: boolean;
+  generateError: string | null;
+  generateNotice: string | null;
+  onGenerate: () => void;
 }) {
   const stringValue = (key: string) => String(config[key] ?? '');
   const numberValue = (key: string, fallback: number) => Number(config[key] ?? fallback);
 
   if (type === 'selfsigned') {
     return (
-      <fieldset className="configFieldset">
+      <fieldset className="configFieldset" disabled={generating}>
         <legend>Self-signed CA Settings</legend>
         <p>Choose one certificate source for the local self-signed CA.</p>
         <div className="segmentedControl" role="group" aria-label="Self-signed certificate source">
@@ -1634,11 +1693,36 @@ function BackendConfigFields({
         </div>
         {certMode === 'pfx' ? (
           <>
-            <label>PFX Path<input value={stringValue('PfxPath')} onChange={(e) => updateConfig('PfxPath', e.target.value)} placeholder="certs/dev-ca.pfx" /></label>
-            <label>PFX Password<input type="password" value={stringValue('PfxPassword')} onChange={(e) => updateConfig('PfxPassword', e.target.value)} /></label>
+            <label>PFX Path<input value={stringValue('PfxPath')} onChange={(e) => updateConfig('PfxPath', e.target.value)} placeholder="C:\ProgramData\KryptonianSandbox\my-lab-ca.pfx" /></label>
+            <label>PFX Password<input type="password" value={stringValue('PfxPassword')} onChange={(e) => updateConfig('PfxPassword', e.target.value)} autoComplete="new-password" /></label>
+            {canGenerate && <div className="generateCaBlock">
+              <button
+                type="button"
+                className="secondary"
+                onClick={onGenerate}
+                disabled={generating}
+                aria-busy={generating}
+                aria-describedby="generateCaHelp"
+              >
+                {generating ? 'Generating CA…' : 'Generate new CA PFX'}
+              </button>
+              <p id="generateCaHelp" className="formHint">
+                Optional. An existing PFX works without generating. Generation creates a new
+                self-signed CA file on the gateway host at the path above: it must be absolute, end
+                in .pfx or .p12, and sit in a directory that already exists and is writable by the
+                gateway service (the installed service owns C:\ProgramData\KryptonianSandbox). The
+                backend name becomes the certificate common name, and the password must be at least
+                12 characters. The CA file is written immediately; backend configuration is not
+                saved until you press Save.
+              </p>
+              {generating && <p role="status" className="formHint">Requesting CA from the gateway…</p>}
+              {generateNotice && <p role="status" className="formSuccess">{generateNotice}</p>}
+              {generateError && <p role="alert" className="formError">{generateError}</p>}
+            </div>}
           </>
         ) : (
           <>
+            <p className="formHint">Existing PEM paths work as-is; no generation step or minimum password applies.</p>
             <label>PEM Certificate Path<input value={stringValue('CertPath')} onChange={(e) => updateConfig('CertPath', e.target.value)} placeholder="certs/dev-ca.crt" /></label>
             <label>PEM Key Path<input value={stringValue('KeyPath')} onChange={(e) => updateConfig('KeyPath', e.target.value)} placeholder="certs/dev-ca.key" /></label>
           </>
@@ -1885,13 +1969,17 @@ function ProfileModal({
   const [hostnames, setHostnames] = useState((profile?.hostnames ?? ['localhost']).join(', '));
   const [pathPrefix, setPathPrefix] = useState(profile?.pathPrefix ?? '/.well-known/est');
   const [validityDays, setValidityDays] = useState(profile?.validityDays ?? 365);
+  const [keyUsages, setKeyUsages] = useState((profile?.allowedKeyUsages ?? ['digitalSignature', 'clientAuth']).join(', '));
+  const allowedKeyUsages = keyUsages.split(',').map((usage) => usage.trim()).filter(Boolean);
+  const normalizedUsages = allowedKeyUsages.map((usage) => usage.toLowerCase());
+  const validUsages = normalizedUsages.includes('digitalsignature')
+    && normalizedUsages.some((usage) => ['clientauth', 'serverauth', 'tlswebclientauthentication', 'tlswebserverauthentication'].includes(usage))
+    && normalizedUsages.every((usage) => ['digitalsignature', 'keyencipherment', 'keyagreement', 'clientauth', 'serverauth', 'tlswebclientauthentication', 'tlswebserverauthentication'].includes(usage));
   const [isEnabled, setIsEnabled] = useState(profile?.isEnabled ?? true);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    if (!metadataBackendId) {
-      throw new Error('Add a CA backend before saving an EST profile.');
-    }
+    if (!metadataBackendId || !validUsages) return;
 
     const input: EstProfileInput = {
       name,
@@ -1901,7 +1989,7 @@ function ProfileModal({
       pathPrefix,
       caBackendId: metadataBackendId,
       certificateTemplate: profile?.certificateTemplate ?? null,
-      allowedKeyUsages: profile?.allowedKeyUsages ?? ['digitalSignature', 'keyEncipherment'],
+      allowedKeyUsages,
       validityDays,
       requireClientCertificate: profile?.requireClientCertificate ?? false,
       validateClientCertificateChain: profile?.validateClientCertificateChain ?? false,
@@ -1923,8 +2011,11 @@ function ProfileModal({
         <label>Path Prefix<input value={pathPrefix} onChange={(e) => setPathPrefix(e.target.value)} required /></label>
         {!metadataBackendId && <p className="formError">Add a CA backend before saving an EST profile.</p>}
         <label>Validity Days<input type="number" min={1} value={validityDays} onChange={(e) => setValidityDays(Number(e.target.value))} /></label>
+        <label>Allowed Certificate Usages<input value={keyUsages} onChange={(e) => setKeyUsages(e.target.value)} required aria-describedby="profileUsagesHelp" aria-invalid={!validUsages} /></label>
+        <p id="profileUsagesHelp" className="formHint">Comma-separated: digitalSignature, clientAuth for enrollment clients. Add serverAuth for devices accepting TLS connections. Optional: keyEncipherment, keyAgreement.</p>
+        {!validUsages && <p className="formError" role="alert">Include digitalSignature and clientAuth and/or serverAuth. Only the listed usages and TLS authentication aliases are supported.</p>}
         <label className="check"><input type="checkbox" checked={isEnabled} onChange={(e) => setIsEnabled(e.target.checked)} /> Enabled</label>
-        <div className="modalActions"><button type="button" onClick={onClose}>Cancel</button><button className="primary" type="submit" disabled={!metadataBackendId}>Save</button></div>
+        <div className="modalActions"><button type="button" onClick={onClose}>Cancel</button><button className="primary" type="submit" disabled={!metadataBackendId || !validUsages}>Save</button></div>
       </form>
     </Modal>
   );

@@ -1,0 +1,139 @@
+{
+  "built_at_utc": "2026-10-14T02:24:05.965573+00:00",
+  "revision": "0.2",
+  "approval": "Draft",
+  "sources": [
+    {
+      "file": "README.md",
+      "sha256": "28796c6151703fba2146413bcb01ddd9de8d16b20e6c938612a79cce5538adbc"
+    },
+    {
+      "file": "00-SPEC-CONVENTIONS.md",
+      "sha256": "a7949e8efdef5ff3c489f85cc48eb53e01cd771ba9d063d867346ba26cc27204"
+    },
+    {
+      "file": "01-PRODUCT-DEFINITION.md",
+      "sha256": "66bc7506b9346c9d975216ecc2bb1dc9c1313153b69729b88e2a61d053520493"
+    },
+    {
+      "file": "02-USER-REQUIREMENTS.md",
+      "sha256": "e7681861c5a0fb39ea133e191c9213e7c5ecf33394260d8849b13b958b681859"
+    },
+    {
+      "file": "03-SOFTWARE-REQUIREMENTS.md",
+      "sha256": "f599dcf8cc29656a27a097850a4c4524d739d6ac0c7278ece3f1dfcb8a8e725e"
+    },
+    {
+      "file": "04-SOFTWARE-DESIGN.md",
+      "sha256": "c1188d2fbf8dc153b754499ca5d7e7aa1d9329c6d7b2ab5074a1e8114948456e"
+    },
+    {
+      "file": "05-INTERFACE-CONTROL.md",
+      "sha256": "d82ca75422729cfba8efb0443da2f37e4c8dcfda8f37d7495e58a6896a908a8f"
+    },
+    {
+      "file": "06-CYBERSECURITY.md",
+      "sha256": "127cd22ee0794c3dfc532686f53f902527dd068c0ec2186e69017170dc1230cb"
+    },
+    {
+      "file": "07-OPERATIONAL-RISK.md",
+      "sha256": "4495320addc4691b0c7fb10efa9aa24bf24aacd43cc2c08fa5f1d104b358ff95"
+    },
+    {
+      "file": "08-VERIFICATION-VALIDATION.md",
+      "sha256": "902d4e915186c61b88b34ee822301c79aa1615f6f600d6a09c56099a7938bdc7"
+    },
+    {
+      "file": "09-TRACEABILITY.md",
+      "sha256": "ef29e0e66f21b76f94e5927480abfea6a11d5a36e8c42d1172b2b27fe6defa45"
+    },
+    {
+      "file": "10-GAP-ANALYSIS.md",
+      "sha256": "d42d586fd4398510eb5f1ae8492dd1132393340fedbd5855a7fa6c5892a7df06"
+    },
+    {
+      "file": "11-STANDARDS-CONFORMANCE.md",
+      "sha256": "b994c76cabd0e75e5e4146d66fb0c8dffb6a47344151be434303be9e2bea9a64"
+    },
+    {
+      "file": "12-ENGINEERING-HANDOFF.md",
+      "sha256": "a37b2780ec8d1fb23b8711250981b55197594e777b4529f4e8fd35bc02a40b75"
+    },
+    {
+      "file": "REVIEW-FINDINGS.md",
+      "sha256": "5ce7ed3ae94609467eed8f333a3fec890f5df807704f8c037b15b1f20cadfe13"
+    },
+    {
+      "file": "13-CODE-DOCUMENT-RECONCILIATION.md",
+      "sha256": "e8164e3b176637e88ef2027c4643342682a705c10cf904aceace7b49874ebd6b"
+    },
+    {
+      "file": "FINAL-SUMMARY.md",
+      "sha256": "763a86534f629683de784e63faf5407c84e1cbc1ac7ead06ed8eb27e05365dc6"
+    }
+  ],
+  "output": "Kryptonian-Formal-Specification.pdf",
+  "pdf_sha256": "c2265f620ef5e16b7905056dd7357e28b6fa58ec4f9bac297682e71c3bd41b87",
+  "pages": 419,
+  "rendered_diagrams": 21,
+  "bookmark_count": 227,
+  "diagram_page_policy": "Foldout sheets at 0.6 PDF points per Mermaid CSS pixel; approximately 10-point labels",
+  "dependencies": {
+    "reportlab": "5.0.1",
+    "markdown-it-py": "2.2.0",
+    "PyMuPDF": "1.28.2",
+    "pypdf": "6.7.2"
+  },
+  "text_outside_page": [],
+  "visual_review": {
+    "status": "Reviewed",
+    "scope": "Cover, contents, all document openings and all 21 diagram sheets, plus requirement and traceability detail pages",
+    "rendered_pages_reviewed": [
+      1,
+      2,
+      3,
+      8,
+      15,
+      19,
+      23,
+      26,
+      31,
+      46,
+      120,
+      122,
+      125,
+      129,
+      132,
+      137,
+      138,
+      139,
+      140,
+      141,
+      142,
+      144,
+      146,
+      148,
+      150,
+      152,
+      164,
+      166,
+      192,
+      199,
+      218,
+      241,
+      281,
+      341,
+      365,
+      379,
+      389,
+      401,
+      411,
+      416,
+      419,
+      60,
+      308
+    ],
+    "result": "No clipping, overlap, missing glyphs or malformed diagrams observed in reviewed final pages; automated content/margin/hash checks passed across all pages"
+  },
+  "source_encoding": "UTF-8, LF line endings, single terminal newline; whitespace normalization preserves parsed publication content"
+}

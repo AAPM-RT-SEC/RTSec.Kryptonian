@@ -61,10 +61,15 @@ if (string.IsNullOrWhiteSpace(adminApiKey) && RequiresAdminApiKey(options))
 
 using var adminClient = string.IsNullOrWhiteSpace(adminApiKey)
     ? null
-    : new GatewayAdminClient(options.Gateway!, adminApiKey, GatewayHttpClient.Create(options.Gateway!, options.GatewayCaPemPath));
+    : new GatewayAdminClient(options.AdminGateway!, adminApiKey,
+        GatewayHttpClient.Create(options.AdminGateway!, options.AdminCaPemPath ?? options.GatewayCaPemPath));
 
 Console.WriteLine("Kryptonian DICOM TLS demo");
 Console.WriteLine($"Gateway: {options.Gateway}");
+if (options.AdminGateway?.ToString() != options.Gateway?.ToString())
+{
+    Console.WriteLine($"Admin API: {options.AdminGateway}");
+}
 Console.WriteLine($"Artifacts: {outputRoot}");
 Console.WriteLine();
 

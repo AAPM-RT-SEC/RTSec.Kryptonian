@@ -23,6 +23,47 @@ paths:
         '201':
           description: Created
 
+  /api/cas/generate-selfsigned:
+    post:
+      summary: Generate a password-protected local CA PFX (SystemAdmin only)
+      description: >-
+        Creates a five-year RSA-3072 CA using the gateway service identity.
+        Requires an absolute local .pfx or .p12 path in an existing writable
+        directory without junctions or symbolic links. Never overwrites a file.
+        Does not save or activate a backend or change trust settings.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [pfxPath, password, commonName]
+              properties:
+                pfxPath: { type: string }
+                password: { type: string, format: password, minLength: 12, maxLength: 1024, writeOnly: true }
+                commonName: { type: string, minLength: 1, maxLength: 64 }
+      responses:
+        '200':
+          description: File created; save the backend separately
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pfxPath: { type: string }
+                  thumbprint: { type: string }
+                  notAfter: { type: string, format: date-time }
+        '400':
+          description: Invalid input or directory permissions
+        '401':
+          description: Authentication required
+        '403':
+          description: SystemAdmin role required
+        '409':
+          description: Existing file or file creation failure; an incomplete file may remain after a failed write
+        '500':
+          description: Cryptographic operation failed
+
   /api/cas/{id}:
     get:
       summary: Get CA backend config
